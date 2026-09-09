@@ -37,15 +37,14 @@ import {
   withTransientDbRetry,
 } from "@/lib/transient-db-errors";
 import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
-import { getVendorCategoryAcceptedValues } from "@/config/service-templates";
+import {
+  buildDiscoverPromotionCategoryFilter,
+  buildDiscoverServiceCategoryFilter,
+} from "@/lib/discover-category-filter";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
 const MAX_LIMIT = 50;
-const FALLBACK_CATEGORY_LABEL = "Other Services";
-const FALLBACK_CATEGORY_KEY = "other-services";
-const LEGACY_FALLBACK_CATEGORY_LABEL = "Uncategorized";
-
 type SortBy = "newest" | "price_asc" | "price_desc" | "name" | "distance";
 type LocationInputSource = "none" | "coordinates" | "address";
 
@@ -60,72 +59,6 @@ function normalizeSortBy(value: string | null): SortBy {
 
 function normalizeCategoryFilter(value: string | null): string {
   return String(value || "").trim();
-}
-
-function isFallbackCategoryFilter(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized === FALLBACK_CATEGORY_LABEL.toLowerCase() ||
-    normalized === FALLBACK_CATEGORY_KEY ||
-    normalized === LEGACY_FALLBACK_CATEGORY_LABEL.toLowerCase()
-  );
-}
-
-export function buildServiceCategoryFilter(category: string) {
-  if (isFallbackCategoryFilter(category)) {
-    return {
-      OR: [
-        { vendor: { category: FALLBACK_CATEGORY_LABEL } },
-        { vendor: { businessType: FALLBACK_CATEGORY_LABEL } },
-        { vendor: { category: LEGACY_FALLBACK_CATEGORY_LABEL } },
-        { vendor: { businessType: LEGACY_FALLBACK_CATEGORY_LABEL } },
-        { vendor: { category: null, businessType: null } },
-        { vendor: { category: "", businessType: null } },
-        { vendor: { category: null, businessType: "" } },
-        { vendor: { category: "", businessType: "" } },
-      ],
-    };
-  }
-
-  const acceptedValues = getVendorCategoryAcceptedValues(category);
-  return {
-    OR: [
-      { vendor: { category: { in: acceptedValues } } },
-      { vendor: { businessType: { in: acceptedValues } } },
-    ],
-  };
-}
-
-export function buildPromotionCategoryFilter(category: string) {
-  if (isFallbackCategoryFilter(category)) {
-    return {
-      OR: [
-        { targetCategory: null },
-        { targetCategory: "" },
-        { targetCategory: FALLBACK_CATEGORY_LABEL },
-        { targetCategory: LEGACY_FALLBACK_CATEGORY_LABEL },
-        { service: { vendor: { category: FALLBACK_CATEGORY_LABEL } } },
-        { service: { vendor: { businessType: FALLBACK_CATEGORY_LABEL } } },
-        { service: { vendor: { category: LEGACY_FALLBACK_CATEGORY_LABEL } } },
-        { service: { vendor: { businessType: LEGACY_FALLBACK_CATEGORY_LABEL } } },
-        { service: { vendor: { category: null, businessType: null } } },
-        { service: { vendor: { category: "", businessType: null } } },
-        { service: { vendor: { category: null, businessType: "" } } },
-        { service: { vendor: { category: "", businessType: "" } } },
-      ],
-    };
-  }
-
-  const acceptedValues = getVendorCategoryAcceptedValues(category);
-  return {
-    OR: [
-      { targetCategory: null },
-      { targetCategory: "" },
-      { targetCategory: { in: acceptedValues } },
-      { service: { vendor: { category: { in: acceptedValues } } } },
-      { service: { vendor: { businessType: { in: acceptedValues } } } },
-    ],
-  };
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -189,7 +122,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             ],
           }
         : {}),
-      ...(category ? buildServiceCategoryFilter(category) : {}),
+      ...(category ? buildDiscoverServiceCategoryFilter(category) : {}),
     });
 
     const orderBy: any =
@@ -231,7 +164,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ],
       });
     }
-    if (category) promotionAnd.push(buildPromotionCategoryFilter(category));
+    if (category) promotionAnd.push(buildDiscoverPromotionCategoryFilter(category));
     if (promotionAnd.length) promotionWhere.AND = promotionAnd;
 
     const [total, services] = await withTransientDbRetry(() =>

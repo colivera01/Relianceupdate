@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPromotionCategoryFilter, buildServiceCategoryFilter } from './route';
+import {
+  buildDiscoverPromotionCategoryFilter,
+  buildDiscoverServiceCategoryFilter,
+} from '@/lib/discover-category-filter';
 
 describe('Discover category filters', () => {
   const electricalValues = [
@@ -11,7 +14,7 @@ describe('Discover category filters', () => {
   ];
 
   it('matches Electrician browse requests against stored Electrical values', () => {
-    expect(buildServiceCategoryFilter('Electrician')).toEqual({
+    expect(buildDiscoverServiceCategoryFilter('Electrician')).toEqual({
       OR: [
         { vendor: { category: { in: electricalValues } } },
         { vendor: { businessType: { in: electricalValues } } },
@@ -20,7 +23,7 @@ describe('Discover category filters', () => {
   });
 
   it('keeps untargeted promotions eligible while applying category aliases', () => {
-    expect(buildPromotionCategoryFilter('Electrical')).toEqual({
+    expect(buildDiscoverPromotionCategoryFilter('Electrical')).toEqual({
       OR: [
         { targetCategory: null },
         { targetCategory: '' },
