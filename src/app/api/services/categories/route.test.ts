@@ -117,8 +117,8 @@ describe("GET /api/services/categories", () => {
     expect(json.success).toBe(true);
     expect(json.categories).toEqual([
       {
-        key: "electrical",
-        label: "Electrical",
+        key: "electrician",
+        label: "Electrician",
         serviceCount: 1,
         vendorCount: 1,
         sampleServices: ["Outlet Installation"],

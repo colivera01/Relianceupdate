@@ -14,6 +14,7 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   withTransientDbRetry,
 } from "@/lib/transient-db-errors";
+import { resolveVendorCategory } from "@/config/service-templates";
 
 const FALLBACK_CATEGORY_LABEL = "Other Services";
 
@@ -121,8 +122,10 @@ export async function GET(): Promise<NextResponse> {
 
     for (const service of proofEligibleServices) {
       const rawCategory = String(service.vendor.category || service.vendor.businessType || "").trim();
-      const categoryLabel = rawCategory || FALLBACK_CATEGORY_LABEL;
-      const categoryKey = categoryLabel.toLowerCase().replace(/\s+/g, "-");
+      const resolvedCategory = resolveVendorCategory(rawCategory);
+      const categoryLabel = resolvedCategory?.label || rawCategory || FALLBACK_CATEGORY_LABEL;
+      const categoryKey =
+        resolvedCategory?.key || categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
       if (!categoryMap.has(categoryKey)) {
         categoryMap.set(categoryKey, {

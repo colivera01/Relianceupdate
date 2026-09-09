@@ -3,7 +3,12 @@ import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { trySetVendorApprovalStatus } from "@/lib/vendor-status";
-import { getServiceTemplatesForCategory, type ServiceTemplate } from "@/config/service-templates";
+import {
+  canonicalizeVendorRegistrationCategory,
+  getServiceTemplatesForCategory,
+  type ServiceTemplate,
+} from "@/config/service-templates";
+import { LEGAL_BUSINESS_STRUCTURE_OPTIONS } from "@/config/vendor-registration";
 import { requireVerifiedEmailForAction } from "@/lib/email-verification-enforcement";
 import { addRegisteredUser, findRegisteredUserByEmail } from "@/lib/dev-registered-users";
 import { hashPassword } from "@/lib/auth-password";
@@ -71,7 +76,8 @@ export async function POST(request: NextRequest) {
     const businessName = String(body?.businessName || "").trim();
     const rawBusinessType = String(body?.businessType || "").trim();
     const customBusinessType = String(body?.customBusinessType || "").trim();
-    const primaryCategory = String(body?.category || "").trim();
+    const rawPrimaryCategory = String(body?.category || "").trim();
+    const primaryCategory = canonicalizeVendorRegistrationCategory(rawPrimaryCategory);
     const address = String(body?.address || "").trim();
     const city = String(body?.city || "").trim();
     const state = String(body?.state || "").trim();
@@ -100,6 +106,20 @@ export async function POST(request: NextRequest) {
     if (!businessName || !businessType) {
       return NextResponse.json(
         { error: "Business name and business type are required." },
+        { status: 400 }
+      );
+    }
+
+    if (!LEGAL_BUSINESS_STRUCTURE_OPTIONS.includes(rawBusinessType as any)) {
+      return NextResponse.json(
+        { error: "Choose a supported legal business structure." },
+        { status: 400 }
+      );
+    }
+
+    if (!rawPrimaryCategory || !primaryCategory) {
+      return NextResponse.json(
+        { error: "Choose a supported primary service category." },
         { status: 400 }
       );
     }
@@ -209,7 +229,7 @@ export async function POST(request: NextRequest) {
         userType: "vendor",
         businessName,
         businessType,
-        category: primaryCategory || businessType,
+        category: primaryCategory,
         address,
         city,
         state,
@@ -307,7 +327,7 @@ export async function POST(request: NextRequest) {
             name: businessName,
             businessName,
             businessType,
-            category: primaryCategory || businessType,
+            category: primaryCategory,
             address,
             city,
             state,
@@ -345,7 +365,7 @@ export async function POST(request: NextRequest) {
             name: businessName,
             businessName,
             businessType,
-            category: primaryCategory || businessType,
+            category: primaryCategory,
             firstName: String(body?.firstName || "").trim() || user.name || null,
             lastName: String(body?.lastName || "").trim() || null,
             email: user.email || null,
@@ -389,7 +409,7 @@ export async function POST(request: NextRequest) {
           membershipId,
           businessName,
           businessType,
-          category: primaryCategory || businessType,
+          category: primaryCategory,
           city,
           state,
         },

@@ -198,7 +198,7 @@ describe("POST /api/vendor/register", () => {
         phone: "407-555-1212",
         password: "VendorTest1!",
         businessName: "Rosa Plumbing Co",
-        businessType: "Plumbing",
+        businessType: "Limited Liability Company (LLC)",
         category: "Plumbing",
         address: "123 Main St",
         city: "Orlando",
@@ -274,6 +274,53 @@ describe("POST /api/vendor/register", () => {
     );
   });
 
+  it("accepts a historical category alias but stores the canonical category label", async () => {
+    const response = await POST(
+      createVendorRegisterRequest({
+        firstName: "Rosa",
+        lastName: "Vendor",
+        email: "rosa.vendor@reliance.test",
+        phone: "407-555-1212",
+        password: "VendorTest1!",
+        businessName: "Rosa Electric Co",
+        businessType: "Limited Liability Company (LLC)",
+        category: "Electrical Services",
+        address: "123 Main St",
+        city: "Orlando",
+        state: "Florida",
+        zipCode: "32801",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(hoisted.vendorCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ category: "Electrician" }),
+      }),
+    );
+  });
+
+  it.each(["Bakery", "Restaurant Owners"])(
+    "rejects removed prebuilt category %s for new registration",
+    async (category) => {
+      const response = await POST(
+        createVendorRegisterRequest({
+          businessName: "Unsupported Catalog Vendor",
+          businessType: "Limited Liability Company (LLC)",
+          category,
+          address: "123 Main St",
+          city: "Orlando",
+          state: "Florida",
+          zipCode: "32801",
+        })
+      );
+
+      expect(response.status).toBe(400);
+      expect((await readJson(response)).error).toContain("supported primary service category");
+      expect(hoisted.vendorCreate).not.toHaveBeenCalled();
+    },
+  );
+
   it("starts the AI vendor approval review after the application enters the pending queue", async () => {
     const { generateVendorApprovalAiStoredResult, VENDOR_APPROVAL_AI_SYSTEM_ACTOR } = await import(
       "@/lib/ai/vendor-approval-review-store"
@@ -287,7 +334,7 @@ describe("POST /api/vendor/register", () => {
         phone: "407-555-1212",
         password: "VendorTest1!",
         businessName: "Rosa Plumbing Co",
-        businessType: "Plumbing",
+        businessType: "Limited Liability Company (LLC)",
         category: "Plumbing",
         address: "123 Main St",
         city: "Orlando",
@@ -316,7 +363,7 @@ describe("POST /api/vendor/register", () => {
         phone: "407-555-1212",
         password: "VendorTest1!",
         businessName: "Rosa Plumbing Co",
-        businessType: "Plumbing",
+        businessType: "Limited Liability Company (LLC)",
         category: "Plumbing",
         address: "123 Main St",
         city: "Orlando",
@@ -344,7 +391,8 @@ describe("POST /api/vendor/register", () => {
         phone: "407-555-1212",
         password: "VendorTest1!",
         businessName: "Rosa Plumbing Co",
-        businessType: "Plumbing",
+        businessType: "Limited Liability Company (LLC)",
+        category: "Plumbing",
         address: "123 Main St",
         city: "Orlando",
         state: "Florida",
@@ -370,7 +418,8 @@ describe("POST /api/vendor/register", () => {
         phone: "407-555-1212",
         password: "VendorTest1!",
         businessName: "Rosa Plumbing Co",
-        businessType: "Plumbing",
+        businessType: "Limited Liability Company (LLC)",
+        category: "Plumbing",
         address: "123 Main St",
         city: "Orlando",
         state: "Florida",
@@ -398,7 +447,8 @@ describe("POST /api/vendor/register", () => {
         phone: "407-555-1212",
         password: "VendorTest1!",
         businessName: "Rosa Plumbing Co",
-        businessType: "Plumbing",
+        businessType: "Limited Liability Company (LLC)",
+        category: "Plumbing",
         address: "123 Main St",
         city: "Orlando",
         state: "Florida",

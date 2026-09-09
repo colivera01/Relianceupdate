@@ -17,6 +17,8 @@ async function main() {
       name: 'Demo Vendor',
       businessName: 'Demo Vendor Inc.',
       email: 'demo@vendor.com',
+      demo: true,
+      seedBatchId: 'prisma-seed-membership',
     },
   });
 

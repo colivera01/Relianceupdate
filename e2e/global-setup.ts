@@ -12,6 +12,7 @@ const CUSTOMER_MISSING_COORDS_ID = 'e2e-location-missing-coords-customer';
 const CUSTOMER_MISSING_COORDS_EMAIL = 'e2e-location-missing-coords@reliance.test';
 const VENDOR_EMAIL = 'e2e-smoke-vendor@reliance.test';
 const SERVICE_NAME = 'Metro Apartment Deep Clean';
+const E2E_SEED_BATCH_ID = 'e2e-global-setup';
 const E2E_VENDOR_COORDINATES = {
   address: '350 5th Ave',
   city: 'New York',
@@ -214,6 +215,7 @@ export default async function globalSetup() {
           longitude: E2E_VENDOR_COORDINATES.longitude,
           geocodedAt: new Date('2026-01-01T00:00:00.000Z'),
           demo: true,
+          seedBatchId: E2E_SEED_BATCH_ID,
           isPubliclyListed: true,
         },
       });
@@ -225,6 +227,7 @@ export default async function globalSetup() {
           businessName: 'Metro Home Care Pros',
           ...E2E_VENDOR_COORDINATES,
           geocodedAt: new Date('2026-01-01T00:00:00.000Z'),
+          demo: true,
           isPubliclyListed: true,
         },
       });
@@ -244,6 +247,7 @@ export default async function globalSetup() {
           description: 'Detailed apartment and move-out cleaning with proof-backed service updates.',
           price: 49.99,
           demo: true,
+          seedBatchId: E2E_SEED_BATCH_ID,
           isPublished: true,
         },
       });
@@ -253,6 +257,7 @@ export default async function globalSetup() {
         data: {
           name: SERVICE_NAME,
           description: 'Detailed apartment and move-out cleaning with proof-backed service updates.',
+          demo: true,
           isPublished: true,
         },
       });
@@ -276,6 +281,7 @@ export default async function globalSetup() {
             longitude: fixture.coordinates.longitude,
             geocodedAt: new Date('2026-01-01T00:00:00.000Z'),
             demo: true,
+            seedBatchId: E2E_SEED_BATCH_ID,
             isPubliclyListed: true,
           },
         });
@@ -292,6 +298,7 @@ export default async function globalSetup() {
             latitude: fixture.coordinates.latitude,
             longitude: fixture.coordinates.longitude,
             geocodedAt: new Date('2026-01-01T00:00:00.000Z'),
+            demo: true,
             isPubliclyListed: true,
           },
         });
@@ -314,6 +321,7 @@ export default async function globalSetup() {
             description: fixture.description,
             price: 75,
             demo: true,
+            seedBatchId: E2E_SEED_BATCH_ID,
             isPublished: true,
           },
         });
@@ -323,6 +331,7 @@ export default async function globalSetup() {
           data: {
             name: fixture.serviceName,
             description: fixture.description,
+            demo: true,
             isPublished: true,
           },
         });

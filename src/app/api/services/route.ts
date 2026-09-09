@@ -8,6 +8,8 @@ import {
   requireRequestActor,
   resolveRequestActor,
 } from '@/lib/request-actor';
+import { countableServiceWhere, countableVendorWhere } from '@/lib/metrics-exclusion';
+import { buildServiceVendorCategoryFilter } from '@/lib/vendor-category-query';
 
 function parsePositiveNumber(value: string | null): number | null {
   if (!value) return null;
@@ -75,17 +77,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const publicWhere = countableServiceWhere({
+      isPublished: true,
+      vendor: countableVendorWhere({
+        isPubliclyListed: true,
+        accountStatus: 'active',
+      }),
+    });
+
     const where: any = {
       ...(vendorId ? { vendorId } : {}),
-      ...(!canViewVendorPrivate
-        ? {
-            isPublished: true,
-            vendor: {
-              isPubliclyListed: true,
-              accountStatus: 'active',
-            },
-          }
-        : {}),
+      ...(!canViewVendorPrivate ? publicWhere : {}),
       ...(search
         ? {
             OR: [
@@ -102,14 +104,7 @@ export async function GET(request: NextRequest) {
             },
           }
         : {}),
-      ...(category
-        ? {
-            OR: [
-              { vendor: { category } },
-              { vendor: { businessType: category } },
-            ],
-          }
-        : {}),
+      ...(category ? buildServiceVendorCategoryFilter(category) : {}),
     };
 
     const orderBy: any =

@@ -51,6 +51,16 @@ export type SelectedTemplateServicePayload = {
   source: 'template';
 };
 
+export const CATEGORY_CHANGE_DRAFT_WARNING =
+  'Changing the service category will discard the service selections and drafts entered for the current category. Continue?';
+
+export function hasRegistrationServiceDrafts(input: {
+  selectedTemplateCount: number;
+  customServiceCount: number;
+}): boolean {
+  return input.selectedTemplateCount > 0 || input.customServiceCount > 0;
+}
+
 const EMPTY_TEMPLATE_SERVICE_DETAIL: TemplateServiceDetailDraft = {
   defaultDuration: '',
   price: '',

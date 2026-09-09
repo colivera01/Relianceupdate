@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildSelectedTemplateServices,
+  hasRegistrationServiceDrafts,
   createInitialRegisterFormData,
   getRegisterFormDataForRoleSwitch,
 } from './register-flow';
@@ -21,16 +22,12 @@ const PRIMARY_VENDOR_CATEGORIES = [
   'HVAC Heating and Air Conditioning',
   'Home cleaners',
   'Hair/Nail Salon',
-  'Nail Salon',
   'Landscaping',
   'Locksmith',
   'Medical Services',
   'Moving Services',
   'Pool Cleaning Services',
   'Pet Grooming',
-  'Pet Groomers',
-  'Bakery',
-  'Restaurant Owners',
   'Plumbing',
   'Painting Services',
   'Pest/Exterminating Services',
@@ -132,5 +129,12 @@ describe('register-flow helpers', () => {
     );
 
     expect(categoriesWithoutTemplates).toEqual([]);
+    expect(PRIMARY_VENDOR_CATEGORIES).toHaveLength(26);
+  });
+
+  it('detects category-specific service work before discarding drafts', () => {
+    expect(hasRegistrationServiceDrafts({ selectedTemplateCount: 0, customServiceCount: 0 })).toBe(false);
+    expect(hasRegistrationServiceDrafts({ selectedTemplateCount: 1, customServiceCount: 0 })).toBe(true);
+    expect(hasRegistrationServiceDrafts({ selectedTemplateCount: 0, customServiceCount: 1 })).toBe(true);
   });
 });

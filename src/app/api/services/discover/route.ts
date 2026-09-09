@@ -37,6 +37,7 @@ import {
   withTransientDbRetry,
 } from "@/lib/transient-db-errors";
 import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
+import { getVendorCategoryAcceptedValues } from "@/config/service-templates";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
@@ -70,7 +71,7 @@ function isFallbackCategoryFilter(value: string): boolean {
   );
 }
 
-function buildServiceCategoryFilter(category: string) {
+export function buildServiceCategoryFilter(category: string) {
   if (isFallbackCategoryFilter(category)) {
     return {
       OR: [
@@ -86,12 +87,16 @@ function buildServiceCategoryFilter(category: string) {
     };
   }
 
+  const acceptedValues = getVendorCategoryAcceptedValues(category);
   return {
-    OR: [{ vendor: { category } }, { vendor: { businessType: category } }],
+    OR: [
+      { vendor: { category: { in: acceptedValues } } },
+      { vendor: { businessType: { in: acceptedValues } } },
+    ],
   };
 }
 
-function buildPromotionCategoryFilter(category: string) {
+export function buildPromotionCategoryFilter(category: string) {
   if (isFallbackCategoryFilter(category)) {
     return {
       OR: [
@@ -111,13 +116,14 @@ function buildPromotionCategoryFilter(category: string) {
     };
   }
 
+  const acceptedValues = getVendorCategoryAcceptedValues(category);
   return {
     OR: [
       { targetCategory: null },
       { targetCategory: "" },
-      { targetCategory: category },
-      { service: { vendor: { category } } },
-      { service: { vendor: { businessType: category } } },
+      { targetCategory: { in: acceptedValues } },
+      { service: { vendor: { category: { in: acceptedValues } } } },
+      { service: { vendor: { businessType: { in: acceptedValues } } } },
     ],
   };
 }

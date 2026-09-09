@@ -38,4 +38,10 @@ describe('vendor specialty options', () => {
     ]);
     expect(options).toContain('Electrical Repair');
   });
+
+  it('resolves cleaning, pet-grooming, and nail aliases through the canonical registry', () => {
+    expect(getVendorSpecialtyOptions({ category: 'Cleaning' })).toContain('Regular Cleaning');
+    expect(getVendorSpecialtyOptions({ category: 'Pet Groomers' })).toContain('Full Grooming Service');
+    expect(getVendorSpecialtyOptions({ category: 'Nail Salon' })).toContain('Gel Polish Service');
+  });
 });

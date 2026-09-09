@@ -110,11 +110,6 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
     { name: 'Window Cleaning', defaultDuration: 90 },
     { name: 'Pressure Washing', defaultDuration: 120 },
   ],
-  Cleaning: [
-    { name: 'Deep Cleaning', defaultDuration: 180 },
-    { name: 'Standard Cleaning', defaultDuration: 120 },
-    { name: 'Move-in/Move-out Cleaning', defaultDuration: 240 },
-  ],
   'Hair/Nail Salon': [
     { name: 'Classic Manicure', defaultDuration: 45 },
     { name: 'Pedicure', defaultDuration: 60 },
@@ -124,13 +119,8 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
     { name: 'Nail Art', defaultDuration: 60 },
     { name: 'Hair Treatment', defaultDuration: 75 },
     { name: 'Extensions', defaultDuration: 150 },
-  ],
-  'Nail Salon': [
-    { name: 'Classic Manicure', defaultDuration: 45 },
-    { name: 'Pedicure', defaultDuration: 60 },
     { name: 'Gel Polish Service', defaultDuration: 60 },
     { name: 'Acrylic Nails', defaultDuration: 90 },
-    { name: 'Nail Art', defaultDuration: 60 },
     { name: 'Nail Repair', defaultDuration: 30 },
     { name: 'Dip Powder Nails', defaultDuration: 75 },
     { name: 'Natural Nail Care', defaultDuration: 45 },
@@ -184,33 +174,6 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
     { name: 'Ear Cleaning', defaultDuration: 20 },
     { name: 'De-shedding Treatment', defaultDuration: 60 },
     { name: 'Mobile Grooming Visit', defaultDuration: 90 },
-  ],
-  'Pet Groomers': [
-    { name: 'Dog Bath and Brush', defaultDuration: 60 },
-    { name: 'Full Grooming Service', defaultDuration: 90 },
-    { name: 'Nail Trim', defaultDuration: 20 },
-    { name: 'Cat Grooming', defaultDuration: 75 },
-    { name: 'Ear Cleaning', defaultDuration: 20 },
-    { name: 'De-shedding Treatment', defaultDuration: 60 },
-    { name: 'Mobile Grooming Visit', defaultDuration: 90 },
-  ],
-  Bakery: [
-    { name: 'Custom Cake Order', defaultDuration: 60 },
-    { name: 'Pastry Box Preparation', defaultDuration: 45 },
-    { name: 'Event Dessert Setup', defaultDuration: 90 },
-    { name: 'Cupcake Order', defaultDuration: 45 },
-    { name: 'Bread Batch', defaultDuration: 60 },
-    { name: 'Cookie Order', defaultDuration: 45 },
-    { name: 'Dessert Table Setup', defaultDuration: 90 },
-  ],
-  'Restaurant Owners': [
-    { name: 'Catering Order Preparation', defaultDuration: 120 },
-    { name: 'Private Dining Setup', defaultDuration: 90 },
-    { name: 'Kitchen Prep Walkthrough', defaultDuration: 60 },
-    { name: 'Family Meal Package', defaultDuration: 90 },
-    { name: 'Event Food Service', defaultDuration: 180 },
-    { name: 'Takeout Order Prep', defaultDuration: 45 },
-    { name: 'Dining Room Setup', defaultDuration: 60 },
   ],
   Plumbing: [
     { name: 'Drain Cleaning', defaultDuration: 60 },
@@ -274,7 +237,109 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
   ],
 };
 
+export type VendorCategoryDefinition = {
+  key: string;
+  label: string;
+  aliases: readonly string[];
+  serviceTemplates: readonly ServiceTemplate[];
+  registrationAvailable: boolean;
+  specialtySuggestions: boolean;
+};
+
+type CategoryMetadata = Omit<VendorCategoryDefinition, 'serviceTemplates'>;
+
+const CATEGORY_METADATA: readonly CategoryMetadata[] = [
+  { key: 'automotive-repair', label: 'Automotive Repair', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'automotive-detailing', label: 'Automotive Detailing', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'adjuster', label: 'Adjuster', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'barber', label: 'Barber', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'body-shop', label: 'Body Shop', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'car-wash', label: 'Car Wash', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'contractors', label: 'Contractors', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'dealership', label: 'Dealership', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'electrician', label: 'Electrician', aliases: ['Electrical', 'Electrical Services', 'Electrical service'], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'electronic-device-repair', label: 'Electronic Device Repair', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'hvac-heating-and-air-conditioning', label: 'HVAC Heating and Air Conditioning', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'home-cleaners', label: 'Home cleaners', aliases: ['Cleaning'], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'hair-nail-salon', label: 'Hair/Nail Salon', aliases: ['Nail Salon'], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'landscaping', label: 'Landscaping', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'locksmith', label: 'Locksmith', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'medical-services', label: 'Medical Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'moving-services', label: 'Moving Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'pool-cleaning-services', label: 'Pool Cleaning Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'pet-grooming', label: 'Pet Grooming', aliases: ['Pet Groomers'], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'plumbing', label: 'Plumbing', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'painting-services', label: 'Painting Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'pest-exterminating-services', label: 'Pest/Exterminating Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'security-installation', label: 'Security Installation', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'roofing-services', label: 'Roofing Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'towing', label: 'Towing', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+  { key: 'tree-services', label: 'Tree Services', aliases: [], registrationAvailable: true, specialtySuggestions: true },
+];
+
+export const CUSTOM_VENDOR_CATEGORY = 'Other';
+
+export const CANONICAL_VENDOR_CATEGORY_REGISTRY: readonly VendorCategoryDefinition[] = CATEGORY_METADATA.map(
+  (category) => ({
+    ...category,
+    serviceTemplates: SERVICE_TEMPLATES[category.label] || [],
+  }),
+);
+
+export const CANONICAL_VENDOR_CATEGORY_LABELS = CANONICAL_VENDOR_CATEGORY_REGISTRY.map(
+  (category) => category.label,
+);
+
+export const VENDOR_REGISTRATION_CATEGORY_OPTIONS = [
+  ...CANONICAL_VENDOR_CATEGORY_LABELS,
+  CUSTOM_VENDOR_CATEGORY,
+];
+
+function normalizeCategory(value: string | null | undefined): string {
+  return String(value || '').trim().toLocaleLowerCase('en-US');
+}
+
+const CATEGORY_LOOKUP = new Map<string, VendorCategoryDefinition>();
+for (const category of CANONICAL_VENDOR_CATEGORY_REGISTRY) {
+  CATEGORY_LOOKUP.set(normalizeCategory(category.key), category);
+  CATEGORY_LOOKUP.set(normalizeCategory(category.label), category);
+  for (const alias of category.aliases) {
+    CATEGORY_LOOKUP.set(normalizeCategory(alias), category);
+  }
+}
+
+export function resolveVendorCategory(
+  value: string | null | undefined,
+): VendorCategoryDefinition | null {
+  return CATEGORY_LOOKUP.get(normalizeCategory(value)) || null;
+}
+
+export function canonicalizeVendorCategory(value: string | null | undefined): string | null {
+  return resolveVendorCategory(value)?.label || null;
+}
+
+export function canonicalizeVendorRegistrationCategory(
+  value: string | null | undefined,
+): string | null {
+  const normalized = normalizeCategory(value);
+  if (normalized === normalizeCategory(CUSTOM_VENDOR_CATEGORY)) {
+    return CUSTOM_VENDOR_CATEGORY;
+  }
+  return canonicalizeVendorCategory(value);
+}
+
+export function getVendorCategoryAcceptedValues(
+  value: string | null | undefined,
+): string[] {
+  const category = resolveVendorCategory(value);
+  if (category) {
+    return [category.label, ...category.aliases];
+  }
+  const raw = String(value || '').trim();
+  return raw ? [raw] : [];
+}
+
 export function getServiceTemplatesForCategory(category: string | null | undefined): ServiceTemplate[] {
-  const key = String(category || '').trim();
-  return key ? SERVICE_TEMPLATES[key] || [] : [];
+  const resolved = resolveVendorCategory(category);
+  return resolved ? [...resolved.serviceTemplates] : [];
 }

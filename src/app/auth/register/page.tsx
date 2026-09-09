@@ -17,6 +17,8 @@ import {
   createInitialRegisterFormData,
   getRegisterFormDataForRoleSwitch,
   getTemplateServiceDefaultDetail,
+  CATEGORY_CHANGE_DRAFT_WARNING,
+  hasRegistrationServiceDrafts,
   type TemplateServiceDetailDraft,
 } from '@/lib/register-flow';
 import {
@@ -53,7 +55,11 @@ import {
   Info,
   X
 } from 'lucide-react';
-import { getServiceTemplatesForCategory } from '@/config/service-templates';
+import {
+  getServiceTemplatesForCategory,
+  VENDOR_REGISTRATION_CATEGORY_OPTIONS,
+} from '@/config/service-templates';
+import { LEGAL_BUSINESS_STRUCTURE_OPTIONS } from '@/config/vendor-registration';
 
 // reCAPTCHA Configuration - Update this single location if site key changes
 const RECAPTCHA_SITE_KEY = '6LdAapYrAAAAAACfyJlrW40cSZBS7mm_W8r3Mjkiw';
@@ -857,48 +863,6 @@ const CITIES_BY_STATE: { [key: string]: string[] } = {
   ]
 };
 
-// Service category options
-const serviceCategoryOptions = [
-  'Automotive Repair', 'Automotive Detailing', 'Adjuster', 'Barber', 'Body Shop', 'Car Wash', 'Contractors', 'Dealership', 'Electrician', 'Electronic Device Repair',
-  'HVAC Heating and Air Conditioning', 'Home cleaners', 'Hair/Nail Salon', 'Nail Salon', 'Landscaping', 'Locksmith', 'Medical Services', 'Moving Services', 'Pool Cleaning Services', 'Pet Grooming', 'Pet Groomers', 'Bakery', 'Restaurant Owners', 'Plumbing', 'Painting Services', 'Pest/Exterminating Services', 'Security Installation', 'Roofing Services', 'Towing', 'Tree Services', 'Other'
-];
-
-// Service types by category
-const serviceTypesByCategory: { [key: string]: string[] } = {
-  'Automotive Repair': ['Engine Repair', 'Transmission Service', 'Brake Service', 'Oil Change', 'Tire Service', 'Electrical Systems', 'Diagnostic Services', 'Preventive Maintenance'],
-  'Automotive Detailing': ['Interior Detailing', 'Exterior Detailing', 'Paint Correction', 'Ceramic Coating', 'Headlight Restoration', 'Odor Removal', 'Fabric Protection'],
-  'Barber': ['Haircuts', 'Beard Trimming', 'Hair Styling', 'Shaving', 'Hair Coloring', 'Consultation'],
-  'Contractors': ['General Contracting', 'Kitchen Remodeling', 'Bathroom Remodeling', 'Deck Building', 'Fence Installation', 'Drywall', 'Painting', 'Flooring'],
-  'Electrician': ['Electrical Installation', 'Electrical Repair', 'Lighting Installation', 'Panel Upgrades', 'Emergency Services', 'Commercial Electrical', 'Residential Electrical'],
-  'HVAC Heating and Air Conditioning': ['AC Installation', 'AC Repair', 'Heating Installation', 'Heating Repair', 'Maintenance', 'Duct Cleaning', 'Thermostat Installation'],
-  'Home cleaners': ['Regular Cleaning', 'Deep Cleaning', 'Move-in/Move-out Cleaning', 'Post-construction Cleaning', 'Carpet Cleaning', 'Window Cleaning', 'Pressure Washing'],
-  'Hair/Nail Salon': ['Haircuts', 'Hair Coloring', 'Hair Styling', 'Manicures', 'Pedicures', 'Nail Art', 'Hair Treatments', 'Extensions'],
-  'Nail Salon': ['Classic Manicure', 'Pedicure', 'Gel Polish Service', 'Acrylic Nails', 'Nail Art', 'Nail Repair', 'Dip Powder Nails'],
-  'Landscaping': ['Lawn Maintenance', 'Landscape Design', 'Tree Planting', 'Irrigation Systems', 'Hardscaping', 'Garden Design', 'Seasonal Cleanup'],
-  'Locksmith': ['Lock Installation', 'Lock Repair', 'Key Duplication', 'Emergency Services', 'Security Systems', 'Safe Services'],
-  'Medical Services': ['Primary Care', 'Specialty Care', 'Diagnostic Services', 'Preventive Care', 'Emergency Services'],
-  'Moving Services': ['Residential Moving', 'Commercial Moving', 'Packing Services', 'Storage Solutions', 'Furniture Assembly', 'Long-distance Moving'],
-  'Pool Cleaning Services': ['Regular Cleaning', 'Chemical Balancing', 'Equipment Repair', 'Pool Opening/Closing', 'Algae Treatment', 'Filter Cleaning'],
-  'Pet Grooming': ['Dog Grooming', 'Cat Grooming', 'Bathing', 'Haircuts', 'Nail Trimming', 'Ear Cleaning', 'Flea Treatment'],
-  'Pet Groomers': ['Dog Bath and Brush', 'Full Grooming Service', 'Cat Grooming', 'Nail Trimming', 'Ear Cleaning', 'De-shedding Treatment', 'Mobile Grooming'],
-  'Bakery': ['Custom Cake Order', 'Pastry Box Preparation', 'Cupcake Order', 'Bread Batch', 'Dessert Table Setup', 'Cookie Order', 'Event Dessert Setup'],
-  'Restaurant Owners': ['Catering Order Preparation', 'Private Dining Setup', 'Kitchen Prep Walkthrough', 'Family Meal Package', 'Event Food Service', 'Takeout Order Prep', 'Dining Room Setup'],
-  'Plumbing': ['Pipe Repair', 'Fixture Installation', 'Drain Cleaning', 'Water Heater Services', 'Emergency Plumbing', 'Commercial Plumbing'],
-  'Painting Services': ['Interior Painting', 'Exterior Painting', 'Commercial Painting', 'Cabinet Painting', 'Deck Staining', 'Wallpaper Installation'],
-  'Pest/Exterminating Services': ['Pest Control', 'Termite Treatment', 'Rodent Control', 'Bed Bug Treatment', 'Preventive Services', 'Commercial Pest Control'],
-  'Security Installation': ['Security Systems', 'CCTV Installation', 'Access Control', 'Alarm Systems', 'Monitoring Services', 'Commercial Security'],
-  'Roofing Services': ['Roof Installation', 'Roof Repair', 'Roof Inspection', 'Gutter Services', 'Skylight Installation', 'Emergency Repairs'],
-  'Towing': ['Emergency Towing', 'Long-distance Towing', 'Roadside Assistance', 'Vehicle Recovery', 'Commercial Towing'],
-  'Tree Services': ['Tree Removal', 'Tree Trimming', 'Stump Grinding', 'Emergency Tree Services', 'Tree Planting', 'Arborist Services']
-};
-
-// Helper functions
-const getServiceTypesForCategory = (category: string) => {
-  const configured = getServiceTemplatesForCategory(category).map((template) => template.name);
-  if (configured.length > 0) return configured;
-  return serviceTypesByCategory[category] || [];
-};
-
 // Benefits lists
 const userBenefits = [
   'Compare trusted local service providers',
@@ -1033,7 +997,7 @@ function RegisterPageInner() {
     return String(Math.max(0, currentYear - foundedYear));
   }, [formData.foundedYear]);
   const availableServiceTypes = useMemo(
-    () => (formData.category ? getServiceTypesForCategory(formData.category) : []),
+    () => getServiceTemplatesForCategory(formData.category).map((template) => template.name),
     [formData.category]
   );
   const selectedServiceTypes = Array.isArray(formData.serviceTypes) ? formData.serviceTypes : [];
@@ -1523,6 +1487,7 @@ function RegisterPageInner() {
 
       const registrationData = {
         ...formData,
+        customBusinessType: formData.businessType === 'Other' ? otherBusinessType.trim() : '',
         // Convert arrays to comma-separated strings
         serviceTypes: Array.isArray(formData.serviceTypes)
           ? formData.serviceTypes
@@ -2629,19 +2594,9 @@ function RegisterPageInner() {
                             <SelectValue placeholder="Select your business structure" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Sole Proprietorship">Sole Proprietorship</SelectItem>
-                            <SelectItem value="Limited Liability Company (LLC)">Limited Liability Company (LLC)</SelectItem>
-                            <SelectItem value="Corporation (C-Corp)">Corporation (C-Corp)</SelectItem>
-                            <SelectItem value="Corporation (S-Corp)">Corporation (S-Corp)</SelectItem>
-                            <SelectItem value="Partnership (General)">Partnership (General)</SelectItem>
-                            <SelectItem value="Partnership (Limited)">Partnership (Limited)</SelectItem>
-                            <SelectItem value="Individual/Freelancer">Individual/Freelancer</SelectItem>
-                            <SelectItem value="Family Business">Family Business</SelectItem>
-                            <SelectItem value="Franchise">Franchise</SelectItem>
-                            <SelectItem value="Independent Contractor">Independent Contractor</SelectItem>
-                            <SelectItem value="Service Provider">Service Provider</SelectItem>
-                            <SelectItem value="Non-profit Organization">Non-profit Organization</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
+                            {LEGAL_BUSINESS_STRUCTURE_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>{option}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         {errors.businessType && (
@@ -2664,7 +2619,6 @@ function RegisterPageInner() {
                               className="mt-1"
                               onChange={(e) => {
                                 setOtherBusinessType(e.target.value);
-                                handleInputChange('businessType', `Other: ${e.target.value}`);
                               }}
                             />
                           </div>
@@ -2675,6 +2629,16 @@ function RegisterPageInner() {
                         <Select
                           value={formData.category}
                           onValueChange={(value) => {
+                            if (
+                              value !== formData.category &&
+                              hasRegistrationServiceDrafts({
+                                selectedTemplateCount: selectedServiceTypes.length,
+                                customServiceCount: customServices.length,
+                              }) &&
+                              !window.confirm(CATEGORY_CHANGE_DRAFT_WARNING)
+                            ) {
+                              return;
+                            }
                             handleInputChange('category', value);
                             handleInputChange('serviceTypes', []);
                             handleInputChange('specializations', []);
@@ -2690,7 +2654,7 @@ function RegisterPageInner() {
                             <SelectValue placeholder="Select your primary service category" />
                           </SelectTrigger>
                           <SelectContent>
-                            {serviceCategoryOptions.map((category) => (
+                            {VENDOR_REGISTRATION_CATEGORY_OPTIONS.map((category) => (
                               <SelectItem key={category} value={category}>
                                 {category}
                               </SelectItem>

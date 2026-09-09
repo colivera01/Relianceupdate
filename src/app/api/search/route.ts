@@ -6,6 +6,8 @@ import {
   countableVendorWhere,
 } from "@/lib/metrics-exclusion";
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
+import { canonicalizeVendorCategory } from "@/config/service-templates";
+import { buildVendorCategoryFilter } from "@/lib/vendor-category-query";
 
 type SearchType = "service" | "vendor" | null;
 type SortBy = "relevance" | "price" | "rating" | "distance";
@@ -95,9 +97,7 @@ export async function GET(request: NextRequest) {
 
     const vendorBaseClauses: any[] = [];
     if (category) {
-      vendorBaseClauses.push({
-        OR: [{ category }, { businessType: category }],
-      });
+      vendorBaseClauses.push(buildVendorCategoryFilter(category));
     }
     if (location) {
       vendorBaseClauses.push({
@@ -241,7 +241,11 @@ export async function GET(request: NextRequest) {
           id: String(service.id),
           name: service.name,
           description: cleanPublicServiceDescription(service.description || "", vendorName),
-          category: service.vendor.category || service.vendor.businessType || "General",
+          category:
+            canonicalizeVendorCategory(service.vendor.category || service.vendor.businessType) ||
+            service.vendor.category ||
+            service.vendor.businessType ||
+            "General",
           price: Number(service.price),
           rating: vendorStats?.rating ?? null,
           vendor: {
@@ -277,7 +281,11 @@ export async function GET(request: NextRequest) {
         return {
           id: String(vendor.id),
           name: vendorName,
-          category: vendor.category || vendor.businessType || "General",
+          category:
+            canonicalizeVendorCategory(vendor.category || vendor.businessType) ||
+            vendor.category ||
+            vendor.businessType ||
+            "General",
           rating: vendorStats?.rating ?? null,
           review_count: vendorStats?.reviewCount ?? 0,
           verified: null,

@@ -1,0 +1,15 @@
+export const LEGAL_BUSINESS_STRUCTURE_OPTIONS = [
+  'Sole Proprietorship',
+  'Limited Liability Company (LLC)',
+  'Corporation (C-Corp)',
+  'Corporation (S-Corp)',
+  'Partnership (General)',
+  'Partnership (Limited)',
+  'Individual/Freelancer',
+  'Family Business',
+  'Franchise',
+  'Independent Contractor',
+  'Service Provider',
+  'Non-profit Organization',
+  'Other',
+] as const;

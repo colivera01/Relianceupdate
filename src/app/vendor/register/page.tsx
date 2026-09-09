@@ -13,10 +13,18 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
 import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
-import { getServiceTemplatesForCategory } from '@/config/service-templates';
+import {
+  getServiceTemplatesForCategory,
+  VENDOR_REGISTRATION_CATEGORY_OPTIONS,
+} from '@/config/service-templates';
+import { LEGAL_BUSINESS_STRUCTURE_OPTIONS } from '@/config/vendor-registration';
 import { useAuth } from '@/contexts/AuthContext';
 import { tutorialGuides } from '@/lib/user-guidance';
-import { getTemplateServiceDefaultDetail } from '@/lib/register-flow';
+import {
+  CATEGORY_CHANGE_DRAFT_WARNING,
+  getTemplateServiceDefaultDetail,
+  hasRegistrationServiceDrafts,
+} from '@/lib/register-flow';
 import {
   defaultBusinessHours,
   formatBusinessTime,
@@ -24,40 +32,6 @@ import {
   type BusinessHoursDayKey,
   type BusinessHoursSchedule,
 } from '@/lib/business-hours';
-
-const serviceCatalog = [
-  'Automotive Repair',
-  'Automotive Detailing',
-  'Adjuster',
-  'Barber',
-  'Body Shop',
-  'Car Wash',
-  'Contractors',
-  'Dealership',
-  'Electrician',
-  'Electronic Device Repair',
-  'HVAC Heating and Air Conditioning',
-  'Home cleaners',
-  'Hair/Nail Salon',
-  'Nail Salon',
-  'Landscaping',
-  'Locksmith',
-  'Medical Services',
-  'Moving Services',
-  'Pool Cleaning Services',
-  'Pet Grooming',
-  'Pet Groomers',
-  'Bakery',
-  'Restaurant Owners',
-  'Plumbing',
-  'Painting Services',
-  'Pest/Exterminating Services',
-  'Security Installation',
-  'Roofing Services',
-  'Towing',
-  'Tree Services',
-  'Other',
-];
 
 const businessHourDayLabels: Record<BusinessHoursDayKey, string> = {
   mon: 'Monday',
@@ -91,6 +65,7 @@ export default function VendorRegisterPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const darkFieldClass = 'border-white/12 bg-slate-900/90 text-white placeholder:text-white/40';
   const [businessName, setBusinessName] = useState('');
+  const [businessBio, setBusinessBio] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [customBusinessType, setCustomBusinessType] = useState('');
   const [address, setAddress] = useState('');
@@ -124,8 +99,8 @@ export default function VendorRegisterPage() {
       return;
     }
     if (businessType === 'Other' && !customBusinessType.trim()) return;
-    if (primaryServiceCategory && selectedTemplateServices.length === 0) {
-      setError('Select at least one service you offer.');
+    if (!primaryServiceCategory.trim()) {
+      setError('Choose a primary service category.');
       return;
     }
     const unsavedTemplateServices = selectedTemplateServices.filter((service) => !service.saved);
@@ -199,6 +174,7 @@ export default function VendorRegisterPage() {
         },
         body: JSON.stringify({
           businessName: businessName.trim(),
+          businessBio: businessBio.trim(),
           businessType: businessType.trim(),
           customBusinessType: customBusinessType.trim(),
           category: primaryServiceCategory.trim(),
@@ -385,7 +361,20 @@ export default function VendorRegisterPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-white/88">Business Type</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">Business Description</label>
+                <textarea
+                  value={businessBio}
+                  onChange={(e) => setBusinessBio(e.target.value)}
+                  rows={4}
+                  className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkFieldClass}`}
+                  placeholder="Describe your business and the customers you serve."
+                />
+                <p className="mt-1 text-xs leading-5 text-white/56">
+                  Optional during signed-in setup. You can complete or refine this before public approval.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-white/88">Legal Business Structure</label>
                 <select
                   className="w-full rounded border border-white/12 bg-slate-900/90 px-3 py-2 text-white"
                   style={{ colorScheme: 'dark' }}
@@ -393,8 +382,8 @@ export default function VendorRegisterPage() {
                   onChange={e => setBusinessType(e.target.value)}
                   required
                 >
-                  <option value="">Select a business type</option>
-                  {serviceCatalog.map(type => (
+                  <option value="">Select a legal business structure</option>
+                  {LEGAL_BUSINESS_STRUCTURE_OPTIONS.map(type => (
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
@@ -430,8 +419,19 @@ export default function VendorRegisterPage() {
                   className="w-full rounded border border-white/12 bg-slate-900/90 px-3 py-2 text-white"
                   style={{ colorScheme: 'dark' }}
                   value={primaryServiceCategory}
+                  required
                   onChange={(e) => {
                     const category = e.target.value;
+                    if (
+                      category !== primaryServiceCategory &&
+                      hasRegistrationServiceDrafts({
+                        selectedTemplateCount: selectedTemplateServices.length,
+                        customServiceCount: customServices.length,
+                      }) &&
+                      !window.confirm(CATEGORY_CHANGE_DRAFT_WARNING)
+                    ) {
+                      return;
+                    }
                     setPrimaryServiceCategory(category);
                     setSelectedTemplateServices([]);
                     setCustomServices([]);
@@ -440,7 +440,7 @@ export default function VendorRegisterPage() {
                   }}
                 >
                   <option value="">Select a primary service category</option>
-                  {serviceCatalog.map((category) => (
+                  {VENDOR_REGISTRATION_CATEGORY_OPTIONS.map((category) => (
                     <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
