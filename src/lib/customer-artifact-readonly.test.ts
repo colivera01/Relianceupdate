@@ -9,6 +9,7 @@ import { normalizePrismaSqlServerUrl } from './prisma-sqlserver-url';
 // Opt-in release check only. Never seeds, authenticates, or invokes mutations.
 const artifact = process.env.RELIANCE_ARTIFACT_READONLY_ROOT;
 const customerUserId = process.env.RELIANCE_READONLY_CUSTOMER_ID;
+const expectedAppliedMigrationCount = 56;
 it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta contracts and the actual customer loader without adapters', async () => {
   const root = resolve(artifact!);
   const packagedRequire = createRequire(resolve(root, 'package.json'));
@@ -22,7 +23,7 @@ it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta c
     const database = await db.$queryRaw`SELECT DB_NAME() AS name`;
     expect(database[0].name).toBe('reliance-beta-db');
     const migrations = await db.$queryRaw`SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations`;
-    expect(migrations.filter((row: any) => row.finished_at && !row.rolled_back_at)).toHaveLength(53);
+    expect(migrations.filter((row: any) => row.finished_at && !row.rolled_back_at)).toHaveLength(expectedAppliedMigrationCount);
     expect(migrations.filter((row: any) => !row.finished_at && !row.rolled_back_at)).toHaveLength(0);
     const protectedId = 'cmtj89mlo004llufi0b6tvdpj';
     const snapshot = async () => {
@@ -48,11 +49,11 @@ it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta c
     await db.vendorFavorite.count();
     await db.review.findMany({ take: 1, select: Object.fromEntries(['id', ...manifest.requiredReviewFields].map((field) => [field, true])) });
     const all = await loadCustomerServiceRecords({ db, customerUserId: customerUserId!, includeAll: true });
-    expect(all.counts).toEqual({ upcoming: 2, completed: 4, needs_attention: 0, cancelled: 2, archived: 1, unclassified: 0 });
-    expect(all.records).toHaveLength(9);
+    expect(all.counts).toEqual({ upcoming: 0, completed: 5, needs_attention: 0, cancelled: 4, archived: 1, unclassified: 0 });
+    expect(all.records).toHaveLength(10);
     const page = await loadCustomerServiceRecords({ db, customerUserId: customerUserId!, requestedTab: 'completed', search: 'Breaker', page: 1, limit: 1 });
-    expect(page.records.map((row) => row.id)).toEqual([protectedId]);
-    expect(page.pagination.total).toBe(1);
+    expect(page.records.map((row) => row.id)).toEqual(['cmtoz4dp40016nzfju8bcqbva']);
+    expect(page.pagination.total).toBe(2);
     const detail = await loadCustomerServiceRecords({ db, customerUserId: customerUserId!, bookingId: protectedId, includeAll: true });
     expect(detail.records).toHaveLength(1);
     expect(detail.records[0].customer_record).toMatchObject({ lifecycle: 'COMPLETED', archived: false, attention: { required: false }, video: { state: 'READY' }, review: { state: 'LEAVE_REVIEW' }, visibility: { label: 'Private' } });
@@ -61,9 +62,14 @@ it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta c
     expect(await db.customerServiceRecordOrganizationEvent.count({ where: { bookingId: protectedId } })).toBe(0);
     expect(await db.employeeRecordingSafetyEvidence.count({ where: { bookingId: protectedId } })).toBe(0);
     const visibility = await db.serviceVideoPackageVisibilityDecision.findMany({ where: { bookingId: protectedId }, orderBy: { version: 'asc' }, select: { version: true, decision: true, isCurrent: true } });
-    expect(visibility).toEqual([{ version: 1, decision: 'KEEP_PRIVATE', isCurrent: false }, { version: 2, decision: 'SHARE_PUBLICLY', isCurrent: false }, { version: 3, decision: 'KEEP_PRIVATE', isCurrent: true }]);
+    expect(visibility).toEqual([
+      { version: 1, decision: 'KEEP_PRIVATE', isCurrent: false },
+      { version: 2, decision: 'SHARE_PUBLICLY', isCurrent: false },
+      { version: 3, decision: 'KEEP_PRIVATE', isCurrent: false },
+      { version: 4, decision: 'SHARE_PUBLICLY', isCurrent: true },
+    ]);
     const after = await snapshot();
     expect(after).toBe(before);
-    console.log(JSON.stringify({ verdict: 'PASS', clientRoot: root, sourceCommit: manifest.sourceCommit, migrations: 53, unresolved: 0, counts: all.counts, protectedBeforeSha256: before, protectedAfterSha256: after, mutations: 0 }));
+    console.log(JSON.stringify({ verdict: 'PASS', clientRoot: root, sourceCommit: manifest.sourceCommit, migrations: expectedAppliedMigrationCount, unresolved: 0, counts: all.counts, protectedBeforeSha256: before, protectedAfterSha256: after, mutations: 0 }));
   } finally { await db.$disconnect(); }
 }, 180_000);
