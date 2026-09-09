@@ -356,7 +356,7 @@ export function PublicTrustScorePanel({
 
                 {trustScore.explanationDetails.watchItems.length > 0 ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-                    <div className="text-sm font-semibold text-amber-950">Watch items</div>
+                    <div className="text-sm font-semibold text-amber-900">Watch items</div>
                     <ul className="mt-2 space-y-2 text-sm text-amber-900">
                       {trustScore.explanationDetails.watchItems.slice(0, 2).map((item, index) => (
                         <li key={index}>{item}</li>
