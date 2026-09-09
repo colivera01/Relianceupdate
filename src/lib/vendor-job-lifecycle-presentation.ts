@@ -142,7 +142,7 @@ export function resolveVendorJobLifecyclePresentation(
   if (phase === "AWAITING_ADMIN_REVIEW") {
     return result(
       "Reliance Audit pending",
-      "The vendor manager submitted the exact Service Video package for final Reliance Admin Audit. Customer Private Proof remains locked until PASS.",
+      "The vendor manager submitted the exact Service Video package for Reliance Audit. Customer Private Proof remains locked until PASS.",
       "View Job",
       "blue",
       "Reliance admin",

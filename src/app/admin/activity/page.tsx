@@ -457,7 +457,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
                   Open Review Moderation
                 </Link>
                 <Link href="/admin/media-moderation" className="font-medium text-blue-600 underline">
-                  Open Media Moderation
+                  Open Reliance Audit
                 </Link>
                 <Link href="/admin/reported-content" className="font-medium text-blue-600 underline">
                   Open Reported Content

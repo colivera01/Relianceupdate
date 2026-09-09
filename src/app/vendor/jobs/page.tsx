@@ -4341,7 +4341,7 @@ export default function VendorJobs() {
     const labelMap: Record<string, string> = {
       rejected: 'Media: Rejected',
       flagged: 'Media: Flagged',
-      pending_review: 'Media: Pending Review',
+      pending_review: 'Reliance Audit: Pending',
       approved: 'Media: Approved',
     };
     const colorMap: Record<string, string> = {
@@ -5168,7 +5168,7 @@ export default function VendorJobs() {
               <li><strong>Send the employee service order link</strong> so the employee can open it on the phone they will use to record.</li>
               <li><strong>If location is required, the employee verifies location</strong> from that phone before recording unlocks.</li>
               <li><strong>The employee records all three stages</strong>: Starting Condition, Work in Progress, and Final Result. Each stage can be previewed, saved, or retaken.</li>
-              <li><strong>The employee sends the finished package to the manager</strong>. Manager and admin approval happen before customers or public pages can see the videos.</li>
+              <li><strong>The employee sends the finished package to the manager</strong>. Manager review and Reliance Audit PASS release the exact package as customer Private Proof. Public visibility still requires the customer to Share Publicly and every required participant to allow Public use.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               Each work card shows its current <strong>Next step</strong>: assign employee, wait for recording permission,
@@ -5338,7 +5338,7 @@ export default function VendorJobs() {
                   className="w-full p-2 border border-gray-300 rounded-lg appearance-none bg-white video-archive-dropdown"
                 >
                   <option value="all">All Statuses</option>
-                  <option value="pending_review">Pending Review</option>
+                  <option value="pending_review">Pending Reliance Audit</option>
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
                   <option value="flagged">Flagged</option>
@@ -6950,8 +6950,8 @@ export default function VendorJobs() {
               </select>
               {editingJob && !canVendorMarkJobCompleted(editingJob) ? (
                 <p className="text-xs text-gray-600">
-                  Jobs move to <strong>Completed</strong> only after admin approval is finished for all required
-                  service-video stages.
+                  Jobs move to <strong>Completed</strong> only after Reliance Audit PASS is recorded for the complete
+                  Service Video package.
                 </p>
               ) : null}
             </div>
@@ -7073,7 +7073,7 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>Submit Service Videos for Reliance Audit?</DialogTitle>
             <DialogDescription>
-              This attests to the exact three-stage package and sends it to Reliance Admin Audit. The customer receives no Private Proof unless Admin records PASS. Admin REJECT is terminal for this Service Order.
+              This attests to the exact three-stage package and sends it to Reliance Audit. The customer receives no Private Proof unless Admin records PASS. Admin REJECT is terminal for this Service Order.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-gray-700">

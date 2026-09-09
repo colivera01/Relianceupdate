@@ -42,7 +42,7 @@ const adminNav: AdminNavItem[] = [
   { href: '/admin/accounts', label: 'All Accounts', icon: Users, iconClassName: 'text-emerald-200' },
   { href: '/admin/publish-management', label: 'Publish Management', icon: Megaphone, iconClassName: 'text-sky-200' },
   { href: '/admin/promoted-listings', label: 'Featured Proof', icon: MapPinned, iconClassName: 'text-orange-200' },
-  { href: '/admin/media-moderation', label: 'Media Moderation', icon: Clapperboard, iconClassName: 'text-cyan-200' },
+  { href: '/admin/media-moderation', label: 'Reliance Audit', icon: Clapperboard, iconClassName: 'text-cyan-200' },
   { href: '/admin/publication-moderation', label: 'Legacy Public Decisions', icon: Globe2, iconClassName: 'text-emerald-200' },
   { href: '/admin/reviews', label: 'Review Moderation', icon: Star, iconClassName: 'text-amber-200' },
   { href: '/admin/review-audit', label: 'Review Audit', icon: Search, iconClassName: 'text-yellow-200' },
@@ -300,7 +300,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
               >
                 <item.icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-white' : item.iconClassName}`} />
                 <span className="max-w-full truncate">
-                  {item.label.replace('Publish Management', 'Publish').replace('Media Moderation', 'Media').replace('AI Review Queue', 'AI Queue')}
+                  {item.label.replace('Publish Management', 'Publish').replace('AI Review Queue', 'AI Queue')}
                 </span>
               </Link>
             );

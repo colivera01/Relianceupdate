@@ -325,7 +325,7 @@ function displayPackageState(states: string[]): string {
 
 function prettyStatus(value: string): string {
   const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'pending_review') return 'Pending Review';
+  if (normalized === 'pending_review') return 'Pending Reliance Audit';
   if (normalized === 'approved') return 'Approved';
   if (normalized === 'rejected') return 'Rejected';
   if (normalized === 'flagged') return 'Flagged';
@@ -1128,8 +1128,8 @@ export default function AdminMediaModerationClient({
             onChange={(e) => setStatusFilter(e.target.value)}
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="all">All moderation statuses</option>
-            <option value="pending_review">Pending Review</option>
+            <option value="all">All Reliance Audit statuses</option>
+            <option value="pending_review">Pending Reliance Audit</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="flagged">Flagged</option>
@@ -1203,7 +1203,7 @@ export default function AdminMediaModerationClient({
               return {
                 stage,
                 label: STAGE_LABELS[stage],
-                statusText: stageVideo ? (isApproved ? 'Approved' : 'Needs admin action') : 'Missing',
+                statusText: stageVideo ? (isApproved ? 'Approved' : 'Needs Reliance Audit') : 'Missing',
                 statusClass: stageVideo
                   ? isApproved
                     ? 'text-emerald-300'

@@ -72,8 +72,8 @@ const quickLinks: AdminQuickLink[] = [
   },
   {
     href: "/admin/media-moderation",
-    label: "Media Moderation",
-    description: "Approve or block customer-visible service videos and photos.",
+    label: "Reliance Audit",
+    description: "Audit exact Service Video packages before releasing approved packages as customer Private Proof.",
     icon: ShieldCheck,
     accentClass: "bg-[rgba(53,214,165,0.16)] text-[var(--reliance-emerald)]",
   },

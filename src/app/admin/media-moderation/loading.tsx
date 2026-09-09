@@ -2,7 +2,7 @@ export default function AdminMediaModerationLoading() {
   return (
     <div className="container mx-auto max-w-7xl space-y-4 p-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Reliance Audit</h1>
         <p className="mt-1 text-sm text-gray-600">
           Loading the staged service video moderation queue...
         </p>

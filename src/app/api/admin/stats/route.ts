@@ -52,12 +52,12 @@ export async function GET(request: Request): Promise<NextResponse> {
       },
       definitions: {
         pendingModeration:
-          "Reviews awaiting moderation plus exact Service Video packages eligible for core Reliance Admin Audit.",
+          "Reviews awaiting moderation plus exact Service Video packages eligible for Reliance Audit.",
         pendingModerationBreakdown: {
           reviews:
             "Review rows with moderationStatus=pending_review awaiting admin review.",
           mediaPackages:
-            "Exact manager-attested Service Video package versions whose current evidence chain is eligible for Reliance Admin Audit.",
+            "Exact manager-attested Service Video package versions whose current evidence chain is eligible for Reliance Audit.",
         },
       },
     });

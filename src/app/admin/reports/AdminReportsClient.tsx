@@ -142,7 +142,7 @@ export default function AdminReportsClient() {
     },
     {
       href: "/admin/media-moderation",
-      label: "Open Media Moderation",
+      label: "Open Reliance Audit",
       description: "Review pending service-video packages.",
       icon: Video,
     },

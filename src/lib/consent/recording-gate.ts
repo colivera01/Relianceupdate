@@ -652,7 +652,7 @@ export async function loadCanonicalRecordingGate(input: {
   } else if (String(currentPackage?.status || "").toUpperCase() === "ADMIN_REJECTED") {
     decision = blocked(base, {
       code: "ADMIN_AUDIT_REJECTED_TERMINAL",
-      why: "Reliance Admin Audit rejected the submitted Service Video package.",
+      why: "Reliance Audit rejected the submitted Service Video package.",
       responsibleParticipant: "NO_PARTICIPANT",
       resolution: "Recording, replacement, upload, retry, and resubmission are permanently closed for this Service Order.",
       serviceMayContinue: false,
@@ -660,9 +660,9 @@ export async function loadCanonicalRecordingGate(input: {
   } else if (String(currentPackage?.status || "").toUpperCase() === "AWAITING_ADMIN_REVIEW") {
     decision = blocked(base, {
       code: "ADMIN_AUDIT_IN_PROGRESS",
-      why: "The vendor manager submitted the completed Service Videos for Reliance Admin Audit.",
+      why: "The vendor manager submitted the completed Service Videos for Reliance Audit.",
       responsibleParticipant: "ADMIN",
-      resolution: "Wait for Reliance Admin Audit.",
+      resolution: "Wait for Reliance Audit.",
       serviceMayContinue: true,
     });
   } else if (workRecordStatus === "AWAITING_REVIEW" || currentPackage?.status === "AWAITING_MANAGER_REVIEW") {

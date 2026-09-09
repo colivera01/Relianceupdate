@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { launchExcludedUserIds, launchExcludedVendorIds } from "@/lib/internal-identities";
+import { countableReviewWhere } from "@/lib/metrics-exclusion";
 
 function forbiddenResponse(error: any) {
   const message = error?.message || "Forbidden";
@@ -64,6 +65,26 @@ export async function GET(request: Request): Promise<NextResponse> {
       return true;
     });
 
+    const reviewIds = Array.from(new Set(
+      notifications
+        .filter((notification: any) => notification.type === "REVIEW_MODERATION_REQUIRED")
+        .map((notification: any) => parseMetadata(notification.metadata)?.reviewId)
+        .map((value: unknown) => String(value || "").trim())
+        .filter(Boolean)
+    ));
+    const countableReviews = reviewIds.length > 0
+      ? await (prisma as any).review.findMany({
+          where: countableReviewWhere({ id: { in: reviewIds } }),
+          select: { id: true },
+        })
+      : [];
+    const countableReviewIds = new Set(countableReviews.map((review: any) => String(review.id)));
+    const currentReviewCountability = (notification: any): boolean | null => {
+      if (notification.type !== "REVIEW_MODERATION_REQUIRED") return null;
+      const reviewId = String(parseMetadata(notification.metadata)?.reviewId || "").trim();
+      return reviewId ? countableReviewIds.has(reviewId) : null;
+    };
+
     return NextResponse.json({
       notifications: notifications.map((n: any) => ({
         id: n.id,
@@ -75,6 +96,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         read: n.read,
         createdAt: n.createdAt,
         vendor: n.vendor,
+        countsInCanonicalMetrics: currentReviewCountability(n),
       })),
     });
   } catch (error: any) {

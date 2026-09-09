@@ -31,6 +31,7 @@ type ReviewQueueRow = {
   contractVersion?: number | null;
   ratingValidityStatus?: string | null;
   ratingInvalidationReason?: string | null;
+  countsInCanonicalMetrics?: boolean;
   aiRecommendation?: {
     aiRunId: string;
     promptVersion: string;
@@ -77,9 +78,13 @@ function reviewVisibilityLabel(value: string | null | undefined) {
   return prettyStatus(normalized);
 }
 
-function ratingEvidenceLabel(review: Pick<ReviewQueueRow, 'contractVersion' | 'ratingValidityStatus'>) {
+function ratingEvidenceLabel(review: Pick<ReviewQueueRow, 'contractVersion' | 'ratingValidityStatus' | 'countsInCanonicalMetrics'>) {
   if (!review.contractVersion || review.contractVersion < 2) return 'Historical moderation contract';
-  if (review.ratingValidityStatus === 'verified') return 'Verified and counted';
+  if (review.ratingValidityStatus === 'verified') {
+    return review.countsInCanonicalMetrics === false
+      ? 'Verified but excluded from canonical metrics'
+      : 'Verified and counted';
+  }
   if (review.ratingValidityStatus === 'invalid') return 'Invalidated';
   return 'Status unavailable';
 }
@@ -793,10 +798,14 @@ function ReviewsPageContent() {
             <DialogTitle>{moderationNoteAction === 'flag' ? 'Flag Written Comment' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Rating Evidence' : 'Reject Written Comment'}</DialogTitle>
             <DialogDescription>
               {moderationNoteAction === 'flag'
-                ? 'Provide a reason to flag this written comment for follow-up. The verified Vendor Rating remains counted.'
+                ? moderationNoteTarget?.countsInCanonicalMetrics === false
+                  ? 'Provide a reason to flag this written comment for follow-up. The Vendor Rating evidence stays verified but remains excluded from canonical metrics.'
+                  : 'Provide a reason to flag this written comment for follow-up. The verified Vendor Rating remains counted.'
                 : moderationNoteAction === 'invalidate_review'
                   ? 'Use only for fraud, duplicate evidence, account abuse, or another reason the Vendor Rating evidence is invalid. This excludes its stars from canonical metrics and keeps its written comment Private.'
-                  : 'Provide a reason not to publish this written comment. The verified Vendor Rating remains counted.'}
+                  : moderationNoteTarget?.countsInCanonicalMetrics === false
+                    ? 'Provide a reason not to publish this written comment. The Vendor Rating evidence stays verified but remains excluded from canonical metrics.'
+                    : 'Provide a reason not to publish this written comment. The verified Vendor Rating remains counted.'}
             </DialogDescription>
           </DialogHeader>
           <textarea

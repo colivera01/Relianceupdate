@@ -18,6 +18,7 @@ import {
 } from '@/lib/review-attribution-intent';
 import { loadCustomerReviewEligibility } from '@/lib/customer-review-eligibility';
 import { REVIEW_CONTRACT_VERSION, VERIFIED_RATING_STATUS } from '@/lib/review-rating-validity';
+import { countableReviewWhere } from '@/lib/metrics-exclusion';
 
 function reviewSubmissionHash(input: Record<string, unknown>): string {
   return createHash('sha256').update(JSON.stringify(input)).digest('hex');
@@ -455,11 +456,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (comment) try {
+      const countsInCanonicalMetrics = await (prisma as any).review.count({
+        where: countableReviewWhere({ id: created.review.id }),
+      }) > 0;
       await createAdminNotificationWithEmail({
         vendorId,
         type: 'REVIEW_MODERATION_REQUIRED',
         title: 'Customer comment waiting for moderation',
-        message: 'A verified Customer Review includes written content that needs a publication decision. The Vendor Rating is already counted.',
+        message: countsInCanonicalMetrics
+          ? 'A verified Customer Review includes written content that needs a publication decision. The Vendor Rating is already counted.'
+          : 'A verified Customer Review includes written content that needs a publication decision. Its Vendor Rating evidence is excluded from canonical metrics under the customer’s current classification.',
         metadata: {
           reviewId: created.review.id,
           bookingId,
@@ -470,6 +476,7 @@ export async function POST(request: NextRequest) {
           reviewAttributionTarget,
           employeeRatingProvided,
           employeeRatingEvidenceId: created.employeeCustomerRating?.id || null,
+          countsInCanonicalMetrics,
         },
         surfaceHref: '/admin/reviews',
         baseUrl: new URL(request.url).origin,

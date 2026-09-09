@@ -337,8 +337,7 @@ export default function VendorReviewsPage() {
               <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-gray-500">
                 <p className="font-medium text-gray-700">No published reviews yet.</p>
                 <p className="mt-2 text-sm">
-                  Customer feedback appears here after a completed job, review submission, and Reliance
-                  admin approval. Published reviews are one of the clearest public trust signals for new customers.
+                  Customer feedback appears here after a completed job and review submission. Written comments appear publicly only after Reliance moderation. Verified Vendor Ratings count separately when the reviewer and evidence meet canonical metric rules.
                 </p>
               </div>
             ) : (

@@ -19,6 +19,7 @@ const pendingReview = {
   contractVersion: 2,
   ratingValidityStatus: "verified",
   ratingInvalidationReason: null,
+  countsInCanonicalMetrics: false,
   aiRecommendation: null,
 };
 
@@ -28,6 +29,7 @@ const starsOnlyReview = {
   rating: 4,
   comment: "",
   moderationStatus: "not_applicable",
+  countsInCanonicalMetrics: true,
 };
 
 async function installReviewQueueApi(page: Page) {
@@ -53,7 +55,7 @@ test("Admin review moderation separates written comments from Vendor Rating evid
   await expect(page.getByText("Moderate written comments separately from verified Vendor Rating evidence.")).toBeVisible();
 
   const writtenCommentCard = page.getByTestId("review-card-review-comment");
-  await expect(writtenCommentCard.getByText("Rating evidence: Verified and counted")).toBeVisible();
+  await expect(writtenCommentCard.getByText("Rating evidence: Verified but excluded from canonical metrics")).toBeVisible();
   await expect(writtenCommentCard.getByRole("button", { name: "Publish Written Comment" })).toBeVisible();
   await expect(writtenCommentCard.getByRole("button", { name: "Keep Written Comment Private" })).toBeVisible();
   await expect(writtenCommentCard.getByRole("button", { name: "Invalidate Rating Evidence" })).toBeVisible();

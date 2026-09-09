@@ -32,6 +32,7 @@ interface AdminNotification {
     businessName: string | null;
     name: string;
   };
+  countsInCanonicalMetrics?: boolean | null;
 }
 
 interface SupportTriageRecommendation {
@@ -72,6 +73,22 @@ function isApprovalNotification(type: string) {
 
 function prettyConfidence(value: 'low' | 'medium' | 'high') {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)} confidence`;
+}
+
+function notificationDisplay(notification: AdminNotification) {
+  if (notification.type === 'MEDIA_MODERATION_REQUIRED') {
+    return {
+      title: 'Service Video package requires Reliance Audit',
+      message: 'Reliance Audit is required before the exact package can be released as customer Private Proof. Public visibility requires separate customer and participant decisions.',
+    };
+  }
+  if (notification.type === 'REVIEW_MODERATION_REQUIRED' && notification.countsInCanonicalMetrics === false) {
+    return {
+      title: notification.title,
+      message: 'A verified Customer Review includes written content that needs a publication decision. Its Vendor Rating evidence is excluded from canonical metrics under the customer’s current classification.',
+    };
+  }
+  return { title: notification.title, message: notification.message };
 }
 
 export default function AdminNotificationsPage() {
@@ -533,6 +550,7 @@ export default function AdminNotificationsPage() {
         <div className="space-y-4">
           {filteredNotifications.map((notification) => {
             const metadata = parseMetadata(notification.metadata);
+            const display = notificationDisplay(notification);
             return (
               <Card
                 key={notification.id}
@@ -544,7 +562,7 @@ export default function AdminNotificationsPage() {
                       {getNotificationIcon(notification.type)}
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-gray-900">{notification.title}</h3>
+                          <h3 className="font-semibold text-gray-900">{display.title}</h3>
                           {!notification.read && (
                             <Badge className="bg-blue-600 text-white text-xs">New</Badge>
                           )}
@@ -552,7 +570,7 @@ export default function AdminNotificationsPage() {
                             {notification.type}
                           </Badge>
                         </div>
-                        <p className="text-gray-700 mb-2">{notification.message}</p>
+                        <p className="text-gray-700 mb-2">{display.message}</p>
                         {notification.vendor && (
                           <p className="text-sm text-gray-600 mb-2">
                             Vendor: <strong>{notification.vendor.businessName || notification.vendor.name}</strong>
@@ -609,7 +627,7 @@ export default function AdminNotificationsPage() {
                                   href="/admin/media-moderation"
                                   className="inline-flex text-[#204080] font-medium hover:underline"
                                 >
-                                  Open media moderation
+                                  Open Reliance Audit
                                 </Link>
                               </div>
                             )}

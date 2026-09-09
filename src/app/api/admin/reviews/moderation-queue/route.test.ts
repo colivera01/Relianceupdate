@@ -42,8 +42,9 @@ describe("GET /api/admin/reviews/moderation-queue", () => {
 
   it("keeps internal test-account reviews visible to admin moderation", async () => {
     vi.mocked((prisma as any).review.count).mockResolvedValue(1);
-    vi.mocked((prisma as any).review.findMany).mockResolvedValue([
-      {
+    vi.mocked((prisma as any).review.findMany)
+      .mockResolvedValueOnce([
+        {
         id: "review_1",
         vendorId: "vendor_1",
         userId: "user_1",
@@ -66,8 +67,9 @@ describe("GET /api/admin/reviews/moderation-queue", () => {
           name: "Audit Customer",
           email: "audit-customer@reliance.test",
         },
-      },
-    ]);
+        },
+      ])
+      .mockResolvedValueOnce([]);
 
     const response = await GET(
       new Request("http://localhost/api/admin/reviews/moderation-queue")
@@ -82,5 +84,39 @@ describe("GET /api/admin/reviews/moderation-queue", () => {
     const json = await readJson(response);
     expect(json.success).toBe(true);
     expect((json.reviews as any[])[0]?.reviewerEmail).toBe("audit-customer@reliance.test");
+    expect((json.reviews as any[])[0]?.countsInCanonicalMetrics).toBe(false);
+  });
+
+  it("labels canonical rating eligibility independently from moderation visibility", async () => {
+    vi.mocked((prisma as any).review.count).mockResolvedValue(1);
+    vi.mocked((prisma as any).review.findMany)
+      .mockResolvedValueOnce([
+        {
+          id: "review_countable",
+          vendorId: "vendor_1",
+          userId: "customer_1",
+          clientName: "Countable Customer",
+          jobType: "Outlet Installation",
+          rating: 5,
+          comment: "Great work",
+          createdAt: new Date("2026-09-09T12:00:00.000Z"),
+          moderationStatus: "pending_review",
+          visibilityStatus: "private",
+          moderationReason: null,
+          moderatedAt: null,
+          contractVersion: 2,
+          ratingValidityStatus: "verified",
+          ratingInvalidationReason: null,
+          vendor: { id: "vendor_1", name: "Electro LLC", businessName: "Electro LLC" },
+          user: { id: "customer_1", name: "Customer", email: "customer@example.com" },
+        },
+      ])
+      .mockResolvedValueOnce([{ id: "review_countable" }]);
+
+    const response = await GET(new Request("http://localhost/api/admin/reviews/moderation-queue"));
+    const json = await readJson(response);
+
+    expect(response.status).toBe(200);
+    expect((json.reviews as any[])[0]?.countsInCanonicalMetrics).toBe(true);
   });
 });

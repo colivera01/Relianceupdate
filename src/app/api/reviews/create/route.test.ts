@@ -5,6 +5,7 @@ const hoisted = vi.hoisted(() => {
   const bookingFindUnique = vi.fn();
   const reviewFindFirst = vi.fn();
   const reviewCreate = vi.fn();
+  const reviewCount = vi.fn();
   const reviewWindowUpdate = vi.fn();
   const reviewWindowUpdateMany = vi.fn();
   const reviewPromptEventCreate = vi.fn();
@@ -15,7 +16,7 @@ const hoisted = vi.hoisted(() => {
 
   const prisma = {
     booking: { findUnique: bookingFindUnique },
-    review: { findFirst: reviewFindFirst },
+    review: { findFirst: reviewFindFirst, count: reviewCount },
     vendorMembership: { findFirst: vendorMembershipFindFirst },
     mediaAsset: { findFirst: mediaAssetFindFirst },
     $transaction: vi.fn(async (callback: (tx: any) => Promise<any>) =>
@@ -38,6 +39,7 @@ const hoisted = vi.hoisted(() => {
     bookingFindUnique,
     reviewFindFirst,
     reviewCreate,
+    reviewCount,
     reviewWindowUpdate,
     reviewWindowUpdateMany,
     reviewPromptEventCreate,
@@ -143,6 +145,7 @@ describe("POST /api/reviews/create attribution", () => {
     hoisted.bookingFindUnique.mockReset();
     hoisted.reviewFindFirst.mockReset();
     hoisted.reviewCreate.mockReset();
+    hoisted.reviewCount.mockReset().mockResolvedValue(1);
     hoisted.reviewWindowUpdate.mockReset();
     hoisted.reviewWindowUpdateMany.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
@@ -192,6 +195,20 @@ describe("POST /api/reviews/create attribution", () => {
           employeeUserId: "employee-user-1",
           rating: 3,
         }),
+      })
+    );
+  });
+
+  it("does not tell admins that excluded customer rating evidence is counted", async () => {
+    hoisted.reviewCount.mockResolvedValue(0);
+
+    const response = await POST(reviewRequest({}));
+
+    expect(response.status).toBe(200);
+    expect(hoisted.adminNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('excluded from canonical metrics'),
+        metadata: expect.objectContaining({ countsInCanonicalMetrics: false }),
       })
     );
   });

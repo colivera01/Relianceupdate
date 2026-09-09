@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
-import { operationalReviewWhere } from "@/lib/metrics-exclusion";
+import { countableReviewWhere, operationalReviewWhere } from "@/lib/metrics-exclusion";
 import { getLatestReviewModerationAiStoredResults } from "@/lib/ai/review-moderation-review-store";
 
 /**
@@ -89,9 +89,17 @@ export async function GET(request: Request): Promise<NextResponse> {
       }),
     ]);
 
-    const aiRecommendationsByReviewId = await getLatestReviewModerationAiStoredResults(
-      reviews.map((review) => review.id)
-    );
+    const reviewIds = reviews.map((review) => review.id);
+    const [aiRecommendationsByReviewId, countableReviews] = await Promise.all([
+      getLatestReviewModerationAiStoredResults(reviewIds),
+      reviewIds.length > 0
+        ? prisma.review.findMany({
+            where: countableReviewWhere({ id: { in: reviewIds } }),
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const countableReviewIds = new Set(countableReviews.map((review) => String(review.id)));
 
     const rows = reviews.map((review) => ({
       reviewId: review.id,
@@ -112,6 +120,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       contractVersion: review.contractVersion,
       ratingValidityStatus: review.ratingValidityStatus,
       ratingInvalidationReason: review.ratingInvalidationReason,
+      countsInCanonicalMetrics: countableReviewIds.has(String(review.id)),
       aiRecommendation: aiRecommendationsByReviewId[String(review.id)] || null,
     }));
 
