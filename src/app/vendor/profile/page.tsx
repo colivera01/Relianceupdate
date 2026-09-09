@@ -8,6 +8,7 @@ import { Settings, CheckCircle, XCircle, User, Shield, Camera, Sparkles } from '
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
 import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
+import { getVendorSpecialtyOptions } from '@/lib/vendor-specialties';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
@@ -108,24 +109,12 @@ export default function VendorProfilePage() {
     failedLoginLockout: 5
   });
 
-  // Service type options
-  const serviceTypeOptions = [
-    'House Cleaning',
-    'Deep Cleaning', 
-    'Move-in/Move-out Cleaning',
-    'Commercial Cleaning',
-    'Carpet Cleaning',
-    'Window Cleaning',
-    'Kitchen Deep Clean',
-    'Bathroom Deep Clean',
-    'Laundry Services',
-    'Pet-friendly Cleaning',
-    'Eco-friendly Cleaning',
-    'Post-Construction Cleaning',
-    'Regular Maintenance',
-    'One-time Cleaning',
-    'Emergency Cleaning'
-  ];
+  const selectedServiceTypes = localFormData.serviceTypes || [];
+  const serviceTypeOptions = getVendorSpecialtyOptions({
+    category: localFormData.category || profile?.category,
+    businessType: localFormData.businessType || profile?.businessType,
+    selectedServiceTypes,
+  });
 
   // Sync local form data with profile data when it loads
   useEffect(() => {
@@ -620,7 +609,7 @@ export default function VendorProfilePage() {
                 <div className="mb-6">
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Specialties</label>
                   <p className="text-sm text-gray-600 mb-3">
-                    Select broad specialties for your profile. Customer-visible services offered are managed from Services Offered.
+                    Select broad specialties that fit your business category. Customer-visible services offered are managed from Services Offered.
                   </p>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                     {serviceTypeOptions.map((serviceType) => {
