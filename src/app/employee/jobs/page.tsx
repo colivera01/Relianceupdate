@@ -334,6 +334,7 @@ export default function EmployeeJobsPage() {
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [employeeMembershipRequired, setEmployeeMembershipRequired] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [managerSubmitCompleteOpen, setManagerSubmitCompleteOpen] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -400,6 +401,7 @@ export default function EmployeeJobsPage() {
     if (!userId && !captureToken) return;
     setLoading(true);
     setError(null);
+    setEmployeeMembershipRequired(false);
     try {
       const url = captureToken
         ? `/api/employee/jobs?ct=${encodeURIComponent(captureToken)}`
@@ -409,6 +411,11 @@ export default function EmployeeJobsPage() {
         cache: "no-store",
       }, EMPLOYEE_JOBS_TIMEOUT_MS);
       const json = await res.json().catch(() => ({}));
+      if (res.status === 403 && json?.code === "EMPLOYEE_MEMBERSHIP_REQUIRED") {
+        setJobs([]);
+        setEmployeeMembershipRequired(true);
+        return;
+      }
       if (!res.ok) throw new Error(json?.error || "Failed to load assigned jobs.");
       setJobs(Array.isArray(json?.jobs) ? json.jobs : []);
     } catch (e) {
@@ -2099,6 +2106,33 @@ export default function EmployeeJobsPage() {
               className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
               Support &amp; Help
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (employeeMembershipRequired && !hasCaptureToken) {
+    return (
+      <div className="reliance-operator-shell reliance-grid-lines min-h-screen p-4">
+        <div className="mx-auto w-full max-w-2xl rounded-lg border border-amber-200 bg-white p-4 shadow-sm">
+          <h1 className="text-xl font-bold text-gray-900">Employee access required</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            This signed-in account does not have an active employee membership. Assigned jobs remain unavailable.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/user-dashboard"
+              className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              Go to Customer Home
+            </Link>
+            <Link
+              href="/auth/login?next=%2Femployee%2Fjobs"
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Sign in with another account
             </Link>
           </div>
         </div>

@@ -264,7 +264,8 @@
 }
 
 .reliance-marketplace-shell .bg-amber-50\/70,
-.reliance-marketplace-shell .bg-amber-50\/60 {
+.reliance-marketplace-shell .bg-amber-50\/60,
+.reliance-marketplace-shell .bg-amber-50 {
   background: rgba(248, 182, 60, 0.14) !important;
 }
 

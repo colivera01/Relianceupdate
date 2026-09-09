@@ -23,6 +23,7 @@ const hoisted = vi.hoisted(() => {
   const vendorUpdate = vi.fn();
   const serviceCount = vi.fn();
   const serviceFindMany = vi.fn();
+  const serviceFindFirst = vi.fn();
   const serviceFindUnique = vi.fn();
   const serviceCreate = vi.fn();
   const serviceUpdate = vi.fn();
@@ -40,6 +41,7 @@ const hoisted = vi.hoisted(() => {
     service: {
       count: serviceCount,
       findMany: serviceFindMany,
+      findFirst: serviceFindFirst,
       findUnique: serviceFindUnique,
       create: serviceCreate,
       update: serviceUpdate,
@@ -58,6 +60,7 @@ const hoisted = vi.hoisted(() => {
     vendorUpdate,
     serviceCount,
     serviceFindMany,
+    serviceFindFirst,
     serviceFindUnique,
     serviceCreate,
     serviceUpdate,
@@ -151,6 +154,7 @@ describe("restricted vendor regressions", () => {
     hoisted.vendorUpdate.mockReset();
     hoisted.serviceCount.mockReset();
     hoisted.serviceFindMany.mockReset();
+    hoisted.serviceFindFirst.mockReset();
     hoisted.serviceFindUnique.mockReset();
     hoisted.serviceCreate.mockReset();
     hoisted.serviceUpdate.mockReset();
@@ -243,7 +247,7 @@ describe("restricted vendor regressions", () => {
   });
 
   it("hides public service detail data for restricted vendors", async () => {
-    hoisted.serviceFindUnique.mockResolvedValue({
+    hoisted.serviceFindFirst.mockResolvedValue({
       id: "service-1",
       name: "Restricted Service",
       description: "Should not be public",

@@ -36,7 +36,7 @@ export function PublicSiteHeader({
 }: PublicSiteHeaderProps) {
   const dark = tone === "dark";
   const secondaryClassName = cn(
-    "inline-flex h-14 items-center justify-center rounded-full px-7 text-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-9 xl:text-xl",
+    "inline-flex h-14 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-7 text-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-9 xl:text-xl",
     dark
       ? "text-white hover:bg-white/10 hover:text-white"
       : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
@@ -48,7 +48,7 @@ export function PublicSiteHeader({
       : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
   );
   const ctaClassName =
-    "inline-flex h-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-8 text-lg font-semibold text-white shadow-[0_18px_40px_rgba(36,107,255,0.28)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-10 xl:text-xl";
+    "inline-flex h-14 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-8 text-lg font-semibold text-white shadow-[0_18px_40px_rgba(36,107,255,0.28)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-10 xl:text-xl";
   const mobileCtaClassName =
     "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(36,107,255,0.24)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:px-4";
 
@@ -99,7 +99,7 @@ export function PublicSiteHeader({
         </div>
 
         {links.length > 0 ? (
-          <nav className="hidden items-center gap-6 md:flex">
+          <nav className="hidden shrink-0 items-center gap-6 whitespace-nowrap md:flex">
             {links.map((link) => (
               <Link
                 key={link.href}

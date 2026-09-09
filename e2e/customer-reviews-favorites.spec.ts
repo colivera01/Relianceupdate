@@ -34,7 +34,10 @@ for (const device of [
           body: JSON.stringify({
             success: true,
             ready: [{ bookingId: 'booking-ready', vendorId: 'vendor-1', vendorName: 'Electro LLC', serviceName: 'Breaker Replacement', serviceDate: '2026-09-01T12:00:00.000Z', archived: true }],
-            awaiting: [{ bookingId: 'booking-waiting', vendorId: 'vendor-1', vendorName: 'Electro LLC', serviceName: 'Outlet Installation', serviceDate: null, statusMessage: 'Review will be available when your Service Video is approved.', archived: false }],
+            awaiting: [
+              { bookingId: 'booking-waiting-electro', vendorId: 'vendor-1', vendorName: 'Electro LLC', serviceName: 'Outlet Installation', serviceDate: '2026-09-03T12:00:00.000Z', statusMessage: 'Review will be available when your Service Video is approved.', archived: false },
+              { bookingId: 'booking-waiting-bright', vendorId: 'vendor-2', vendorName: 'Bright Wire Co.', serviceName: 'Outlet Installation', serviceDate: '2026-09-04T12:00:00.000Z', statusMessage: 'Review will be available after service is completed.', archived: false },
+            ],
             submitted: [{
               reviewId: 'review-1', bookingId: 'booking-reviewed', vendorName: 'Electro LLC', serviceName: 'Panel Repair', rating: 5,
               comment: 'Clear and professional.', submittedAt: '2026-09-02T12:00:00.000Z',
@@ -67,6 +70,11 @@ for (const device of [
       await expect(page.getByText('Written comment being checked before public display.')).toBeVisible();
       await expect(page.getByText('Service Professional Rating · Bradley Coopers')).toBeVisible();
       await expect(page.getByText('How ratings work')).toBeVisible();
+      await expect(page.getByText('Electro LLC · Sep 3, 2026')).toBeVisible();
+      await expect(page.getByText('Bright Wire Co. · Sep 4, 2026')).toBeVisible();
+      await expect(page.getByRole('link', { name: 'View Service Record' })).toHaveCount(3);
+      await expect(page.locator('a[href*="booking-waiting-electro"]')).toHaveAttribute('href', /returnTo=%2Freviews/);
+      await expect(page.locator('a[href*="booking-waiting-bright"]')).toHaveAttribute('href', /returnTo=%2Freviews/);
 
       await page.getByPlaceholder('Search service, Vendor, or reference').fill('Panel');
       await expect.poll(() => requests.some((url) => url.includes('search=Panel'))).toBe(true);
@@ -132,7 +140,7 @@ for (const device of [
               businessHours: { configured: false, openNow: null, label: 'Hours unavailable', todayLabel: null },
               profilePhoto: null, rating: 4.8, reviewCount: 18,
             },
-            publicServices: [],
+            publicServices: [{ serviceId: 'service-1', serviceName: 'Breaker Replacement', serviceDescription: 'Replace a faulty breaker.', price: 275, previewMediaUrl: null, previewMediaType: null }],
             publicMedia: [],
           }),
         });
@@ -142,6 +150,25 @@ for (const device of [
       });
       await page.route('**/api/vendors/vendor-1/trust-score', async (route) => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, trustScore: null }) });
+      });
+      await page.route('**/api/services/service-1', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            service: {
+              id: 'service-1', name: 'Breaker Replacement', description: 'Replace a faulty breaker.', category: 'Electrical', price: 275, duration: 'Varies',
+              vendor: { id: 'vendor-1', name: 'Electro LLC', location: 'Orlando, FL', phone: null, email: null, rating: 4.8, reviewCount: 18, isPubliclyListed: true, insurance: false, bonded: false },
+              images: [], videos: [], videoItems: [], primaryProofVideoUrl: null, hasPrimaryProofVideo: false, publicReviewCount: 0, mediaCount: 0, status: 'active',
+            },
+          }),
+        });
+      });
+      await page.route('**/api/services/service-1/reviews/public**', async (route) => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, reviews: [] }) });
+      });
+      await page.route('**/api/availability/vendor/vendor-1**', async (route) => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ availability: [] }) });
       });
       await page.route(/\/api\/users\/favorites(?:\/|\?|$)/, async (route) => {
         if (route.request().method() === 'POST') favoriteMutations.push('POST');
@@ -160,6 +187,9 @@ for (const device of [
       expect(favoriteMutations).toEqual([]);
       await save.click();
       await expect.poll(() => favoriteMutations).toEqual(['POST']);
+      await page.getByRole('button', { name: 'View Work Type' }).click();
+      await expect(page.getByRole('heading', { name: 'Breaker Replacement', exact: true })).toBeVisible();
+      await expect(page.getByText('This Service Offered does not yet include a Public Service Video.')).toBeVisible();
     });
   });
 }

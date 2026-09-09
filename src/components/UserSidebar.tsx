@@ -62,13 +62,13 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
 }
 
 const navLinks = [
-  { label: 'Home', icon: Home, href: '/user-dashboard', iconClassName: 'text-blue-200' },
-  { label: 'Explore Proof', icon: LayoutDashboard, href: '/discover', iconClassName: 'text-cyan-200' },
-  { label: 'My Service Records', icon: Calendar, href: '/my-bookings', iconClassName: 'text-sky-200' },
-  { label: 'Favorites', icon: Heart, href: '/favorites', iconClassName: 'text-rose-200' },
-  { label: 'Reviews', icon: Star, href: '/reviews', iconClassName: 'text-amber-200' },
-  { label: 'Profile & Settings', icon: User, href: '/profile-settings', iconClassName: 'text-violet-200' },
-  { label: 'Secure Account', icon: Shield, href: '/customer/secure-account', iconClassName: 'text-emerald-200' },
+  { label: 'Home', mobileLabel: 'Home', icon: Home, href: '/user-dashboard', iconClassName: 'text-blue-200' },
+  { label: 'Explore Proof', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover', iconClassName: 'text-cyan-200' },
+  { label: 'My Service Records', mobileLabel: 'Records', icon: Calendar, href: '/my-bookings', iconClassName: 'text-sky-200' },
+  { label: 'Favorites', mobileLabel: 'Favorites', icon: Heart, href: '/favorites', iconClassName: 'text-rose-200' },
+  { label: 'Reviews', mobileLabel: 'Reviews', icon: Star, href: '/reviews', iconClassName: 'text-amber-200' },
+  { label: 'Profile & Settings', mobileLabel: 'Profile', icon: User, href: '/profile-settings', iconClassName: 'text-violet-200' },
+  { label: 'Secure Account', mobileLabel: 'Account', icon: Shield, href: '/customer/secure-account', iconClassName: 'text-emerald-200' },
 ];
 
 function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
@@ -269,6 +269,7 @@ function UserSidebarContent() {
             <Link
               key={link.label}
               href={link.href}
+              aria-label={link.label}
               className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
@@ -276,7 +277,7 @@ function UserSidebarContent() {
               }`}
             >
               <link.icon size={18} className={`shrink-0 ${isActive ? 'text-white' : link.iconClassName}`} />
-              <span className="max-w-full truncate">{link.label.replace('My ', '').replace(' & Settings', '')}</span>
+              <span>{link.mobileLabel}</span>
             </Link>
           );
         })}

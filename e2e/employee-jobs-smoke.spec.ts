@@ -87,6 +87,43 @@ async function expectBodyContainsAny(page: Page, options: string[]) {
     .toBe(true);
 }
 
+async function installSignedInNonEmployee(page: Page) {
+  await page.route('**/api/auth/session', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        authenticated: true,
+        user: {
+          id: 'customer-without-employee-membership',
+          name: 'Customer Account',
+          email: 'customer@example.test',
+          userType: 'customer',
+          availableProfiles: ['customer'],
+        },
+      }),
+    });
+  });
+  await page.route('**/api/users/*/roles', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, availableProfiles: ['customer'] }),
+    });
+  });
+  await page.route('**/api/employee/jobs', async (route) => {
+    await route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        code: 'EMPLOYEE_MEMBERSHIP_REQUIRED',
+        error: 'An active employee membership is required to open assigned jobs.',
+      }),
+    });
+  });
+}
+
 test('employee jobs smoke: assigned work view stays usable', async ({ page }) => {
   await signInEmployee(page, EMPLOYEE_EMAIL, DEFAULT_PASSWORD);
 
@@ -107,3 +144,22 @@ test('employee jobs smoke: assigned work view stays usable', async ({ page }) =>
     'Step 1 of 3',
   ]);
 });
+
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+] as const) {
+  test(`signed-in non-employee receives the access-required state at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await installSignedInNonEmployee(page);
+
+    await page.goto('/employee/jobs');
+
+    await expect(page.getByRole('heading', { name: 'Employee access required' })).toBeVisible();
+    await expect(page.getByText('does not have an active employee membership')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Go to Customer Home' })).toHaveAttribute('href', '/user-dashboard');
+    await expect(page.getByRole('link', { name: 'Sign in with another account' })).toHaveAttribute('href', '/auth/login?next=%2Femployee%2Fjobs');
+    await expect(page.getByRole('heading', { name: 'Assigned Jobs' })).toHaveCount(0);
+    await expect(page.getByText('Welcome to your work view')).toHaveCount(0);
+  });
+}

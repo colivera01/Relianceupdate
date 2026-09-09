@@ -398,7 +398,6 @@ export default function PublicBrowsePage() {
         <div className="relative mx-auto max-w-7xl px-4 pb-6 pt-6 sm:px-6 lg:px-8">
           <PublicSiteHeader
             tone="dark"
-            hideLogo
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
@@ -846,13 +845,13 @@ export default function PublicBrowsePage() {
 
         <div className="mb-8">
             <div className="reliance-light-card rounded-[28px] p-6 shadow-sm">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-blue-900 mb-2">Ready for your next step?</h3>
                 <p className="text-blue-700 text-sm">Create a free account to save proof examples, contact providers, and manage your Service Records.</p>
               </div>
-              <Link href="/auth/register?type=user">
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">Sign Up Now</Button>
+              <Link href="/auth/register?type=user" className="w-full sm:w-auto">
+                <Button className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto">Sign Up Now</Button>
               </Link>
             </div>
           </div>

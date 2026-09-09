@@ -87,6 +87,28 @@ describe("buildProofCard", () => {
     expect(card.evidenceSummary).toBe("This work type is listed, but customer-visible videos and reviews are still building.");
   });
 
+  it("keeps Reliance-approved package evidence distinct from current Public media", () => {
+    const card = buildProofCard({
+      serviceName: "Breaker Replacement",
+      hasPublicMedia: false,
+      reviewCount: 0,
+      trustScore: {
+        scored: true,
+        totalScorePct: 91,
+        maturityLabel: "Established Trust Score",
+        evidence: {
+          verifiedBookings: 4,
+          approvedServiceVideos: 4,
+          validatedDisputes: 0,
+        },
+      },
+    });
+
+    expect(card.evidenceSummary).toContain("4 Reliance-approved Service Video packages");
+    expect(card.evidenceSummary).not.toContain("approved public service");
+    expect(card.kind).toBe("partial_proof");
+  });
+
   it("provides dev demo fixtures for all three proof-card states", () => {
     const response = buildProofCardDemoDiscoverResponse({ limit: 10 });
     const states = response.results.map((result) => result.proofCard?.kind);

@@ -168,6 +168,24 @@ describe("employee job lifecycle routes", () => {
     ]);
   });
 
+  it("returns a stable forbidden response when the signed-in user has no active employee membership", async () => {
+    const { GET } = await import("./route");
+    hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new Request("http://localhost/api/employee/jobs", { method: "GET" }),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json).toEqual({
+      success: false,
+      code: "EMPLOYEE_MEMBERSHIP_REQUIRED",
+      error: "An active employee membership is required to open assigned jobs.",
+    });
+    expect(hoisted.bookingFindMany).not.toHaveBeenCalled();
+  });
+
   it("uses the capture token assignment even when the browser has another signed-in user", async () => {
     const { GET } = await import("./route");
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({

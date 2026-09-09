@@ -91,4 +91,24 @@ test('primary public pages fit a narrow mobile viewport without horizontal overf
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true);
   }
+
+  await page.goto('/browse');
+  await expect(page.locator('img[alt="Reliance"]')).toBeVisible();
+  const signUp = page.getByRole('button', { name: 'Sign Up Now' });
+  await expect(signUp).toBeVisible();
+  const signUpBox = await signUp.boundingBox();
+  expect(signUpBox).not.toBeNull();
+  expect(signUpBox!.width).toBeGreaterThan(300);
+});
+
+test('public header keeps Explore Proof readable at 1280px', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+
+  const exploreProof = page.getByRole('link', { name: 'Explore Proof', exact: true }).first();
+  await expect(exploreProof).toBeVisible();
+  await expect.poll(() => exploreProof.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const box = await exploreProof.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
 });

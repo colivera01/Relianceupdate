@@ -687,6 +687,74 @@ test('Needs Attention is actionable and server-backed tabs expose truthful empty
   await expect.poll(() => requestUrls.some((url) => new URL(url).searchParams.get('tab') === 'cancelled')).toBe(true);
 });
 
+test('Service Record tabs and customer navigation remain readable at narrow mobile widths', async ({ page }) => {
+  await installCustomerSession(page);
+  await page.route('**/api/bookings?**', async (route) => {
+    const url = new URL(route.request().url());
+    const tab = url.searchParams.get('tab') || 'upcoming';
+    const record = {
+      id: 'mobile-attention-booking',
+      title: 'Outlet Installation',
+      booking_date: '2026-09-05',
+      status: 'CONFIRMED',
+      service: { id: 'service-2', name: 'Outlet Installation' },
+      vendor: { id: 'vendor-2', name: 'Electro LLC' },
+      customer_record: {
+        lifecycle: 'UPCOMING', lifecycleLabel: 'Upcoming', organization: 'ACTIVE', archived: false,
+        archiveEligible: false, restoreEligible: false, legacyRestoreBlocked: false,
+        attention: { required: true, code: 'RECORDING_PERMISSION_REQUIRED', reason: 'Recording permission needed', actionLabel: 'Review recording request', actionHref: '/consent/token-2' },
+        video: { state: 'PREPARING', label: 'Preparing' }, review: { state: 'UNAVAILABLE', label: 'Not Available Yet' },
+        visibility: { state: 'PRIVATE', label: 'Private' }, cancellation: null,
+      },
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        bookings: tab === 'upcoming' || tab === 'needs_attention' ? [record] : [],
+        counts: { upcoming: 1, completed: 12, needs_attention: 1, cancelled: 2, archived: 3, unclassified: 0 },
+        selectedTab: tab,
+        businesses: [{ id: 'vendor-2', name: 'Electro LLC' }],
+        selectedBusinessId: null,
+        pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+      }),
+    });
+  });
+
+  for (const width of [320, 375, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/test-fixtures/customer-service-records');
+
+    const tabs = page.getByRole('tablist', { name: 'Service Record filters' });
+    await expect(tabs).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Needs Attention/ })).toBeVisible();
+    await expect.poll(() => tabs.evaluate((element) => getComputedStyle(element).overflowX)).not.toMatch(/auto|scroll/);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const badge = page.getByTestId('my-bookings-row-mobile-attention-booking').getByText('Needs Attention', { exact: true });
+    await expect(badge).toBeVisible();
+    const box = await badge.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  }
+});
+
+test('customer mobile navigation uses short visible labels with full accessible names', async ({ page }) => {
+  await installCustomerSession(page);
+
+  for (const width of [320, 375, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/test-fixtures/customer-mobile-navigation');
+
+    const navigation = page.getByRole('navigation', { name: 'Customer mobile navigation' });
+    await expect(navigation.getByText('Explore', { exact: true })).toBeVisible();
+    await expect(navigation.getByText('Records', { exact: true })).toBeVisible();
+    await expect(navigation.getByRole('link', { name: 'Explore Proof' })).toBeVisible();
+    await expect(navigation.getByRole('link', { name: 'My Service Records' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+});
+
 test('cancelled Service Record detail stays accessible without false approved-video language', async ({ page }) => {
   await installCustomerSession(page);
   await page.route(new RegExp(`/api/bookings/${bookingId}$`), async (route) => {

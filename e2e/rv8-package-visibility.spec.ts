@@ -61,7 +61,7 @@ test("customer explicitly confirms immediate Public visibility for the complete 
 
   await page.goto("/test-fixtures/rv8-package-visibility?role=customer");
   const card = page.getByTestId("package-visibility-customer");
-  await expect(card.getByText("Private", { exact: true }).first()).toBeVisible();
+  await expect(card.getByText("Private", { exact: true })).toHaveCount(1);
   await expect(page.getByText("Privacy, concerns, and retention", { exact: true })).toHaveCount(0);
   await expect(card).toContainText("Starting Condition, Work in Progress, and Final Result always stay together");
   await expect(card.getByRole("button", { name: "Keep Private" })).toHaveCount(0);
@@ -69,7 +69,7 @@ test("customer explicitly confirms immediate Public visibility for the complete 
   await expect(page.getByTestId("package-public-confirmation")).toContainText("will become publicly viewable on Reliance");
   expect(decisions).toEqual([]);
   await page.getByRole("button", { name: "Confirm Share Publicly" }).click();
-  await expect(card.getByText("Public", { exact: true }).first()).toBeVisible();
+  await expect(card.getByText("Public", { exact: true })).toHaveCount(1);
   await expect(card).toContainText("publicly viewable on Reliance");
   await expect(card.getByRole("button", { name: "Make Private" })).toBeVisible();
   await expect(card.getByText(/Public Review Pending/i)).toHaveCount(0);

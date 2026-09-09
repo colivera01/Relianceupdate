@@ -112,7 +112,7 @@ function buildEvidenceSummary(input: {
     pieces.push(`${verifiedRecords} verified service ${verifiedRecords === 1 ? "record" : "records"}`);
   }
   if (approvedVideos > 0) {
-    pieces.push(`${approvedVideos} approved public service ${approvedVideos === 1 ? "video" : "videos"}`);
+    pieces.push(`${approvedVideos} Reliance-approved Service Video ${approvedVideos === 1 ? "package" : "packages"}`);
   }
   if (input.reviewCount > 0) {
     pieces.push(`${input.reviewCount} public ${input.reviewCount === 1 ? "review" : "reviews"}`);

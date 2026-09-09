@@ -40,7 +40,7 @@ describe('proof-first platform shell', () => {
     const customerSidebar = read('src/components/UserSidebar.tsx');
 
     expect(publicHeader).toContain('{ href: "/browse", label: "Explore Proof" }');
-    expect(customerSidebar).toContain("{ label: 'Explore Proof', icon: LayoutDashboard, href: '/discover'");
+    expect(customerSidebar).toContain("{ label: 'Explore Proof', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover'");
     expect(publicHeader).not.toContain('Browse Services');
     expect(customerSidebar).not.toContain('Browse Services');
   });
@@ -79,5 +79,28 @@ describe('proof-first platform shell', () => {
     expect(employeePage).toContain('Final Result');
     expect(adminLayout).toContain("label: 'Permission Audit'");
     expect(adminLayout).toContain("label: 'Featured Proof'");
+  });
+
+  it('retires the mock dashboard and delegates signed-in routing to the canonical resolver', () => {
+    const dashboard = read('src/app/(vendor)/dashboard/page.tsx');
+    const legacyLayout = read('src/app/(vendor)/layout.tsx');
+
+    expect(dashboard).toContain('resolveAuthPostLoginRedirect');
+    expect(dashboard).toContain('getAuthSessionClaimsFromRequest');
+    expect(dashboard).toContain('redirect("/auth/login")');
+    expect(`${dashboard}\n${legacyLayout}`).not.toContain('John Smith');
+    expect(`${dashboard}\n${legacyLayout}`).not.toContain('Monthly Revenue');
+    expect(`${dashboard}\n${legacyLayout}`).not.toContain('Admin View');
+  });
+
+  it('keeps AI bio suggestions qualitative instead of persisting volatile counts', () => {
+    const vendorProfile = read('src/app/vendor/profile/page.tsx');
+    const assistant = read('src/lib/ai/vendor-copy-assistant.ts');
+
+    expect(vendorProfile).toContain('Published Services Offered help customers find this business.');
+    expect(vendorProfile).toContain('Verified customer ratings support this business average.');
+    expect(vendorProfile).not.toContain('publishedServiceCount || 0)} published services offered');
+    expect(vendorProfile).not.toContain('ratingCount || 0)} verified customer ratings');
+    expect(assistant).toContain('free of volatile numeric counts');
   });
 });

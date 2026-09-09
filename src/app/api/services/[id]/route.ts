@@ -12,7 +12,7 @@ import {
   cleanPublicServiceName,
   cleanPublicServicePrice,
 } from '@/lib/launch-content-cleanup';
-import { countableReviewWhere } from '@/lib/metrics-exclusion';
+import { countableReviewWhere, countableServiceWhere } from '@/lib/metrics-exclusion';
 import { canonicalPublicWrittenReviewWhere } from '@/lib/review-rating-validity';
 import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 import {
@@ -41,8 +41,8 @@ export async function GET(
 
     // DB-first service lookup (real service IDs are string/cuid).
     const dbService = await withTransientDbRetry(() =>
-      prisma.service.findUnique({
-        where: { id: serviceId },
+      prisma.service.findFirst({
+        where: countableServiceWhere({ id: serviceId }),
         include: {
           vendor: {
             select: {
@@ -123,15 +123,6 @@ export async function GET(
       const videoAssets = proofSafeAssets.filter((asset: any) =>
         String(asset?.mimeType || '').startsWith('video/')
       );
-      const completedStageKeys = new Set(
-        videoAssets
-          .map((asset: any) => normalizeVendorJobVideoStage(asset?.mediaSession?.vendorJobVideoStage))
-          .filter(Boolean)
-      );
-      const hasCompletedPublicProofPackage = completedStageKeys.size > 0;
-      if (!hasCompletedPublicProofPackage) {
-        return NextResponse.json({ error: 'Service not found' }, { status: 404 });
-      }
       const primaryProofVideo = videoAssets.find((asset: any) =>
         isCompletedStageProofVideo(asset?.mediaSession || null)
       );

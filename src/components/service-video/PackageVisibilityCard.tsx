@@ -142,6 +142,13 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
   const canDecide = role === "customer" && data?.canDecide === true;
   const canShare = canDecide && data?.visibility?.publicRestrictionActive !== true && ["PRIVATE_DEFAULT", "PRIVATE"].includes(state);
   const canMakePrivate = canDecide && ["PUBLIC", "PUBLIC_VISIBILITY_HOLD"].includes(state);
+  const statusLabel = isPublic
+    ? "Public"
+    : state === "PUBLIC_VISIBILITY_HOLD"
+      ? "Public hold"
+      : state === "PUBLIC_WAITING_PERMISSION"
+        ? "Waiting for permission"
+        : "Private";
 
   return (
     <>
@@ -153,7 +160,7 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
               Service Video visibility
             </CardTitle>
             <Badge className={isPublic ? "bg-emerald-600 text-white" : "bg-blue-950 text-blue-100"}>
-              {isPublic ? "Public" : state === "PUBLIC_VISIBILITY_HOLD" ? "Public hold" : state === "PUBLIC_WAITING_PERMISSION" ? "Waiting for permission" : "Private"}
+              {statusLabel}
             </Badge>
           </div>
           <p className="text-sm text-slate-300">Starting Condition, Work in Progress, and Final Result always stay together as one exact Service Video.</p>
@@ -164,8 +171,8 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
           {message ? <div role="status" className="rounded-md border border-emerald-400/40 bg-emerald-950/40 p-3 text-sm text-emerald-100">{message}</div> : null}
           {!loading && data?.visibility ? (
             <div className="rounded-md border border-white/10 bg-white/5 p-3">
-              <p className="font-semibold text-white">{copy.title}</p>
-              <p className="mt-1 text-sm text-slate-300">{copy.detail}</p>
+              {copy.title !== statusLabel ? <p className="font-semibold text-white">{copy.title}</p> : null}
+              <p className={`${copy.title !== statusLabel ? "mt-1 " : ""}text-sm text-slate-300`}>{copy.detail}</p>
             </div>
           ) : null}
           {!loading && data?.visibility?.legacyProposal ? (

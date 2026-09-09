@@ -50,6 +50,8 @@ Constraints:
 - Use plain customer language.
 - Do not invent proof or guarantees.
 - Keep recommendations grounded in the current draft and supplied trust signals only.
+- Keep durable profile copy free of volatile numeric counts such as current service totals or review totals.
+- You may describe supplied evidence qualitatively, but never turn a changing count into lasting profile copy.
 - Trust gaps should point out what a customer might still question.
 - Risky claims should flag copy that sounds unverifiable, exaggerated, or vague.
 

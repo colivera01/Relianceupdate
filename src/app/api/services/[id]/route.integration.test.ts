@@ -5,14 +5,14 @@ import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregat
 import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 
 const hoisted = vi.hoisted(() => {
-  const serviceFindUnique = vi.fn();
+  const serviceFindFirst = vi.fn();
   const mediaAssetFindMany = vi.fn();
   const reviewCount = vi.fn();
 
   return {
     prisma: {
       service: {
-        findUnique: serviceFindUnique,
+        findFirst: serviceFindFirst,
       },
       mediaAsset: {
         findMany: mediaAssetFindMany,
@@ -21,7 +21,7 @@ const hoisted = vi.hoisted(() => {
         count: reviewCount,
       },
     },
-    serviceFindUnique,
+    serviceFindFirst,
     mediaAssetFindMany,
     reviewCount,
   };
@@ -45,7 +45,7 @@ async function readJson(res: Response) {
 
 describe('GET /api/services/[id]', () => {
   beforeEach(() => {
-    hoisted.serviceFindUnique.mockReset();
+    hoisted.serviceFindFirst.mockReset();
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.reviewCount.mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockReset();
@@ -60,7 +60,7 @@ describe('GET /api/services/[id]', () => {
       'asset-intro',
       'asset-progress',
     ]);
-    hoisted.serviceFindUnique.mockResolvedValue({
+    hoisted.serviceFindFirst.mockResolvedValue({
       id: 'svc-1',
       name: 'Metro Apartment Deep Clean',
       description: 'Detailed apartment and move-out cleaning with video-backed service updates.',
@@ -160,8 +160,61 @@ describe('GET /api/services/[id]', () => {
     });
   });
 
+  it('returns a published public Service Offered when no canonical Public media exists', async () => {
+    hoisted.serviceFindFirst.mockResolvedValue({
+      id: 'svc-no-media',
+      name: 'Breaker Replacement',
+      description: 'Replace a faulty breaker.',
+      price: 275,
+      isPublished: true,
+      vendor: {
+        id: 'ven-1',
+        name: 'Electro LLC',
+        businessName: 'Electro LLC',
+        category: 'Electrical',
+        city: 'Orlando',
+        state: 'FL',
+        phone: null,
+        email: null,
+        isPubliclyListed: true,
+        accountStatus: 'active',
+        insuranceStatus: null,
+        bondingStatus: null,
+      },
+    });
+    hoisted.mediaAssetFindMany.mockResolvedValue([]);
+    hoisted.reviewCount.mockResolvedValue(0);
+    vi.mocked(getVendorReviewAggregatesForPublic).mockResolvedValue(new Map());
+
+    const res = await GET(
+      new NextRequest('http://localhost/api/services/svc-no-media'),
+      { params: Promise.resolve({ id: 'svc-no-media' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.service).toMatchObject({
+      id: 'svc-no-media',
+      images: [],
+      videos: [],
+      videoItems: [],
+      primaryProofVideoUrl: null,
+      hasPrimaryProofVideo: false,
+      mediaCount: 0,
+    });
+    expect(hoisted.serviceFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'svc-no-media',
+          demo: false,
+          vendor: expect.objectContaining({ demo: false }),
+        }),
+      }),
+    );
+  });
+
   it('returns 404 when the vendor is not publicly eligible', async () => {
-    hoisted.serviceFindUnique.mockResolvedValue({
+    hoisted.serviceFindFirst.mockResolvedValue({
       id: 'svc-2',
       isPublished: true,
       vendor: {

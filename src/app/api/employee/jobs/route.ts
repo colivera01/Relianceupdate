@@ -45,7 +45,14 @@ export async function GET(request: Request): Promise<NextResponse> {
         });
     const activeVendorMemberships = memberships.filter((m) => !isVendorAccountRestricted((m.vendor as any)?.accountStatus));
     if (activeVendorMemberships.length === 0) {
-      return NextResponse.json({ jobs: [], membership: null });
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EMPLOYEE_MEMBERSHIP_REQUIRED",
+          error: "An active employee membership is required to open assigned jobs.",
+        },
+        { status: 403 },
+      );
     }
 
     const byVendor = new Map<string, string[]>();

@@ -655,7 +655,11 @@ function ServiceDetailPageContent() {
                     className="text-xs font-medium text-red-700 underline underline-offset-4 hover:text-red-800"
                   />
                 </div>
-              ) : null}
+              ) : (
+                <div className="border-t border-slate-100 px-5 py-3 text-sm text-slate-600">
+                  This Service Offered does not yet include a Public Service Video.
+                </div>
+              )}
               
               {((service.images && service.images.length > 0) || serviceVideoCount > 0) && (
                 <div className="border-t border-slate-100 p-5">

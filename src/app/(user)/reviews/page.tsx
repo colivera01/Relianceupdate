@@ -130,7 +130,23 @@ export default function ReviewsPage() {
             <section aria-labelledby="not-ready-heading">
               <h2 id="not-ready-heading" className="text-lg font-semibold text-slate-950">Not ready yet</h2>
               <div className="mt-3 space-y-2">
-                {data.awaiting.map((item) => <div key={item.bookingId} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><span className="font-medium text-slate-900">{item.serviceName}</span><span className="text-slate-600"> · {item.statusMessage}</span></div>)}
+                {data.awaiting.map((item) => (
+                  <article key={item.bookingId} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                      <div>
+                        <h3 className="font-medium text-slate-900">{item.serviceName}</h3>
+                        <p className="text-slate-600">{item.vendorName} · {formatDate(item.serviceDate)}</p>
+                        <p className="mt-1 text-slate-600">{item.statusMessage}</p>
+                      </div>
+                      <Link
+                        href={`/my-bookings/${encodeURIComponent(item.bookingId)}?returnTo=${encodeURIComponent('/reviews')}`}
+                        className="shrink-0 font-semibold text-blue-700 hover:text-blue-800"
+                      >
+                        View Service Record
+                      </Link>
+                    </div>
+                  </article>
+                ))}
               </div>
             </section>
           ) : null}

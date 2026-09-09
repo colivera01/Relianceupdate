@@ -249,7 +249,7 @@ function MyServiceRecordsPageContent() {
               </select>
             </label>
           </div>
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Service Record filters">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="tablist" aria-label="Service Record filters">
             {visibleTabs.map((tab) => (
               <button
                 key={tab.value}
@@ -257,7 +257,7 @@ function MyServiceRecordsPageContent() {
                 role="tab"
                 aria-selected={selectedTab === tab.value}
                 onClick={() => updateQuery({ tab: tab.value, page: null })}
-                className={`shrink-0 rounded-md border px-3 py-2 text-sm font-medium ${selectedTab === tab.value ? 'border-blue-500 bg-blue-600 text-white' : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'}`}
+                className={`min-w-0 rounded-md border px-3 py-2 text-center text-sm font-medium leading-tight sm:shrink-0 ${selectedTab === tab.value ? 'border-blue-500 bg-blue-600 text-white' : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'}`}
               >
                 {tab.label} <span className="ml-1 text-xs opacity-75">{counts ? counts[tab.value] : <span aria-label="Count unavailable">--</span>}</span>
               </button>
@@ -283,13 +283,13 @@ function MyServiceRecordsPageContent() {
                 const detailHref = `/my-bookings/${encodeURIComponent(record.id)}`;
                 return (
                   <article key={record.id} data-testid={`my-bookings-row-${record.id}`} className="rounded-md border border-white/12 bg-slate-950/65 p-5 text-white">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase text-blue-300">{state.lifecycleLabel}</p>
-                        <h2 className="mt-1 truncate text-xl font-semibold">{record.service?.name || record.title || 'Service Record'}</h2>
+                        <h2 className="mt-1 break-words text-xl font-semibold sm:truncate">{record.service?.name || record.title || 'Service Record'}</h2>
                         <p className="mt-1 text-sm text-white/65">Business: {record.vendor?.name || 'Business unavailable'}</p>
                       </div>
-                      {state.attention.required ? <span className="shrink-0 rounded-full bg-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-950">Needs Attention</span> : state.archived ? <span className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-100">Archived</span> : null}
+                      {state.attention.required ? <span className="max-w-full shrink-0 rounded-full bg-amber-300 px-2.5 py-1 text-center text-xs font-semibold text-amber-950">Needs Attention</span> : state.archived ? <span className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-100">Archived</span> : null}
                     </div>
 
                     <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-white/10 py-4 text-sm">

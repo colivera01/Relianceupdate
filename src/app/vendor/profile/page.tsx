@@ -314,10 +314,10 @@ export default function VendorProfilePage() {
       ? 'Business profile is currently visible to customers on Reliance.'
       : 'Business profile is not public yet.',
     Number(profile?.publishedServiceCount || 0) > 0
-      ? `${Number(profile?.publishedServiceCount || 0)} published services offered help customers find this business.`
+      ? 'Published Services Offered help customers find this business.'
       : 'No services are publicly published yet.',
     Number(profile?.ratingCount || 0) > 0
-      ? `${Number(profile?.ratingCount || 0)} verified customer ratings support this business average.`
+      ? 'Verified customer ratings support this business average.'
       : 'No verified customer ratings are available yet.',
   ].filter(Boolean) as string[];
   const savedBusinessHoursStatus = getBusinessHoursStatus(localFormData.businessHoursJson ? businessHours : null);
