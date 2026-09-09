@@ -410,7 +410,7 @@ function ReviewsPageContent() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Written Comments Pending</div>
               <div className="mt-2 text-2xl font-bold text-amber-900">{summary.pending}</div>
