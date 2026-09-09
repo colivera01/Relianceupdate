@@ -76,6 +76,7 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.label).toBe("Reliance Audit Passed");
     expect(state.detail).toContain("Private Proof");
     expect(state.detail).toContain("does not make any video Public");
+    expect(state.resolution).toContain("customer-controlled decision");
     expect(state.label).not.toBe("All videos uploaded");
   });
 

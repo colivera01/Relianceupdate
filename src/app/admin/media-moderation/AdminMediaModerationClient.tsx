@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -1046,16 +1045,6 @@ export default function AdminMediaModerationClient({
         tone="blue"
       />
 
-      <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-semibold">Reliance Audit establishes Private Proof and Public-display eligibility.</p>
-          <p className="mt-1 text-sm text-blue-800">PASS releases Private Proof. Public display still requires the customer&apos;s later choice and every required participant permission.</p>
-        </div>
-        <Button asChild className="bg-blue-600 text-white hover:bg-blue-700">
-          <Link href="/admin/publication-moderation">Open Public Proof Review</Link>
-        </Button>
-      </div>
-
       <Card>
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -1205,7 +1194,7 @@ export default function AdminMediaModerationClient({
               const stageVideo = pack.videosByStage[stage];
               return stageVideo && String(stageVideo.moderationStatus || '').trim().toLowerCase() === 'approved';
             });
-            const showReadyForAdminReview = hasAllRequiredStages && !allRequiredStagesApproved;
+            const showReadyForRelianceAudit = hasAllRequiredStages && !allRequiredStagesApproved;
             const showPackageApproved = hasAllRequiredStages && allRequiredStagesApproved;
             const packageStageSummary = STAGE_ORDER.map((stage) => {
               const stageVideo = pack.videosByStage[stage];
@@ -1222,7 +1211,7 @@ export default function AdminMediaModerationClient({
                   : 'text-red-300',
               };
             });
-            const overallPackageStatus = allRequiredStagesApproved ? 'Approved' : 'Admin Review Required';
+            const overallPackageStatus = allRequiredStagesApproved ? 'Approved' : 'Reliance Audit Required';
             const packageActionBusy = Boolean(packageActionLoadingId?.startsWith(`${pack.packageId}:`));
             const aiActionBusy = aiSuggestionLoadingId === pack.packageId;
             const aiFeedbackBusy = aiFeedbackSavingId === pack.packageId;
@@ -1247,16 +1236,16 @@ export default function AdminMediaModerationClient({
                         <div className="text-sm text-slate-300">Job status: {formatJobBookingStatus(pack.bookingStatus)}</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {showReadyForAdminReview ? (
+                        {showReadyForRelianceAudit ? (
                           <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">
-                            Ready for Admin Review
+                            Ready for Reliance Audit
                           </Badge>
                         ) : null}
                         {showPackageApproved ? (
                           <Badge className="bg-green-700 text-white hover:bg-green-700">Package Approved</Badge>
                         ) : null}
                         <Badge variant="outline" className="border-slate-600 bg-slate-950/80 text-slate-100">
-                          Package moderation: {prettyStatus(moderationLabel)}
+                          Reliance Audit stage status: {prettyStatus(moderationLabel)}
                         </Badge>
                         <Badge variant="outline" className="border-slate-600 bg-slate-950/80 text-slate-100">
                           Package visibility: {prettyStatus(visibilityLabel)}

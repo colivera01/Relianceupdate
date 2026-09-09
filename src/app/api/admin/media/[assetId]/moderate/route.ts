@@ -74,7 +74,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         {
           success: false,
           error: "EXACT_MEDIA_PUBLICATION_REQUIRED",
-          message: "Public visibility cannot be granted from a stage shortcut. Use the exact-media publication review.",
+          message: "Public visibility cannot be granted from a stage shortcut. Use Reliance Audit and the complete-package customer visibility flow.",
         },
         { status: 409 }
       );

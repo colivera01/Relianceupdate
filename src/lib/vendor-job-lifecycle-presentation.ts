@@ -115,7 +115,7 @@ export function resolveVendorJobLifecyclePresentation(
       "View Job",
       "green",
       "No participant needs to act",
-      "Keep the approved package and audit decision as read-only evidence. Public Proof remains a separate workflow.",
+      "Keep the approved package and audit decision as read-only evidence. Public visibility remains a separate customer-controlled decision.",
     );
   }
   if (auditDecision === "REJECT") {

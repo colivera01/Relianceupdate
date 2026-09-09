@@ -45,7 +45,7 @@ const STAGES = [
 const STATUS_COPY: Record<string, { title: string; detail: string }> = {
   AWAITING_CUSTOMER_DECISION: {
     title: "Waiting for the customer's exact-media decision",
-    detail: "The clips remain Private until the customer reviews the exact saved versions.",
+    detail: "The clips remain Private until the customer decides about the exact saved versions.",
   },
   AWAITING_PARTICIPANT_DECISIONS: {
     title: "Waiting for participant approval",
@@ -53,11 +53,11 @@ const STATUS_COPY: Record<string, { title: string; detail: string }> = {
   },
   AWAITING_VENDOR_APPROVAL: {
     title: "Ready for vendor representation approval",
-    detail: "Confirm that these exact clips fairly represent the business before admin review.",
+    detail: "Confirm that these exact clips fairly represent the business before the legacy Admin Public decision.",
   },
   AWAITING_ADMIN_REVIEW: {
-    title: "Waiting for Reliance moderation",
-    detail: "The proposal is still Private while an admin reviews the complete evidence chain.",
+    title: "Waiting for a legacy Admin Public decision",
+    detail: "This historical proposal remains Private until an admin decides its exact evidence chain.",
   },
   PUBLIC: {
     title: "Selected clips are Public",
@@ -76,7 +76,7 @@ const STATUS_COPY: Record<string, { title: string; detail: string }> = {
     detail: "The admin decision keeps these clips Private.",
   },
   ADMIN_FLAGGED: {
-    title: "Flagged for additional review",
+    title: "Flagged for Admin attention",
     detail: "The proposal remains Private and cannot be served publicly.",
   },
   SUPERSEDED: {
@@ -263,7 +263,7 @@ export function PublicationWorkflowCard({
               className="bg-blue-600 text-white hover:bg-blue-700"
             >
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
-              Ask customer to review exact clips
+              Ask customer to decide on exact clips
             </Button>
           </div>
         ) : null}

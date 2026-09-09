@@ -1684,7 +1684,11 @@ export async function restoreImmediatePublicVisibilityAfterHold(input: {
 
 export async function listAdminPublicationQueue() {
   const proposals = await (prisma as any).serviceVideoPublicationProposal.findMany({
-    where: { isCurrent: true, status: PUBLICATION_STATUSES.AWAITING_ADMIN },
+    where: {
+      isCurrent: true,
+      status: PUBLICATION_STATUSES.AWAITING_ADMIN,
+      contractVersion: { lt: IMMEDIATE_PUBLICATION_CONTRACT_VERSION },
+    },
     orderBy: { updatedAt: "asc" },
   });
   const result = [];

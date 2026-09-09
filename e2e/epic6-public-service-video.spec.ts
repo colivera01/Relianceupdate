@@ -231,7 +231,8 @@ test("admin sees exact hashes and cannot broaden participant approval", async ({
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/test-fixtures/epic6-publication?role=admin");
-  await expect(page.getByRole("heading", { name: "Public Service Video Review" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Legacy Public Decisions" })).toBeVisible();
+  await expect(page.getByText(/Current packages use Reliance Audit and customer-controlled Public visibility/)).toBeVisible();
   await expect(page.getByText(/Media hash:/)).toBeVisible();
   await page.getByTestId("admin-publication-moderation").screenshot({ path: path.join(screenshotRoot, "Desktop", "05-admin-exact-media-review.png") });
 });

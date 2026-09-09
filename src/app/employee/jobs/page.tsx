@@ -2056,7 +2056,7 @@ export default function EmployeeJobsPage() {
                     : "border-blue-300 text-blue-700 hover:bg-blue-50"
                 }`}
               >
-                Review Public sharing request
+                Open Public-sharing permission
               </Link>
             ) : null}
           </div>

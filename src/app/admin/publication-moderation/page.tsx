@@ -49,10 +49,10 @@ export default function AdminPublicationModerationPage() {
     try {
       const response = await fetch("/api/admin/publication-proposals", { headers, credentials: "include", cache: "no-store" });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || body?.success === false) throw new Error(body?.error || "Unable to load Public proof review");
+      if (!response.ok || body?.success === false) throw new Error(body?.error || "Unable to load legacy Public decisions");
       setItems(Array.isArray(body?.proposals) ? body.proposals : []);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to load Public proof review");
+      setError(nextError instanceof Error ? nextError.message : "Unable to load legacy Public decisions");
     } finally {
       setLoading(false);
     }
@@ -78,7 +78,7 @@ export default function AdminPublicationModerationPage() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.success === false) throw new Error(body?.error || "Unable to save moderation decision");
-      setMessage(decision === "APPROVED" ? "Exact clips approved for Public proof." : "Decision saved. The media remains Private.");
+      setMessage(decision === "APPROVED" ? "Exact legacy clips approved for Public display." : "Decision saved. The media remains Private.");
       await load();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to save moderation decision");
@@ -92,10 +92,10 @@ export default function AdminPublicationModerationPage() {
       <header className="reliance-operator-surface rounded-lg p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase text-blue-200">Admin evidence review</p>
-            <h1 className="mt-2 text-2xl font-bold">Public Service Video Review</h1>
+            <p className="text-xs font-semibold uppercase text-blue-200">Historical publication contracts</p>
+            <h1 className="mt-2 text-2xl font-bold">Legacy Public Decisions</h1>
             <p className="mt-2 max-w-3xl text-sm text-white/70">
-              Confirm the exact media version and every required participant decision before Public visibility. Admin review may restrict a proposal, never broaden it.
+              Resolve exact-media Public proposals created under earlier contracts. Current packages use Reliance Audit and customer-controlled Public visibility and do not enter this queue.
             </p>
           </div>
           <Button variant="outline" className="border-white/20 bg-transparent text-white" onClick={() => void load()} disabled={loading}>
@@ -110,8 +110,8 @@ export default function AdminPublicationModerationPage() {
       {!loading && !error && items.length === 0 ? (
         <div className="rounded-lg border border-white/10 bg-white/5 p-8 text-center">
           <ShieldCheck className="mx-auto h-8 w-8 text-emerald-300" />
-          <h2 className="mt-3 font-semibold">No Public proposals need review</h2>
-          <p className="mt-1 text-sm text-white/65">Private Service Videos remain available to their authorized customers.</p>
+          <h2 className="mt-3 font-semibold">No legacy Public decisions need action</h2>
+          <p className="mt-1 text-sm text-white/65">Current Service Videos use Reliance Audit and customer-controlled Public visibility.</p>
         </div>
       ) : null}
 
@@ -126,7 +126,7 @@ export default function AdminPublicationModerationPage() {
                   <h2 className="text-lg font-bold">{item.booking?.service?.name || item.booking?.title || "Completed service"}</h2>
                   <p className="text-sm text-white/65">{vendorName} | Customer: {item.booking?.clientName || "Customer"}</p>
                 </div>
-                <Badge className="bg-amber-500/20 text-amber-100">Awaiting admin review</Badge>
+                <Badge className="bg-amber-500/20 text-amber-100">Awaiting legacy Public decision</Badge>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -155,7 +155,7 @@ export default function AdminPublicationModerationPage() {
               </div>
 
               <label className="mt-4 block text-sm font-medium text-white/80">
-                Moderation reason (required for any restrictive decision)
+                Decision reason (required for any restrictive decision)
                 <textarea
                   value={reasons[item.proposal.id] || ""}
                   onChange={(event) => setReasons((current) => ({ ...current, [item.proposal.id]: event.target.value }))}

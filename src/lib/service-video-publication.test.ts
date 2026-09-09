@@ -13,7 +13,7 @@ const hoisted = vi.hoisted(() => {
     recordingGateDecisionEvidence: { findFirst: vi.fn() },
     mediaSession: { findFirst: vi.fn() },
     mediaAsset: { findFirst: vi.fn(), updateMany: vi.fn() },
-    serviceVideoPublicationProposal: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    serviceVideoPublicationProposal: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     serviceVideoPublicationStage: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     serviceVideoPublicationCustomerDecision: { findFirst: vi.fn() },
     serviceVideoPublicationVendorDecision: { findFirst: vi.fn() },
@@ -250,5 +250,21 @@ describe("exact-media Public Service Video evidence", () => {
     hoisted.prisma.serviceVideoPublicationParticipantDecision.findMany.mockResolvedValue([]);
 
     await expect(resolveCanonicalPublicAssetIds({ bookingId: "booking-1" })).resolves.toEqual([]);
+  });
+
+  it("keeps current immediate-publication contracts out of the legacy Admin queue", async () => {
+    const { listAdminPublicationQueue } = await import("./service-video-publication");
+    hoisted.prisma.serviceVideoPublicationProposal.findMany.mockResolvedValue([]);
+
+    await expect(listAdminPublicationQueue()).resolves.toEqual([]);
+
+    expect(hoisted.prisma.serviceVideoPublicationProposal.findMany).toHaveBeenCalledWith({
+      where: {
+        isCurrent: true,
+        status: "AWAITING_ADMIN_REVIEW",
+        contractVersion: { lt: 3 },
+      },
+      orderBy: { updatedAt: "asc" },
+    });
   });
 });
