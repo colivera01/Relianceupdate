@@ -4,7 +4,7 @@ const h = vi.hoisted(() => {
   const tx: any = { contentReport: { update: vi.fn() }, contentReportCaseEvent: { create: vi.fn() } };
   const prisma: any = {
     contentReport: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    contentReportCaseEvent: { findMany: vi.fn() },
+    contentReportCaseEvent: { findMany: vi.fn(), findFirst: vi.fn() },
     mediaLifecycleRestriction: { findFirst: vi.fn() },
     mediaAsset: { findUnique: vi.fn() },
     booking: { findUnique: vi.fn() },
@@ -46,6 +46,7 @@ describe("admin reported-content cases", () => {
     h.prisma.contentReport.findMany.mockResolvedValue([report()]);
     h.prisma.contentReport.findUnique.mockResolvedValue(report());
     h.prisma.contentReportCaseEvent.findMany.mockResolvedValue([{ id: "event-1", eventType: "REPORT_CREATED", actorRole: "customer", createdAt: new Date() }]);
+    h.prisma.contentReportCaseEvent.findFirst.mockResolvedValue(null);
     h.prisma.mediaLifecycleRestriction.findFirst.mockResolvedValue(null);
     h.prisma.mediaAsset.findUnique.mockResolvedValue({ visibilityStatus: "public", deletedAt: null });
     h.prisma.booking.findUnique.mockResolvedValue({ title: "Breaker Replacement", clientName: "Customer", user: { name: "Customer" }, vendor: { businessName: "Electro LLC" }, service: { name: "Breaker Replacement" } });
@@ -92,6 +93,25 @@ describe("admin reported-content cases", () => {
     expect(await response.json()).toMatchObject({ report: { publicHoldActive: false, publicVisibilityRestored: true } });
     expect(h.releaseCase).toHaveBeenCalledWith(expect.objectContaining({ lifecycleCaseId: "lifecycle-1" }));
     expect(h.restore).toHaveBeenCalledWith({ bookingId: "booking-1", actorUserId: "admin-1" });
+  });
+
+  it("returns the original hold-release result without duplicating release evidence on retry", async () => {
+    h.prisma.contentReport.findUnique.mockResolvedValue(report({ lifecycleCaseId: "lifecycle-1", autoHidden: false }));
+    h.prisma.contentReportCaseEvent.findFirst.mockResolvedValue({
+      metadataJson: JSON.stringify({ lifecycleCaseId: "lifecycle-1", publicVisibilityRestored: true }),
+    });
+    const response = await PATCH(new Request("http://localhost/api/admin/reported-content", { method: "PATCH", body: JSON.stringify({ reportId: "report-1", action: "release_public_hold", resolutionNotes: "No violation found" }) }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      idempotent: true,
+      report: { publicHoldActive: false, publicVisibilityRestored: true },
+    });
+    expect(h.releaseHold).not.toHaveBeenCalled();
+    expect(h.releaseCase).not.toHaveBeenCalled();
+    expect(h.restore).not.toHaveBeenCalled();
+    expect(h.tx.contentReport.update).not.toHaveBeenCalled();
+    expect(h.tx.contentReportCaseEvent.create).not.toHaveBeenCalled();
   });
 
   it("does not duplicate terminal case history or notifications when a resolution is retried", async () => {

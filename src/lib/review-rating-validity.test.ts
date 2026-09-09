@@ -29,6 +29,7 @@ describe('verified Customer Review rating contract', () => {
     [{ comment: null, contractVersion: 2, moderationStatus: 'not_applicable' }, 'NONE'],
     [{ comment: 'Waiting', contractVersion: 2, moderationStatus: 'pending_review' }, 'CHECKING'],
     [{ comment: 'Published', contractVersion: 2, moderationStatus: 'approved', visibilityStatus: 'public' }, 'PUBLISHED'],
+    [{ comment: 'Kept private', contractVersion: 2, moderationStatus: 'approved', visibilityStatus: 'private' }, 'NOT_PUBLISHED'],
     [{ comment: 'Not public', contractVersion: 2, moderationStatus: 'rejected' }, 'NOT_PUBLISHED'],
     [{ comment: 'Historical', contractVersion: null, moderationStatus: 'approved' }, 'LEGACY'],
   ])('maps owner-safe written-comment state', (input, expected) => {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { countableReviewWhere, countableServiceWhere } from "@/lib/metrics-exclusion";
+import { canonicalPublicWrittenReviewWhere } from "@/lib/review-rating-validity";
 import { cleanPublicReviewComment } from "@/lib/launch-content-cleanup";
 import {
   isTransientDbConnectivityError,
@@ -55,8 +56,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       prisma.review.findMany({
         where: countableReviewWhere({
           vendorId: service.vendorId,
-          moderationStatus: "approved",
-          visibilityStatus: "public",
+          ...canonicalPublicWrittenReviewWhere(),
           OR: [
             {
               booking: {
@@ -108,7 +108,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       })),
       meta: {
         eligibilityRule:
-          "Only approved public reviews attached through this service's booking or media session are returned.",
+          "Only approved Public written comments from verified Customer Reviews attached through this service's booking or media session are returned.",
       },
     });
   } catch (error: any) {

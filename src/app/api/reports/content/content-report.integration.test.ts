@@ -19,6 +19,7 @@ const h = vi.hoisted(() => {
     serviceVideoAdminAuditDecisionEvidence: { findFirst: vi.fn() },
     serviceVideoStageEvidence: { findFirst: vi.fn() },
     publicServiceVideoEligibility: { findFirst: vi.fn() },
+    review: { findFirst: vi.fn() },
     contentReport: { findMany: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
     contentReportRequest: { findUnique: vi.fn() },
     $transaction: vi.fn((callback: any) => callback(tx)),
@@ -63,6 +64,7 @@ describe("Service Video content reports", () => {
     h.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({ id: "package-1", version: 2, packageHash: "package-hash", stageEvidenceJson: JSON.stringify(packageStages), adminAuditDecisionId: "audit-1" });
     h.prisma.serviceVideoAdminAuditDecisionEvidence.findFirst.mockResolvedValue({ id: "audit-1", decision: "PASS" });
     h.prisma.serviceVideoStageEvidence.findFirst.mockResolvedValue({ id: "stage-1", stage: "INTRO", stageVersion: 1, contentHash: "hash-1" });
+    h.prisma.review.findFirst.mockResolvedValue({ id: "review-1", bookingId: "booking-1", vendorId: "vendor-1", userId: "customer-1" });
     h.tx.contentReportRequest.findUnique.mockResolvedValue(null);
     h.tx.contentReport.count.mockResolvedValue(0);
     h.tx.contentReport.create.mockResolvedValue(reportRow());
@@ -103,6 +105,35 @@ describe("Service Video content reports", () => {
     expect(response.status).toBe(201);
     expect(h.tx.contentReport.create).toHaveBeenCalledWith({ data: expect.objectContaining({ accessBasis: "AUTHENTICATED_PUBLIC_VIEWER", visibilityAtReport: "PUBLIC" }) });
     expect(h.tx.mediaLifecycleCase.create).not.toHaveBeenCalled();
+  });
+
+  it("allows reports only for canonical Public written comments from countable identities", async () => {
+    vi.mocked(requireRequestActor).mockResolvedValue({ userId: "viewer-1", email: "viewer@example.com", accountStatus: "active", platformRoles: [], vendorMemberships: [] });
+    h.tx.contentReport.create.mockResolvedValue(reportRow({ targetType: "review", targetId: "review-1" }));
+    const response = await POST(request({ targetType: "review", targetId: "review-1", reasonCategory: "harassment" }));
+    expect(response.status).toBe(201);
+    expect(h.prisma.review.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "review-1",
+        demo: false,
+        source: "customer",
+        bookingId: { not: null },
+        comment: { not: null },
+        moderationStatus: "approved",
+        visibilityStatus: "public",
+        user: { is: expect.objectContaining({ demo: false }) },
+        vendor: expect.objectContaining({ demo: false }),
+        AND: [{ vendor: { is: { isPubliclyListed: true, accountStatus: "active" } } }],
+      }),
+    });
+  });
+
+  it("fails closed when a review is not a canonical Public written comment", async () => {
+    h.prisma.review.findFirst.mockResolvedValue(null);
+    const response = await POST(request({ targetType: "review", targetId: "review-private", reasonCategory: "harassment" }));
+    expect(response.status).toBe(404);
+    expect((await response.json()).code).toBe("REPORT_REVIEW_NOT_PUBLIC");
+    expect(h.tx.contentReport.create).not.toHaveBeenCalled();
   });
 
   it("applies an evidence-preserving Public hold for an owning-customer privacy report", async () => {

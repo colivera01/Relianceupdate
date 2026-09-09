@@ -61,7 +61,7 @@ function formatReviewerEmail(email: string | null | undefined) {
 function prettyStatus(value: string | null | undefined) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) return 'Unknown';
-  if (normalized === 'pending_review') return 'Pending Review';
+  if (normalized === 'pending_review') return 'Written Comment Pending';
   return normalized
     .split(/[_\s]+/)
     .filter(Boolean)
@@ -75,6 +75,13 @@ function reviewVisibilityLabel(value: string | null | undefined) {
   if (normalized === 'public') return 'Public';
   if (normalized === 'private') return 'Private';
   return prettyStatus(normalized);
+}
+
+function ratingEvidenceLabel(review: Pick<ReviewQueueRow, 'contractVersion' | 'ratingValidityStatus'>) {
+  if (!review.contractVersion || review.contractVersion < 2) return 'Historical moderation contract';
+  if (review.ratingValidityStatus === 'verified') return 'Verified and counted';
+  if (review.ratingValidityStatus === 'invalid') return 'Invalidated';
+  return 'Status unavailable';
 }
 
 type ReviewModerationAction =
@@ -196,6 +203,14 @@ function ReviewsPageContent() {
                   moderationReason:
                     updated.moderationReason !== undefined ? (updated.moderationReason as string | null) : row.moderationReason,
                   moderatedAt: (updated.moderatedAt as string | null) ?? row.moderatedAt,
+                  ratingValidityStatus:
+                    updated.ratingValidityStatus !== undefined
+                      ? (updated.ratingValidityStatus as string | null)
+                      : row.ratingValidityStatus,
+                  ratingInvalidationReason:
+                    updated.ratingInvalidationReason !== undefined
+                      ? (updated.ratingInvalidationReason as string | null)
+                      : row.ratingInvalidationReason,
                 }
               : row
           )
@@ -210,6 +225,14 @@ function ReviewsPageContent() {
                 moderationReason:
                   updated.moderationReason !== undefined ? (updated.moderationReason as string | null) : prev.moderationReason,
                 moderatedAt: (updated.moderatedAt as string | null) ?? prev.moderatedAt,
+                ratingValidityStatus:
+                  updated.ratingValidityStatus !== undefined
+                    ? (updated.ratingValidityStatus as string | null)
+                    : prev.ratingValidityStatus,
+                ratingInvalidationReason:
+                  updated.ratingInvalidationReason !== undefined
+                    ? (updated.ratingInvalidationReason as string | null)
+                    : prev.ratingInvalidationReason,
               }
             : prev
         );
@@ -296,10 +319,13 @@ function ReviewsPageContent() {
       | 'flag'
       | 'reject'
       | 'needs_manual_review'
-  ) =>
-    value
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
+  ) => {
+    if (value === 'approve_public') return 'Publish Written Comment';
+    if (value === 'approve_vendor_private') return 'Keep Written Comment Private';
+    if (value === 'reject') return 'Reject Written Comment';
+    if (value === 'flag') return 'Flag Written Comment';
+    return 'Needs Manual Review';
+  };
 
   const aiDecisionClass = (
     value:
@@ -369,7 +395,7 @@ function ReviewsPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Review Moderation</h1>
-          <p className="text-gray-600 mt-1">Review customer feedback, choose visibility, and keep launch-facing reviews trustworthy.</p>
+          <p className="text-gray-600 mt-1">Moderate written comments separately from verified Vendor Rating evidence.</p>
         </div>
         <Button variant="outline" onClick={() => fetchQueue(page, limit)} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -381,22 +407,22 @@ function ReviewsPageContent() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Pending Review</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Written Comments Pending</div>
               <div className="mt-2 text-2xl font-bold text-amber-900">{summary.pending}</div>
-              <p className="mt-1 text-sm text-amber-800">Needs an admin visibility decision.</p>
+              <p className="mt-1 text-sm text-amber-800">Needs an Admin written-comment decision.</p>
             </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Approved Public</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Public Written Comments</div>
               <div className="mt-2 text-2xl font-bold text-emerald-900">{summary.approvedPublic}</div>
               <p className="mt-1 text-sm text-emerald-800">Visible on public vendor and service pages.</p>
             </div>
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Approved Private</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Private Written Comments</div>
               <div className="mt-2 text-2xl font-bold text-blue-900">{summary.approvedPrivate}</div>
               <p className="mt-1 text-sm text-blue-800">Kept out of public discovery while still retained.</p>
             </div>
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Flagged Or Rejected</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Flagged Or Rejected Comments</div>
               <div className="mt-2 text-2xl font-bold text-rose-900">{summary.flaggedOrRejected}</div>
               <p className="mt-1 text-sm text-rose-800">Reviews that need follow-up or were not approved.</p>
             </div>
@@ -404,9 +430,9 @@ function ReviewsPageContent() {
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="text-sm font-semibold text-slate-900">Operator flow</div>
             <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
-              <p>1. Check the rating, comment, vendor, and reviewer details.</p>
-              <p>2. Choose whether the review should be public, private, rejected, or flagged.</p>
-              <p>3. Record a clear reason when you reject or escalate a review.</p>
+              <p>1. Check the Vendor Rating, written comment, Vendor, and customer details.</p>
+              <p>2. Decide whether the written comment may be Public or must stay Private.</p>
+              <p>3. Invalidate rating evidence only through the separate audited action.</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 text-sm">
               <Link
@@ -454,7 +480,7 @@ function ReviewsPageContent() {
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All moderation statuses</option>
-            <option value="pending_review">Pending Review</option>
+            <option value="pending_review">Written Comment Pending</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="flagged">Flagged</option>
@@ -533,8 +559,11 @@ function ReviewsPageContent() {
           </Card>
           {reviews.map((review) => {
             const actionBusy = Boolean(reviewActionLoadingId?.startsWith(`${review.reviewId}:`));
+            const hasWrittenComment = Boolean(String(review.comment || '').trim());
+            const correctedRatingVerified =
+              !review.contractVersion || review.contractVersion < 2 || review.ratingValidityStatus === 'verified';
             return (
-              <Card key={review.reviewId}>
+              <Card key={review.reviewId} data-testid={`review-card-${review.reviewId}`}>
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                     <div className="lg:col-span-7 space-y-1 text-sm">
@@ -543,7 +572,7 @@ function ReviewsPageContent() {
                       </div>
                       {String(review.moderationStatus).toLowerCase() === 'pending_review' ? (
                         <div className="inline-flex w-fit rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
-                          Awaiting admin decision
+                          Written comment awaiting Admin decision
                         </div>
                       ) : null}
                       <div>Vendor: {review.vendorName || review.vendorId}</div>
@@ -556,7 +585,10 @@ function ReviewsPageContent() {
                       </div>
                       <div>Rating: {review.rating}/5</div>
                       {review.contractVersion && review.contractVersion >= 2 ? (
-                        <div>Rating evidence: {review.ratingValidityStatus === 'invalid' ? 'Invalidated' : 'Verified and counted'}</div>
+                        <div>Rating evidence: {ratingEvidenceLabel(review)}</div>
+                      ) : null}
+                      {review.ratingValidityStatus === 'invalid' && review.ratingInvalidationReason ? (
+                        <div className="text-amber-700">Rating invalidation reason: {review.ratingInvalidationReason}</div>
                       ) : null}
                       {review.jobType ? <div>Job Type: {review.jobType}</div> : null}
                       <div className="text-gray-700">Comment: {review.comment || '-'}</div>
@@ -573,44 +605,56 @@ function ReviewsPageContent() {
                           Reason: {review.moderationReason}
                         </p>
                       ) : null}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={aiLoadingReviewId === review.reviewId}
-                        onClick={() => requestAiReview(review)}
-                      >
-                        {aiLoadingReviewId === review.reviewId
-                          ? 'Checking...'
-                          : review.aiRecommendation
-                            ? 'Refresh AI Review'
-                            : 'Run AI Review'}
-                      </Button>
+                      {hasWrittenComment ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={aiLoadingReviewId === review.reviewId}
+                          onClick={() => requestAiReview(review)}
+                        >
+                          {aiLoadingReviewId === review.reviewId
+                            ? 'Checking...'
+                            : review.aiRecommendation
+                              ? 'Refresh AI Review'
+                              : 'Run AI Review'}
+                        </Button>
+                      ) : null}
                     </div>
                     <div className="lg:col-span-3 flex flex-col gap-2">
                       <Button size="sm" variant="outline" onClick={() => setSelectedReview(review)}>
                         Details
                       </Button>
-                      <Button size="sm" disabled={actionBusy} onClick={() => applyModerationAction(review, 'approve_public')}>
-                        Approve Public
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={actionBusy}
-                        onClick={() => applyModerationAction(review, 'approve_vendor_private')}
-                      >
-                        Keep Private
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'reject')}>
-                        Do Not Publish Comment
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'flag')}>
-                        <ShieldAlert className="w-4 h-4 mr-1" />
-                        Flag
-                      </Button>
-                      {review.contractVersion && review.contractVersion >= 2 && review.ratingValidityStatus !== 'invalid' ? (
+                      {hasWrittenComment ? (
+                        <>
+                          <Button
+                            size="sm"
+                            disabled={actionBusy || !correctedRatingVerified}
+                            onClick={() => applyModerationAction(review, 'approve_public')}
+                          >
+                            Publish Written Comment
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={actionBusy}
+                            onClick={() => applyModerationAction(review, 'approve_vendor_private')}
+                          >
+                            Keep Written Comment Private
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'reject')}>
+                            Reject Written Comment
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'flag')}>
+                            <ShieldAlert className="w-4 h-4 mr-1" />
+                            Flag Written Comment
+                          </Button>
+                        </>
+                      ) : (
+                        <p className="text-xs text-slate-500">No written comment needs moderation.</p>
+                      )}
+                      {review.contractVersion && review.contractVersion >= 2 && review.ratingValidityStatus === 'verified' ? (
                         <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'invalidate_review')}>
-                          Invalidate Review Evidence
+                          Invalidate Rating Evidence
                         </Button>
                       ) : null}
                     </div>
@@ -706,8 +750,8 @@ function ReviewsPageContent() {
       <Dialog open={Boolean(selectedReview)} onOpenChange={(open) => !open && setSelectedReview(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Review Details</DialogTitle>
-            <DialogDescription>Moderation context for selected review.</DialogDescription>
+            <DialogTitle>Customer Review Details</DialogTitle>
+            <DialogDescription>Written-comment moderation and separate Vendor Rating evidence.</DialogDescription>
           </DialogHeader>
           {selectedReview && (
             <div className="space-y-3 text-sm">
@@ -719,6 +763,7 @@ function ReviewsPageContent() {
                 <div>Reviewer: {selectedReview.reviewerName || '-'}</div>
                 <div>Email: {formatReviewerEmail(selectedReview.reviewerEmail) || '-'}</div>
                 <div>Rating: {selectedReview.rating}/5</div>
+                <div>Rating evidence: {ratingEvidenceLabel(selectedReview)}</div>
                 <div>Created: {new Date(selectedReview.createdAt).toLocaleString()}</div>
                 <div>Moderation: {prettyStatus(selectedReview.moderationStatus)}</div>
                 <div>Visibility: {reviewVisibilityLabel(selectedReview.visibilityStatus)}</div>
@@ -745,12 +790,12 @@ function ReviewsPageContent() {
       <Dialog open={moderationNoteModalOpen} onOpenChange={(open) => !open && closeModerationNoteModal()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{moderationNoteAction === 'flag' ? 'Flag Comment' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Review Evidence' : 'Do Not Publish Comment'}</DialogTitle>
+            <DialogTitle>{moderationNoteAction === 'flag' ? 'Flag Written Comment' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Rating Evidence' : 'Reject Written Comment'}</DialogTitle>
             <DialogDescription>
               {moderationNoteAction === 'flag'
                 ? 'Provide a reason to flag this written comment for follow-up. The verified Vendor Rating remains counted.'
                 : moderationNoteAction === 'invalidate_review'
-                  ? 'Use only for fraud, duplicate evidence, account abuse, or another reason the entire Customer Review is invalid. This excludes its stars from canonical metrics.'
+                  ? 'Use only for fraud, duplicate evidence, account abuse, or another reason the Vendor Rating evidence is invalid. This excludes its stars from canonical metrics and keeps its written comment Private.'
                   : 'Provide a reason not to publish this written comment. The verified Vendor Rating remains counted.'}
             </DialogDescription>
           </DialogHeader>
@@ -765,7 +810,7 @@ function ReviewsPageContent() {
               Cancel
             </Button>
             <Button onClick={submitModerationNote} disabled={!moderationNoteReason.trim() || Boolean(reviewActionLoadingId)}>
-              {moderationNoteAction === 'flag' ? 'Submit Flag' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Review Evidence' : 'Do Not Publish Comment'}
+              {moderationNoteAction === 'flag' ? 'Submit Flag' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Rating Evidence' : 'Reject Written Comment'}
             </Button>
           </DialogFooter>
         </DialogContent>

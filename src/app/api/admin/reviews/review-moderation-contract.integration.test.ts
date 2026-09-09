@@ -21,6 +21,7 @@ function request(action: string, moderationReason?: string) {
 
 const existing = {
   id: 'review-1', vendorId: 'vendor-1', moderationStatus: 'pending_review', visibilityStatus: 'private',
+  comment: 'It was great',
   moderationReason: null, moderatedAt: null, moderatedByUserId: null, contractVersion: 2,
   ratingValidityStatus: 'verified', ratingInvalidationReason: null, ratingInvalidatedAt: null,
   ratingInvalidatedByUserId: null,
@@ -43,6 +44,53 @@ describe('Customer Review moderation contract', () => {
     expect(h.update.mock.calls[0][0].data).not.toHaveProperty('ratingValidityStatus');
   });
 
+  it('requires a reason before flagging a written comment', async () => {
+    const response = await PATCH(request('flag'), { params: Promise.resolve({ reviewId: 'review-1' }) });
+    expect(response.status).toBe(422);
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it('does not offer written-comment moderation for a stars-only review', async () => {
+    h.findUnique.mockResolvedValue({ ...existing, comment: null });
+    const response = await PATCH(request('approve_public'), { params: Promise.resolve({ reviewId: 'review-1' }) });
+    expect(response.status).toBe(409);
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it('does not republish a written comment after its rating evidence is invalidated', async () => {
+    h.findUnique.mockResolvedValue({ ...existing, ratingValidityStatus: 'invalid' });
+    const response = await PATCH(request('approve_public'), { params: Promise.resolve({ reviewId: 'review-1' }) });
+    expect(response.status).toBe(409);
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when corrected-contract rating validity is unknown', async () => {
+    h.findUnique.mockResolvedValue({ ...existing, ratingValidityStatus: null });
+    const response = await PATCH(request('approve_public'), { params: Promise.resolve({ reviewId: 'review-1' }) });
+    expect(response.status).toBe(409);
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it('publishes only the written comment and leaves verified rating evidence unchanged', async () => {
+    h.update.mockResolvedValue({ ...existing, moderationStatus: 'approved', visibilityStatus: 'public' });
+    const response = await PATCH(request('approve_public'), { params: Promise.resolve({ reviewId: 'review-1' }) });
+    expect(response.status).toBe(200);
+    expect(h.update.mock.calls[0][0].data).not.toHaveProperty('ratingValidityStatus');
+    expect((await response.json()).message).toContain('Verified Vendor Rating was not changed');
+  });
+
+  it('returns an idempotent written-comment result without duplicating its audit event', async () => {
+    h.findUnique.mockResolvedValue({ ...existing, moderationStatus: 'approved', visibilityStatus: 'public' });
+    const response = await PATCH(request('approve_public'), { params: Promise.resolve({ reviewId: 'review-1' }) });
+    expect(response.status).toBe(200);
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+  });
+
   it('uses a separate auditable action to invalidate review evidence', async () => {
     h.update.mockResolvedValue({ ...existing, ratingValidityStatus: 'invalid', ratingInvalidationReason: 'Duplicate evidence' });
     const response = await PATCH(request('invalidate_review', 'Duplicate evidence'), { params: Promise.resolve({ reviewId: 'review-1' }) });
@@ -51,6 +99,10 @@ describe('Customer Review moderation contract', () => {
       data: expect.objectContaining({ ratingValidityStatus: 'invalid', ratingInvalidationReason: 'Duplicate evidence' }),
     }));
     expect(h.audit).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'REVIEW_RATING_INVALIDATED' }));
+    expect(h.audit).toHaveBeenCalledWith(expect.objectContaining({
+      previousValue: expect.objectContaining({ visibilityStatus: 'private' }),
+      newValue: expect.objectContaining({ visibilityStatus: 'private' }),
+    }));
   });
 
   it('does not reinterpret historical review evidence through the new invalidation contract', async () => {

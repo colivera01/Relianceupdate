@@ -35,6 +35,15 @@ function date(value: unknown): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function releasedVisibilityWasRestored(metadataJson: unknown): boolean {
+  if (typeof metadataJson !== "string" || !metadataJson.trim()) return false;
+  try {
+    return JSON.parse(metadataJson)?.publicVisibilityRestored === true;
+  } catch {
+    return false;
+  }
+}
+
 function forbidden(error: any) {
   const message = error?.message || "Forbidden";
   return NextResponse.json({ success: false, error: message, message }, { status: 403 });
@@ -161,7 +170,19 @@ async function applyPublicHold(report: any, adminUserId: string, reason: string,
 }
 
 async function releasePublicHold(report: any, adminUserId: string, reason: string, request: Request) {
-  if (!report.lifecycleCaseId) return { released: false, restored: false };
+  if (!report.lifecycleCaseId) return { released: false, restored: false, idempotent: false };
+  const priorRelease = await (prisma as any).contentReportCaseEvent.findFirst({
+    where: { reportId: report.id, eventType: "PUBLIC_HOLD_RELEASED" },
+    orderBy: { createdAt: "desc" },
+    select: { metadataJson: true },
+  });
+  if (priorRelease) {
+    return {
+      released: false,
+      restored: releasedVisibilityWasRestored(priorRelease.metadataJson),
+      idempotent: true,
+    };
+  }
   const hold = await (prisma as any).mediaEvidenceHold.findFirst({ where: { caseId: report.lifecycleCaseId, status: { in: ["ACTIVE", "REVIEW_DUE", "EXTENDED"] } }, orderBy: { startedAt: "desc" } });
   if (hold) await releaseEvidenceHold({ holdId: hold.id, actorUserId: adminUserId, reason, request });
   await releaseContentReportPublicHold({ lifecycleCaseId: report.lifecycleCaseId, actorUserId: adminUserId, reason, request });
@@ -175,7 +196,7 @@ async function releasePublicHold(report: any, adminUserId: string, reason: strin
     await tx.contentReport.update({ where: { id: report.id }, data: { autoHidden: false } });
     await appendContentReportEvent(tx, { reportId: report.id, eventType: "PUBLIC_HOLD_RELEASED", actorUserId: adminUserId, actorRole: "ADMIN", priorStatus: report.status, resultingStatus: report.status, reason, metadata: { lifecycleCaseId: report.lifecycleCaseId, publicVisibilityRestored: restored } });
   });
-  return { released: true, restored };
+  return { released: true, restored, idempotent: false };
 }
 
 async function notifyReporter(report: any, request: Request) {
@@ -229,7 +250,11 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     }
     if (action === "release_public_hold") {
       const release = await releasePublicHold(report, adminUserId, notes, request);
-      return NextResponse.json({ success: true, report: { id: report.id, status: report.status, publicHoldActive: false, publicVisibilityRestored: release.restored } });
+      return NextResponse.json({
+        success: true,
+        idempotent: release.idempotent,
+        report: { id: report.id, status: report.status, publicHoldActive: false, publicVisibilityRestored: release.restored },
+      });
     }
     if (!nextStatus || !REPORT_STATUSES.has(nextStatus)) return NextResponse.json({ success: false, error: "Unsupported report action" }, { status: 422 });
     if (["resolve_no_violation", "dismiss"].includes(action) && report.lifecycleCaseId) await releasePublicHold(report, adminUserId, notes, request);

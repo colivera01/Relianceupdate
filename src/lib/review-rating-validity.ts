@@ -41,6 +41,7 @@ export function customerCommentModerationState(input: {
   const moderation = String(input.moderationStatus || '').toLowerCase();
   const visibility = String(input.visibilityStatus || '').toLowerCase();
   if (moderation === 'approved' && visibility === 'public') return 'PUBLISHED';
+  if (moderation === 'approved' && visibility === 'private') return 'NOT_PUBLISHED';
   if (['rejected', 'flagged'].includes(moderation)) return 'NOT_PUBLISHED';
   return 'CHECKING';
 }

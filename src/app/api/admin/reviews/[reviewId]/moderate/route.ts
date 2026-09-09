@@ -37,7 +37,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       );
     }
 
-    if ((action === "reject" || action === "invalidate_review") && !moderationReason) {
+    if ((action === "reject" || action === "flag" || action === "invalidate_review") && !moderationReason) {
       return NextResponse.json(
         { success: false, error: "moderationReason is required for this action", message: "moderationReason is required for this action" },
         { status: 422 }
@@ -49,6 +49,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       select: {
         id: true,
         vendorId: true,
+        comment: true,
         moderationStatus: true,
         visibilityStatus: true,
         moderationReason: true,
@@ -66,6 +67,33 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       return NextResponse.json(
         { success: false, error: "Review not found", message: "Review not found" },
         { status: 404 }
+      );
+    }
+
+    if (action !== "invalidate_review" && !String(existing.comment || "").trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This Customer Review has no written comment to moderate",
+          message: "This Customer Review has no written comment to moderate",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (
+      action === "approve_public" &&
+      existing.contractVersion &&
+      existing.contractVersion >= 2 &&
+      existing.ratingValidityStatus !== "verified"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Review rating evidence must be verified before its written comment can be published",
+          message: "Review rating evidence must be verified before its written comment can be published",
+        },
+        { status: 409 }
       );
     }
 
@@ -107,15 +135,21 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         previousValue: {
           ratingValidityStatus: existing.ratingValidityStatus,
           ratingInvalidationReason: existing.ratingInvalidationReason,
+          visibilityStatus: existing.visibilityStatus,
         },
         newValue: {
           ratingValidityStatus: "invalid",
           ratingInvalidationReason: moderationReason,
           ratingInvalidatedAt: invalidatedAt.toISOString(),
+          visibilityStatus: "private",
         },
         metadata: { source: "PATCH /api/admin/reviews/[reviewId]/moderate", vendorId: existing.vendorId },
       });
-      return NextResponse.json({ success: true, message: "Review rating evidence invalidated", review: updated });
+      return NextResponse.json({
+        success: true,
+        message: "Review rating evidence invalidated and its written comment kept Private",
+        review: updated,
+      });
     }
 
     const noChange =
@@ -126,7 +160,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     if (noChange) {
       return NextResponse.json({
         success: true,
-        message: "Review moderation state already matches requested action",
+        message: "Written-comment moderation already matches the requested action",
         review: existing,
       });
     }
@@ -191,7 +225,14 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     return NextResponse.json({
       success: true,
-      message: `Review moderation action '${action}' applied successfully`,
+      message:
+        action === "approve_public"
+          ? "Written comment published. Verified Vendor Rating was not changed."
+          : action === "approve_vendor_private"
+            ? "Written comment kept Private. Verified Vendor Rating was not changed."
+            : action === "reject"
+              ? "Written comment will not be published. Verified Vendor Rating was not changed."
+              : "Written comment flagged and kept Private. Verified Vendor Rating was not changed.",
       review: updated,
     });
   } catch (error: any) {

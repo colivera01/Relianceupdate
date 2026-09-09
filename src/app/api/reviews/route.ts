@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { countableReviewWhere } from '@/lib/metrics-exclusion';
+import { canonicalPublicWrittenReviewWhere } from '@/lib/review-rating-validity';
 
 const MAX_LIMIT = 100;
 
@@ -43,8 +44,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
 
     const where: Record<string, unknown> = countableReviewWhere({
-      moderationStatus: 'approved',
-      visibilityStatus: 'public',
+      ...canonicalPublicWrittenReviewWhere(),
       ...(vendorId ? { vendorId } : {}),
       ...(userId ? { userId } : {}),
       ...(rating >= 1 && rating <= 5 ? { rating } : {}),

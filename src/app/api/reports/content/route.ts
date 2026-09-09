@@ -14,6 +14,8 @@ import {
 } from "@/lib/content-reporting";
 import { isTransientDbConnectivityError, PUBLIC_DB_UNAVAILABLE_CODE } from "@/lib/transient-db-errors";
 import { authorizationErrorResponse, requireRequestActor } from "@/lib/request-actor";
+import { countableReviewWhere } from "@/lib/metrics-exclusion";
+import { canonicalPublicWrittenReviewWhere } from "@/lib/review-rating-validity";
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -113,7 +115,22 @@ async function notifyAdmin(request: Request, report: any) {
 }
 
 async function createLegacyReviewReport(input: { actor: any; requestId: string; targetId: string; reasonCategory: string; reasonDetail: string }) {
-  const review = await (prisma as any).review.findFirst({ where: { id: input.targetId, moderationStatus: "approved", visibilityStatus: "public" } });
+  const review = await (prisma as any).review.findFirst({
+    where: countableReviewWhere({
+      id: input.targetId,
+      ...canonicalPublicWrittenReviewWhere(),
+      AND: [
+        {
+          vendor: {
+            is: {
+              isPubliclyListed: true,
+              accountStatus: "active",
+            },
+          },
+        },
+      ],
+    }),
+  });
   if (!review) throw new ContentReportError("REPORT_REVIEW_NOT_PUBLIC", "This review is not available for reporting.", 404);
   const payloadHash = contentReportHash({ targetType: "review", targetId: input.targetId, reasonCategory: input.reasonCategory, reasonDetail: input.reasonDetail || null });
   const idempotencyKey = contentReportHash({ reporterUserId: input.actor.userId, requestId: input.requestId });
