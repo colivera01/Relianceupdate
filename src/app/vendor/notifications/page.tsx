@@ -53,21 +53,36 @@ export default function VendorNotificationsPage() {
     return true;
   }), [filter, notifications]);
 
-  const markRead = async (notification: VendorNotification) => {
-    if (!vendor?.id || notification.read || notification.historical) return;
+  const markRead = async (
+    notification: VendorNotification,
+    transition: "MARK_READ" | "VIEW_DETAILS",
+  ) => {
+    if (!vendor?.id || notification.historical || (transition === "MARK_READ" && notification.read)) return;
     const response = await fetch(
       `/api/vendors/${encodeURIComponent(vendor.id)}/notifications/${encodeURIComponent(notification.id)}/read`,
-      { method: "POST", headers: getClientSessionHeaders(user?.id) },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(user?.id) },
+        body: JSON.stringify({ transition }),
+      },
     );
-    if (!response.ok) throw new Error("Unable to mark notification as read.");
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || typeof body?.readAt !== "string") {
+      throw new Error(String(body?.error || "Unable to mark notification as read."));
+    }
     setNotifications((items) => items.map((item) => item.id === notification.id
-      ? { ...item, read: true, readAt: new Date().toISOString() }
+      ? {
+          ...item,
+          read: true,
+          readAt: body.readAt,
+          viewedAt: typeof body?.viewedAt === "string" ? body.viewedAt : item.viewedAt,
+        }
       : item));
   };
 
   const viewDetails = async (notification: VendorNotification) => {
     try {
-      await markRead(notification);
+      await markRead(notification, "VIEW_DETAILS");
     } catch {
       // Read-state persistence is secondary; access to the work record must continue.
     }
@@ -139,7 +154,7 @@ export default function VendorNotificationsPage() {
                     <ExternalLink className="mr-2 h-4 w-4" /> View details
                   </Button>
                 ) : !notification.read && !notification.historical ? (
-                  <Button type="button" variant="outline" onClick={() => void markRead(notification)}>
+                  <Button type="button" variant="outline" onClick={() => void markRead(notification, "MARK_READ")}>
                     Mark read
                   </Button>
                 ) : null}

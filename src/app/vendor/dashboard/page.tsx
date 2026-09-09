@@ -94,7 +94,11 @@ export default function VendorDashboard() {
         if (notification.read || notification.historical) return;
         const response = await fetch(
           `/api/vendors/${encodeURIComponent(vendorId)}/notifications/${encodeURIComponent(notification.id)}/read`,
-          { method: 'POST', headers: getClientSessionHeaders(user?.id) },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getClientSessionHeaders(user?.id) },
+            body: JSON.stringify({ transition: 'VIEW_DETAILS' }),
+          },
         );
         if (!response.ok) throw new Error('Unable to persist notification read state.');
       },

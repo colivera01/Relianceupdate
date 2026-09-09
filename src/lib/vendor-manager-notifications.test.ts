@@ -55,12 +55,12 @@ describe("Vendor Manager audit notifications", () => {
     }));
   });
 
-  it("marks a notice read idempotently without crossing recipient boundaries", async () => {
+  it("marks a notice read idempotently without fabricating a detail view", async () => {
     const when = new Date("2026-09-06T12:00:00Z");
     const db: any = {
       vendorManagerNotification: {
         updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 }),
-        findFirst: vi.fn().mockResolvedValue({ readAt: when }),
+        findFirst: vi.fn().mockResolvedValue({ readAt: when, viewedAt: null }),
       },
     };
     const input = { id: "notice-1", vendorId: "vendor-1", membershipId: "manager-1", now: when };
@@ -75,8 +75,74 @@ describe("Vendor Manager audit notifications", () => {
         presentationState: "UNREAD",
         readAt: null,
       },
-      data: { presentationState: "READ", viewedAt: when, readAt: when },
+      data: { presentationState: "READ", readAt: when },
     });
+  });
+
+  it("records a detail view and read transition together using the authoritative timestamp", async () => {
+    const when = new Date("2026-09-06T12:00:00Z");
+    const db: any = {
+      vendorManagerNotification: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findFirst: vi.fn().mockResolvedValue({ readAt: when, viewedAt: when }),
+      },
+    };
+
+    await expect(markVendorManagerNotificationRead(db, {
+      id: "notice-1",
+      vendorId: "vendor-1",
+      membershipId: "manager-1",
+      transition: "VIEW_DETAILS",
+      now: when,
+    })).resolves.toMatchObject({ changed: true, readAt: when, viewedAt: when });
+
+    expect(db.vendorManagerNotification.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { presentationState: "READ", readAt: when, viewedAt: when },
+    }));
+  });
+
+  it("records the first real detail view after a notice was already marked read", async () => {
+    const readAt = new Date("2026-09-06T11:00:00Z");
+    const viewedAt = new Date("2026-09-06T12:00:00Z");
+    const db: any = {
+      vendorManagerNotification: {
+        updateMany: vi.fn().mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 }),
+        findFirst: vi.fn().mockResolvedValue({ readAt, viewedAt }),
+      },
+    };
+
+    await expect(markVendorManagerNotificationRead(db, {
+      id: "notice-1",
+      vendorId: "vendor-1",
+      membershipId: "manager-1",
+      transition: "VIEW_DETAILS",
+      now: viewedAt,
+    })).resolves.toMatchObject({ changed: true, readAt, viewedAt });
+
+    expect(db.vendorManagerNotification.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "notice-1",
+        vendorId: "vendor-1",
+        recipientMembershipId: "manager-1",
+        viewedAt: null,
+      },
+      data: { viewedAt },
+    });
+  });
+
+  it("fails closed when the notification does not belong to the exact manager membership", async () => {
+    const db: any = {
+      vendorManagerNotification: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    };
+
+    await expect(markVendorManagerNotificationRead(db, {
+      id: "notice-1",
+      vendorId: "vendor-1",
+      membershipId: "manager-other",
+    })).rejects.toThrow("VENDOR_MANAGER_NOTIFICATION_NOT_FOUND");
   });
 
   it("keeps legacy notices readable without fabricating a read timestamp", async () => {
@@ -109,6 +175,7 @@ describe("Vendor Manager audit notifications", () => {
       historical: true,
       read: true,
       readAt: null,
+      viewedAt: null,
     })]);
   });
 });

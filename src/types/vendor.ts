@@ -65,6 +65,7 @@ export interface VendorNotification {
   time: string;
   read: boolean;
   readAt?: string | null;
+  viewedAt?: string | null;
   priority: 'high' | 'medium' | 'low';
   href?: string;
   historical?: boolean;

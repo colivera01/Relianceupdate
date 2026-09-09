@@ -60,6 +60,52 @@ describe("Vendor Manager notification routes", () => {
       id: "notice-1",
       vendorId: "vendor-1",
       membershipId: "manager-1",
+      transition: "MARK_READ",
     });
+  });
+
+  it("records View details as the explicit viewed transition", async () => {
+    const request = new Request("http://localhost/api/vendors/vendor-1/notifications/notice-1/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transition: "VIEW_DETAILS" }),
+    });
+    const response = await POST(request, {
+      params: Promise.resolve({ vendorId: "vendor-1", notificationId: "notice-1" }),
+    });
+    expect(response.status).toBe(200);
+    expect(markVendorManagerNotificationRead).toHaveBeenCalledWith(expect.anything(), {
+      id: "notice-1",
+      vendorId: "vendor-1",
+      membershipId: "manager-1",
+      transition: "VIEW_DETAILS",
+    });
+  });
+
+  it("denies read transitions outside the active Vendor Manager boundary", async () => {
+    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden: Manager role required"));
+    const request = new Request("http://localhost/api/vendors/vendor-1/notifications/notice-1/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transition: "VIEW_DETAILS" }),
+    });
+    const response = await POST(request, {
+      params: Promise.resolve({ vendorId: "vendor-1", notificationId: "notice-1" }),
+    });
+    expect(response.status).toBe(403);
+    expect(markVendorManagerNotificationRead).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown presentation transition before mutation", async () => {
+    const request = new Request("http://localhost/api/vendors/vendor-1/notifications/notice-1/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transition: "DISMISS" }),
+    });
+    const response = await POST(request, {
+      params: Promise.resolve({ vendorId: "vendor-1", notificationId: "notice-1" }),
+    });
+    expect(response.status).toBe(422);
+    expect(markVendorManagerNotificationRead).not.toHaveBeenCalled();
   });
 });

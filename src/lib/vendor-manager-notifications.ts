@@ -11,6 +11,7 @@ export type VendorManagerNotificationView = {
   time: string;
   read: boolean;
   readAt: string | null;
+  viewedAt: string | null;
   priority: "high" | "medium";
   href: string;
   historical: boolean;
@@ -66,6 +67,7 @@ function toDurableView(row: any): VendorManagerNotificationView {
     time: new Date(row.createdAt).toISOString(),
     read: Boolean(row.readAt),
     readAt: row.readAt ? new Date(row.readAt).toISOString() : null,
+    viewedAt: row.viewedAt ? new Date(row.viewedAt).toISOString() : null,
     priority: String(row.notificationType) === CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND ? "high" : "medium",
     href: String(row.targetUrl),
     historical: false,
@@ -142,6 +144,7 @@ export async function listVendorManagerNotificationHistory(
         time: new Date(decision.decidedAt || row.createdAt).toISOString(),
         read: true,
         readAt: null,
+        viewedAt: null,
         priority: passed ? "medium" as const : "high" as const,
         href: `/vendor/jobs/${encodeURIComponent(row.bookingId)}`,
         historical: true,
@@ -154,25 +157,58 @@ export async function listVendorManagerNotificationHistory(
 
 export async function markVendorManagerNotificationRead(
   db: any,
-  input: { id: string; vendorId: string; membershipId: string; now?: Date },
+  input: {
+    id: string;
+    vendorId: string;
+    membershipId: string;
+    transition?: "MARK_READ" | "VIEW_DETAILS";
+    now?: Date;
+  },
 ) {
   if (input.id.startsWith("legacy:")) return { historical: true, changed: false };
   const now = input.now || new Date();
-  const changed = await db.vendorManagerNotification.updateMany({
-    where: {
-      id: input.id,
-      vendorId: input.vendorId,
-      recipientMembershipId: input.membershipId,
-      presentationState: "UNREAD",
-      readAt: null,
-    },
-    data: { presentationState: "READ", viewedAt: now, readAt: now },
-  });
-  if (Number(changed.count || 0) === 1) return { historical: false, changed: true, readAt: now };
-  const existing = await db.vendorManagerNotification.findFirst({
-    where: { id: input.id, vendorId: input.vendorId, recipientMembershipId: input.membershipId },
-    select: { readAt: true },
-  });
-  if (!existing) throw new Error("VENDOR_MANAGER_NOTIFICATION_NOT_FOUND");
-  return { historical: false, changed: false, readAt: existing.readAt };
+  const transition = input.transition || "MARK_READ";
+  const applyTransition = async (tx: any) => {
+    const readTransition = await tx.vendorManagerNotification.updateMany({
+      where: {
+        id: input.id,
+        vendorId: input.vendorId,
+        recipientMembershipId: input.membershipId,
+        presentationState: "UNREAD",
+        readAt: null,
+      },
+      data: {
+        presentationState: "READ",
+        readAt: now,
+        ...(transition === "VIEW_DETAILS" ? { viewedAt: now } : {}),
+      },
+    });
+    let viewTransition = { count: 0 };
+    if (transition === "VIEW_DETAILS" && Number(readTransition.count || 0) === 0) {
+      viewTransition = await tx.vendorManagerNotification.updateMany({
+        where: {
+          id: input.id,
+          vendorId: input.vendorId,
+          recipientMembershipId: input.membershipId,
+          viewedAt: null,
+        },
+        data: { viewedAt: now },
+      });
+    }
+    const existing = await tx.vendorManagerNotification.findFirst({
+      where: { id: input.id, vendorId: input.vendorId, recipientMembershipId: input.membershipId },
+      select: { readAt: true, viewedAt: true },
+    });
+    if (!existing) throw new Error("VENDOR_MANAGER_NOTIFICATION_NOT_FOUND");
+    if (!existing.readAt) throw new Error("VENDOR_MANAGER_NOTIFICATION_STATE_INVALID");
+    return {
+      historical: false,
+      changed: Number(readTransition.count || 0) + Number(viewTransition.count || 0) > 0,
+      readAt: existing.readAt,
+      viewedAt: existing.viewedAt,
+    };
+  };
+  return typeof db.$transaction === "function"
+    ? db.$transaction((tx: any) => applyTransition(tx))
+    : applyTransition(db);
 }

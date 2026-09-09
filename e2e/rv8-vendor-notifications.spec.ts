@@ -120,11 +120,18 @@ async function installVendorNotificationFixture(page: Page) {
       return;
     }
     if (pathname === `/api/vendors/${vendorId}/notifications/${notificationId}/read`) {
+      expect(request.postDataJSON()).toEqual({ transition: "VIEW_DETAILS" });
       read = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ success: true, notification: { id: notificationId, readAt: "2026-09-06T10:05:00.000Z" } }),
+        body: JSON.stringify({
+          success: true,
+          historical: false,
+          changed: true,
+          readAt: "2026-09-06T10:05:00.000Z",
+          viewedAt: "2026-09-06T10:05:00.000Z",
+        }),
       });
       return;
     }

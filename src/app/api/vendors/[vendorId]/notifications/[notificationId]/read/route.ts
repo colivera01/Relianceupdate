@@ -10,10 +10,19 @@ export async function POST(request: Request, context: Context) {
   try {
     const { vendorId, notificationId } = await context.params;
     const manager = await requireVendorManager(request, vendorId);
+    const body = await request.json().catch(() => ({}));
+    const transition = body?.transition == null ? "MARK_READ" : String(body.transition).toUpperCase();
+    if (!["MARK_READ", "VIEW_DETAILS"].includes(transition)) {
+      return NextResponse.json(
+        { success: false, error: "VENDOR_MANAGER_NOTIFICATION_TRANSITION_INVALID" },
+        { status: 422 },
+      );
+    }
     const result = await markVendorManagerNotificationRead(prisma as any, {
       id: notificationId,
       vendorId,
       membershipId: manager.membershipId,
+      transition: transition as "MARK_READ" | "VIEW_DETAILS",
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
