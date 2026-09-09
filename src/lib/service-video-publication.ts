@@ -386,6 +386,9 @@ export async function decidePackageVisibility(input: {
     ) {
       throw new Error("PACKAGE_VISIBILITY_AUDIO_CONFIRMATION_REQUIRED");
     }
+    if (decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY && immediatePublicationContract) {
+      await assertNoActivePublicRestriction(tx, input.bookingId);
+    }
     const stageSetHash = exactPackageStageSetHash(foundation.packageStages);
     const existing = await tx.serviceVideoPackageVisibilityDecision.findFirst({
       where: {
@@ -884,23 +887,55 @@ function approvedStageIds(decision: any): Set<string> {
   );
 }
 
+type RequiredParticipantRow = {
+  stageId: string;
+  actorUserId: string;
+  authorityType: "EMPLOYEE_LIKENESS" | "EMPLOYEE_AUDIO";
+  presentationHash: string;
+  membershipId: string;
+  membershipStatus: string;
+};
+
 async function requiredParticipantRows(db: any, proposal: any, stages: any[], customerDecision: any) {
   const approved = isPackageVisibilityProposal(proposal)
     ? new Set(stages.map((stage) => stage.id))
     : approvedStageIds(customerDecision);
-  const requirements: Array<{ stageId: string; actorUserId: string; authorityType: string; presentationHash: string }> = [];
+  const requirements: RequiredParticipantRow[] = [];
   for (const stage of stages.filter((row) => approved.has(row.id))) {
     if (!stage.containsEmployeeLikeness && !stage.includesAudio) continue;
     const evidence = await db.serviceVideoStageEvidence.findUnique({ where: { id: stage.stageEvidenceId } });
     const membership = evidence
-      ? await db.vendorMembership.findUnique({ where: { id: evidence.employeeMembershipId }, select: { userId: true } })
+      ? await db.vendorMembership.findUnique({
+          where: { id: evidence.employeeMembershipId },
+          select: { id: true, userId: true, vendorId: true, role: true, status: true },
+        })
       : null;
-    if (!membership?.userId) throw new Error("PUBLICATION_PARTICIPANT_AUTHORITY_UNRESOLVED");
+    if (
+      !membership?.userId ||
+      membership.vendorId !== proposal.vendorId ||
+      membership.role !== "EMPLOYEE"
+    ) {
+      throw new Error("PUBLICATION_PARTICIPANT_AUTHORITY_UNRESOLVED");
+    }
     if (stage.containsEmployeeLikeness) {
-      requirements.push({ stageId: stage.id, actorUserId: membership.userId, authorityType: "EMPLOYEE_LIKENESS", presentationHash: stage.presentationHash });
+      requirements.push({
+        stageId: stage.id,
+        actorUserId: membership.userId,
+        authorityType: "EMPLOYEE_LIKENESS",
+        presentationHash: stage.presentationHash,
+        membershipId: membership.id,
+        membershipStatus: membership.status,
+      });
     }
     if (stage.includesAudio) {
-      requirements.push({ stageId: stage.id, actorUserId: membership.userId, authorityType: "EMPLOYEE_AUDIO", presentationHash: stage.presentationHash });
+      requirements.push({
+        stageId: stage.id,
+        actorUserId: membership.userId,
+        authorityType: "EMPLOYEE_AUDIO",
+        presentationHash: stage.presentationHash,
+        membershipId: membership.id,
+        membershipStatus: membership.status,
+      });
     }
   }
   return requirements;
@@ -1130,7 +1165,6 @@ export async function decidePublicationAsParticipant(input: {
 }) {
   return prisma.$transaction(async (tx: any) => {
     const { proposal, stages } = await publicationContext(tx, input.proposalId);
-    if (proposal.status !== PUBLICATION_STATUSES.AWAITING_PARTICIPANTS) throw new Error("PUBLICATION_PARTICIPANT_DECISION_CLOSED");
     const customer = isPackageVisibilityProposal(proposal)
       ? await tx.serviceVideoPackageVisibilityDecision.findFirst({
           where: {
@@ -1145,24 +1179,110 @@ export async function decidePublicationAsParticipant(input: {
     const requirements = await requiredParticipantRows(tx, proposal, stages, customer);
     const actorRequirements = requirements.filter((row) => row.actorUserId === input.actorUserId);
     if (!actorRequirements.length) throw new Error("PUBLICATION_PARTICIPANT_FORBIDDEN");
-    for (const decision of input.decisions) {
-      const required = actorRequirements.find((row) => row.stageId === decision.stageId && row.authorityType === decision.authorityType);
+
+    const normalized = new Map<string, {
+      stageId: string;
+      authorityType: "EMPLOYEE_LIKENESS" | "EMPLOYEE_AUDIO";
+      decision: "APPROVED" | "DECLINED";
+      required: RequiredParticipantRow;
+      decisionHash: string;
+    }>();
+    if (!Array.isArray(input.decisions) || input.decisions.length === 0) {
+      throw new Error("PUBLICATION_PARTICIPANT_DECISION_INVALID");
+    }
+    for (const submitted of input.decisions) {
+      const stageId = String(submitted?.stageId || "").trim();
+      const authorityType = String(submitted?.authorityType || "").trim().toUpperCase();
+      const decision = String(submitted?.decision || "").trim().toUpperCase();
+      if (!["EMPLOYEE_LIKENESS", "EMPLOYEE_AUDIO"].includes(authorityType) ||
+        !["APPROVED", "DECLINED"].includes(decision)) {
+        throw new Error("PUBLICATION_PARTICIPANT_DECISION_INVALID");
+      }
+      const required = actorRequirements.find((row) => row.stageId === stageId && row.authorityType === authorityType);
       if (!required) throw new Error("PUBLICATION_PARTICIPANT_FORBIDDEN");
-      const decisionHash = sha256(`${proposal.proposalHash}:${required.presentationHash}:${input.actorUserId}:${decision.authorityType}:${decision.decision}`);
-      await tx.serviceVideoPublicationParticipantDecision.create({
-        data: {
+      const key = `${stageId}:${authorityType}`;
+      const previous = normalized.get(key);
+      if (previous && previous.decision !== decision) {
+        throw new Error("PUBLICATION_PARTICIPANT_DECISION_CONFLICT");
+      }
+      normalized.set(key, {
+        stageId,
+        authorityType: authorityType as "EMPLOYEE_LIKENESS" | "EMPLOYEE_AUDIO",
+        decision: decision as "APPROVED" | "DECLINED",
+        required,
+        decisionHash: sha256(`${proposal.proposalHash}:${required.presentationHash}:${input.actorUserId}:${authorityType}:${decision}`),
+      });
+    }
+
+    const existing = await tx.serviceVideoPublicationParticipantDecision.findMany({
+      where: { proposalId: proposal.id, actorUserId: input.actorUserId },
+    });
+    const existingByKey = new Map(existing.map((row: any) => [`${row.stageId}:${row.authorityType}`, row]));
+    const exactMatch = (row: any, submitted: ReturnType<typeof normalized.get>) => Boolean(submitted) &&
+      row?.proposalId === proposal.id &&
+      row?.stageId === submitted?.stageId &&
+      row?.bookingId === proposal.bookingId &&
+      row?.actorUserId === input.actorUserId &&
+      row?.authorityType === submitted?.authorityType &&
+      row?.decision === submitted?.decision &&
+      row?.decisionHash === submitted?.decisionHash &&
+      row?.proposalHash === proposal.proposalHash &&
+      row?.presentationHash === submitted?.required.presentationHash &&
+      row?.verificationMethod === input.verificationMethod;
+
+    for (const [key, submitted] of Array.from(normalized.entries())) {
+      const row = existingByKey.get(key);
+      if (row && !exactMatch(row, submitted)) {
+        throw new Error("PUBLICATION_PARTICIPANT_DECISION_CONFLICT");
+      }
+    }
+
+    const isExactRetry = Array.from(normalized.entries()).every(([key, submitted]) =>
+      exactMatch(existingByKey.get(key), submitted),
+    );
+    if (proposal.status !== PUBLICATION_STATUSES.AWAITING_PARTICIPANTS) {
+      if (isExactRetry && [
+        PUBLICATION_STATUSES.AWAITING_VENDOR,
+        PUBLICATION_STATUSES.AWAITING_ADMIN,
+        PUBLICATION_STATUSES.PUBLIC,
+        PUBLICATION_STATUSES.DECLINED_PRIVATE,
+      ].includes(proposal.status)) {
+        return { status: proposal.status, idempotent: true };
+      }
+      throw new Error("PUBLICATION_PARTICIPANT_DECISION_CLOSED");
+    }
+    if (actorRequirements.some((row) => row.membershipStatus !== "ACTIVE")) {
+      throw new Error("PUBLICATION_PARTICIPANT_FORBIDDEN");
+    }
+
+    for (const submitted of Array.from(normalized.values())) {
+      if (existingByKey.has(`${submitted.stageId}:${submitted.authorityType}`)) continue;
+      const record = await tx.serviceVideoPublicationParticipantDecision.upsert({
+        where: {
+          proposalId_stageId_actorUserId_authorityType: {
+            proposalId: proposal.id,
+            stageId: submitted.stageId,
+            actorUserId: input.actorUserId,
+            authorityType: submitted.authorityType,
+          },
+        },
+        create: {
           proposalId: proposal.id,
-          stageId: decision.stageId,
+          stageId: submitted.stageId,
           bookingId: proposal.bookingId,
           actorUserId: input.actorUserId,
-          authorityType: decision.authorityType,
-          decision: decision.decision,
-          decisionHash,
+          authorityType: submitted.authorityType,
+          decision: submitted.decision,
+          decisionHash: submitted.decisionHash,
           proposalHash: proposal.proposalHash,
-          presentationHash: required.presentationHash,
+          presentationHash: submitted.required.presentationHash,
           verificationMethod: input.verificationMethod,
         },
+        update: {},
       });
+      if (!exactMatch(record, submitted)) {
+        throw new Error("PUBLICATION_PARTICIPANT_DECISION_CONFLICT");
+      }
     }
     const recorded = await tx.serviceVideoPublicationParticipantDecision.findMany({ where: { proposalId: proposal.id } });
     const declined = recorded.some((row: any) => row.decision === "DECLINED");
@@ -1189,16 +1309,18 @@ export async function decidePublicationAsParticipant(input: {
     } else {
       await tx.serviceVideoPublicationProposal.update({ where: { id: proposal.id }, data: { status: nextStatus } });
     }
-    await writeAudit(tx, {
-      proposalId: proposal.id,
-      bookingId: proposal.bookingId,
-      vendorId: proposal.vendorId,
-      actorUserId: input.actorUserId,
-      actorRole: "PARTICIPANT",
-      eventType: "PARTICIPANT_PUBLICATION_DECIDED",
-      metadata: { status: nextStatus, decisionCount: input.decisions.length, proposalHash: proposal.proposalHash },
-    });
-    return { status: nextStatus };
+    if (!isExactRetry) {
+      await writeAudit(tx, {
+        proposalId: proposal.id,
+        bookingId: proposal.bookingId,
+        vendorId: proposal.vendorId,
+        actorUserId: input.actorUserId,
+        actorRole: "PARTICIPANT",
+        eventType: "PARTICIPANT_PUBLICATION_DECIDED",
+        metadata: { status: nextStatus, decisionCount: normalized.size, proposalHash: proposal.proposalHash },
+      });
+    }
+    return { status: nextStatus, idempotent: isExactRetry };
   }, { isolationLevel: "Serializable" });
 }
 

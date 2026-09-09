@@ -140,8 +140,8 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
   const copy = COPY[state];
   const isPublic = state === "PUBLIC";
   const canDecide = role === "customer" && data?.canDecide === true;
-  const canShare = canDecide && ["PRIVATE_DEFAULT", "PRIVATE"].includes(state);
-  const canMakePrivate = canDecide && isPublic;
+  const canShare = canDecide && data?.visibility?.publicRestrictionActive !== true && ["PRIVATE_DEFAULT", "PRIVATE"].includes(state);
+  const canMakePrivate = canDecide && ["PUBLIC", "PUBLIC_VISIBILITY_HOLD"].includes(state);
 
   return (
     <>

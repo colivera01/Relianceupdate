@@ -34,6 +34,7 @@ function visibility(state: string, audioIncluded = false) {
       auditPassed: true,
       privateProofReleased: true,
       publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+      publicRestrictionActive: false,
       visibilityContractVersion: 3,
       package: { id: "package-1", version: 3, packageHash: "package-hash", audioIncluded },
       visibilityDecision: null,
@@ -152,6 +153,21 @@ test("Public visibility can be made Private immediately without losing Private P
   await confirmation.getByRole("button", { name: "Confirm Make Private" }).click();
   await expect(page.getByTestId("package-visibility-customer")).toContainText("Your Service Video is visible only to you");
   expect(decisions).toEqual(["KEEP_PRIVATE"]);
+});
+
+test("a customer can make a held Public package Private while sharing remains blocked", async ({ page }) => {
+  await installSession(page);
+  const current = visibility("PUBLIC_VISIBILITY_HOLD");
+  current.visibility.publicRestrictionActive = true;
+  await page.route(new RegExp(`/api/bookings/${bookingId}/visibility$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(current) });
+  });
+
+  await page.goto("/test-fixtures/rv8-package-visibility?role=customer");
+  const card = page.getByTestId("package-visibility-customer");
+  await expect(card).toContainText("Public visibility temporarily paused");
+  await expect(card.getByRole("button", { name: "Make Private" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Share Publicly" })).toHaveCount(0);
 });
 
 test("a customer can share the same unchanged package again after making it Private", async ({ page }) => {

@@ -246,7 +246,13 @@ describe("exact-media Public Service Video evidence", () => {
     hoisted.prisma.serviceVideoPublicationVendorDecision.findFirst.mockResolvedValue({ id: "vendor-decision-1", decision: "APPROVED" });
     hoisted.prisma.serviceVideoPublicationAdminDecision.findFirst.mockResolvedValue({ id: "admin-decision-1", decision: "APPROVED", approvedAudience: "PUBLIC" });
     hoisted.prisma.serviceVideoStageEvidence.findUnique.mockResolvedValue({ id: "stage-final", employeeMembershipId: "employee-membership-1" });
-    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({ userId: "employee-1" });
+    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({
+      id: "employee-membership-1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+    });
     hoisted.prisma.serviceVideoPublicationParticipantDecision.findMany.mockResolvedValue([]);
 
     await expect(resolveCanonicalPublicAssetIds({ bookingId: "booking-1" })).resolves.toEqual([]);

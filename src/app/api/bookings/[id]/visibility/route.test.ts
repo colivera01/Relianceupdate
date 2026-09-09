@@ -84,4 +84,23 @@ describe("package visibility route authority", () => {
     expect(response.status).toBe(403);
     expect(loadPackageVisibilityView).not.toHaveBeenCalled();
   });
+
+  it("keeps customer visibility control available during a Public hold so the customer can make it Private", async () => {
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "customer-1",
+      vendorMemberships: [],
+      platformRoles: [],
+    } as any);
+    vi.mocked(loadPackageVisibilityView).mockResolvedValue({
+      auditPassed: true,
+      state: "PUBLIC_VISIBILITY_HOLD",
+      publicRestrictionActive: true,
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+    } as any);
+
+    const response = await GET(new Request("http://localhost/api/bookings/booking-1/visibility"), context);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).canDecide).toBe(true);
+  });
 });

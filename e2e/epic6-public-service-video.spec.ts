@@ -185,21 +185,21 @@ test("customer can keep every exact clip Private on desktop and mobile", async (
   await captureCard(page, "customer", "Mobile", "01-customer-private-outcome.png");
 });
 
-test("employee sees a participant-only decision and a truthful failure state", async ({ page }) => {
+test("employee sees the exact participant permission and a truthful failure state", async ({ page }) => {
   await installGeneralSession(page, "vendor");
   const participantProposal = {
     ...proposal,
     proposal: { ...proposal.proposal, status: "AWAITING_PARTICIPANT_DECISIONS" },
-    stages: [{ ...proposal.stages[0], containsEmployeeLikeness: true }],
+    stages: [{ ...proposal.stages[0], includesAudio: true }],
   };
   await installPublicationFixture(page, new RegExp(`/api/employee/jobs/${bookingId}/publication$`), participantProposal);
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/test-fixtures/epic6-publication?role=employee`);
-  await expect(page.getByRole("button", { name: "Approve my appearance and audio" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve Public use of my audio" })).toBeVisible();
   await captureCard(page, "employee", "Desktop", "04-employee-participant-decision.png");
 
-  await page.getByRole("button", { name: "Approve my appearance and audio" }).click();
+  await page.getByRole("button", { name: "Approve Public use of my audio" }).click();
   await expect(page.getByText("Ready for vendor representation approval", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await captureCard(page, "employee", "Mobile", "02-employee-decision-saved.png");

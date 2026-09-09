@@ -189,6 +189,13 @@ export function PublicationWorkflowCard({
         }
       : STATUS_COPY[status];
   const customerDecisions = parseCustomerDecisions(publication?.customerDecision?.decisionJson);
+  const employeeAppearanceIncluded = publication?.stages.some((stage) => stage.containsEmployeeLikeness) === true;
+  const employeeAudioIncluded = publication?.stages.some((stage) => stage.includesAudio) === true;
+  const participantApproveLabel = employeeAppearanceIncluded && employeeAudioIncluded
+    ? "Approve Public use of my appearance and audio"
+    : employeeAppearanceIncluded
+      ? "Approve Public use of my appearance"
+      : "Approve Public use of my audio";
 
   return (
     <Card className="border-slate-700 bg-slate-950 text-white shadow-sm" data-testid={`publication-${role}-card`}>
@@ -330,7 +337,7 @@ export function PublicationWorkflowCard({
               <Button disabled={submitting} onClick={() => void submit("PATCH", { decisions: publication.stages.flatMap((stage) => [
                 ...(stage.containsEmployeeLikeness ? [{ stageId: stage.id, authorityType: "EMPLOYEE_LIKENESS", decision: "APPROVED" }] : []),
                 ...(stage.includesAudio ? [{ stageId: stage.id, authorityType: "EMPLOYEE_AUDIO", decision: "APPROVED" }] : []),
-              ]) })} className="bg-blue-600 text-white hover:bg-blue-700">Approve my appearance and audio</Button>
+              ]) })} className="bg-blue-600 text-white hover:bg-blue-700">{participantApproveLabel}</Button>
               <Button disabled={submitting} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => void submit("PATCH", { decisions: publication.stages.flatMap((stage) => [
                 ...(stage.containsEmployeeLikeness ? [{ stageId: stage.id, authorityType: "EMPLOYEE_LIKENESS", decision: "DECLINED" }] : []),
                 ...(stage.includesAudio ? [{ stageId: stage.id, authorityType: "EMPLOYEE_AUDIO", decision: "DECLINED" }] : []),

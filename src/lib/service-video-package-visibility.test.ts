@@ -31,7 +31,7 @@ const hoisted = vi.hoisted(() => {
       update: vi.fn(),
     },
     serviceVideoPublicationStage: { create: vi.fn(), findMany: vi.fn() },
-    serviceVideoPublicationParticipantDecision: { findMany: vi.fn() },
+    serviceVideoPublicationParticipantDecision: { findMany: vi.fn(), upsert: vi.fn() },
     serviceVideoPublicationAdminDecision: { create: vi.fn() },
     serviceVideoPublicationAuditEvent: { create: vi.fn() },
     publicServiceVideoEligibility: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
@@ -171,6 +171,7 @@ describe("package-level customer Service Video visibility", () => {
     })));
     hoisted.prisma.serviceVideoPublicationAuditEvent.create.mockResolvedValue({ id: "audit-1" });
     hoisted.prisma.publicServiceVideoEligibility.create.mockResolvedValue({ id: "eligibility-1" });
+    hoisted.prisma.serviceVideoPublicationParticipantDecision.findMany.mockResolvedValue([]);
   });
 
   it("keeps the complete Admin-approved package Private without creating a Public proposal", async () => {
@@ -461,7 +462,13 @@ describe("package-level customer Service Video visibility", () => {
     hoisted.prisma.serviceVideoStageEvidence.findUnique.mockResolvedValue({
       employeeMembershipId: "employee-membership-1",
     });
-    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({ userId: "employee-1" });
+    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({
+      id: "employee-membership-1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+    });
     hoisted.prisma.serviceVideoPublicationStage.findMany.mockResolvedValue(packageStages.map((stage) => ({
       id: `pub-${stage.stage}`,
       proposalId: "proposal-1",
@@ -545,5 +552,188 @@ describe("package-level customer Service Video visibility", () => {
       decision: "SHARE_PUBLICLY",
       verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
     })).rejects.toThrow("PUBLICATION_ACTIVE_RESTRICTION");
+    expect(hoisted.prisma.serviceVideoPackageVisibilityDecision.create).not.toHaveBeenCalled();
+    expect(hoisted.prisma.serviceVideoPublicationProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("publishes after exact active employee permission and reuses the same immutable decisions on retry", async () => {
+    installImmediateAudit();
+    hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
+      peopleScope: "employee",
+      subjectJson: "{}",
+      scopeJson: JSON.stringify({ schemaVersion: "historical-recording-scope" }),
+      audioAllowed: false,
+    });
+    hoisted.prisma.serviceVideoStageEvidence.findUnique.mockResolvedValue({
+      employeeMembershipId: "employee-membership-1",
+    });
+    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({
+      id: "employee-membership-1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+    });
+    const publicationStages = packageStages.map((stage) => ({
+      id: `pub-${stage.stage}`,
+      proposalId: "proposal-1",
+      ...stage,
+      containsEmployeeLikeness: true,
+      includesAudio: false,
+      containsMinor: false,
+      containsBystander: false,
+      presentationHash: `presentation-${stage.stage}`,
+    }));
+    hoisted.prisma.serviceVideoPublicationStage.findMany.mockResolvedValue(publicationStages);
+    const participantRows: any[] = [];
+    hoisted.prisma.serviceVideoPublicationParticipantDecision.findMany.mockImplementation(({ where }: any) =>
+      Promise.resolve(participantRows.filter((row) =>
+        row.proposalId === where.proposalId && (!where.actorUserId || row.actorUserId === where.actorUserId),
+      )),
+    );
+    hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert.mockImplementation(({ create }: any) => {
+      const key = `${create.proposalId}:${create.stageId}:${create.actorUserId}:${create.authorityType}`;
+      const existing = participantRows.find((row) =>
+        `${row.proposalId}:${row.stageId}:${row.actorUserId}:${row.authorityType}` === key,
+      );
+      if (existing) return Promise.resolve(existing);
+      const created = { id: `participant-${participantRows.length + 1}`, ...create };
+      participantRows.push(created);
+      return Promise.resolve(created);
+    });
+
+    const { decidePackageVisibility, decidePublicationAsParticipant } = await import("./service-video-publication");
+    const authorization = await decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    });
+    const decisions = publicationStages.map((stage) => ({
+      stageId: stage.id,
+      authorityType: "EMPLOYEE_LIKENESS" as const,
+      decision: "APPROVED" as const,
+    }));
+    hoisted.prisma.serviceVideoPublicationProposal.findUnique.mockResolvedValue(authorization.proposal);
+    hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst.mockResolvedValue(authorization.decision);
+
+    await expect(decidePublicationAsParticipant({
+      proposalId: "proposal-1",
+      actorUserId: "employee-1",
+      decisions,
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+    })).resolves.toEqual({ status: "PUBLIC", idempotent: false });
+    expect(participantRows).toHaveLength(3);
+    expect(hoisted.prisma.serviceVideoPublicationAdminDecision.create).not.toHaveBeenCalled();
+    expect(hoisted.prisma.publicServiceVideoEligibility.create).toHaveBeenCalledTimes(3);
+    expect(hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert).toHaveBeenCalledTimes(3);
+    const firstUpsert = hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert.mock.calls[0][0];
+    expect(firstUpsert).toEqual(expect.objectContaining({
+      where: {
+        proposalId_stageId_actorUserId_authorityType: {
+          proposalId: "proposal-1",
+          stageId: "pub-INTRO",
+          actorUserId: "employee-1",
+          authorityType: "EMPLOYEE_LIKENESS",
+        },
+      },
+      create: expect.objectContaining({ decision: "APPROVED" }),
+      update: {},
+    }));
+    expect(firstUpsert).not.toHaveProperty("data");
+
+    hoisted.prisma.serviceVideoPublicationProposal.findUnique.mockResolvedValue({
+      ...authorization.proposal,
+      status: "PUBLIC",
+    });
+    await expect(decidePublicationAsParticipant({
+      proposalId: "proposal-1",
+      actorUserId: "employee-1",
+      decisions,
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+    })).resolves.toEqual({ status: "PUBLIC", idempotent: true });
+    expect(participantRows).toHaveLength(3);
+    expect(hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert).toHaveBeenCalledTimes(3);
+
+    await expect(decidePublicationAsParticipant({
+      proposalId: "proposal-1",
+      actorUserId: "employee-1",
+      decisions: [{ ...decisions[0], decision: "DECLINED" }],
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+    })).rejects.toThrow("PUBLICATION_PARTICIPANT_DECISION_CONFLICT");
+    expect(participantRows).toHaveLength(3);
+  });
+
+  it("rejects invalid, conflicting, or inactive employee participant submissions before publication", async () => {
+    installImmediateAudit();
+    hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
+      peopleScope: "employee",
+      subjectJson: "{}",
+      scopeJson: JSON.stringify({ schemaVersion: "historical-recording-scope" }),
+      audioAllowed: false,
+    });
+    hoisted.prisma.serviceVideoStageEvidence.findUnique.mockResolvedValue({ employeeMembershipId: "employee-membership-1" });
+    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({
+      id: "employee-membership-1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+    });
+    const publicationStages = packageStages.map((stage) => ({
+      id: `pub-${stage.stage}`,
+      proposalId: "proposal-1",
+      ...stage,
+      containsEmployeeLikeness: true,
+      includesAudio: false,
+      presentationHash: `presentation-${stage.stage}`,
+    }));
+    hoisted.prisma.serviceVideoPublicationStage.findMany.mockResolvedValue(publicationStages);
+    const { decidePackageVisibility, decidePublicationAsParticipant } = await import("./service-video-publication");
+    const authorization = await decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    });
+    hoisted.prisma.serviceVideoPublicationProposal.findUnique.mockResolvedValue(authorization.proposal);
+    hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst.mockResolvedValue(authorization.decision);
+
+    await expect(decidePublicationAsParticipant({
+      proposalId: "proposal-1",
+      actorUserId: "employee-1",
+      decisions: [{
+        stageId: "pub-INTRO",
+        authorityType: "EMPLOYEE_LIKENESS",
+        decision: "UNSUPPORTED" as any,
+      }],
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+    })).rejects.toThrow("PUBLICATION_PARTICIPANT_DECISION_INVALID");
+
+    await expect(decidePublicationAsParticipant({
+      proposalId: "proposal-1",
+      actorUserId: "employee-1",
+      decisions: [
+        { stageId: "pub-INTRO", authorityType: "EMPLOYEE_LIKENESS", decision: "APPROVED" },
+        { stageId: "pub-INTRO", authorityType: "EMPLOYEE_LIKENESS", decision: "DECLINED" },
+      ],
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+    })).rejects.toThrow("PUBLICATION_PARTICIPANT_DECISION_CONFLICT");
+
+    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({
+      id: "employee-membership-1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      role: "EMPLOYEE",
+      status: "REVOKED",
+    });
+    await expect(decidePublicationAsParticipant({
+      proposalId: "proposal-1",
+      actorUserId: "employee-1",
+      decisions: [{ stageId: "pub-INTRO", authorityType: "EMPLOYEE_LIKENESS", decision: "APPROVED" }],
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+    })).rejects.toThrow("PUBLICATION_PARTICIPANT_FORBIDDEN");
+    expect(hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert).not.toHaveBeenCalled();
+    expect(hoisted.prisma.publicServiceVideoEligibility.create).not.toHaveBeenCalled();
   });
 });

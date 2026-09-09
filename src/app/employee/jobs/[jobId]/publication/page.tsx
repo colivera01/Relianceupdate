@@ -18,7 +18,7 @@ export default function EmployeePublicationDecisionPage() {
         </Link>
         <header className="space-y-2">
           <p className="text-xs font-semibold uppercase text-blue-200">Participant decision</p>
-          <h1 className="text-2xl font-bold">Review Public use of your likeness or audio</h1>
+          <h1 className="text-2xl font-bold">Public use of your likeness or audio</h1>
           <p className="max-w-2xl text-sm text-slate-300">
             You are deciding only for your own appearance or audio. Declining does not change the completed service or its Private proof.
           </p>
