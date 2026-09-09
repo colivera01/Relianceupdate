@@ -22,7 +22,6 @@ function text(value: unknown): string {
 }
 
 function reporterRole(actor: any): string {
-  if (actor.platformRoles.includes("ADMIN")) return "admin";
   if (actor.vendorMemberships.length) return "vendor";
   return "customer";
 }

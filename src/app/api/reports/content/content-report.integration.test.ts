@@ -107,6 +107,28 @@ describe("Service Video content reports", () => {
     expect(h.tx.mediaLifecycleCase.create).not.toHaveBeenCalled();
   });
 
+  it("attributes a shared Admin and Employee identity to the general Vendor session", async () => {
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "shared-admin-employee",
+      email: "shared@example.com",
+      accountStatus: "active",
+      platformRoles: ["ADMIN"],
+      vendorMemberships: [{ id: "membership-1", vendorId: "vendor-1", role: "EMPLOYEE" }],
+    });
+    h.resolvePublic.mockResolvedValue(["asset-1"]);
+    h.prisma.publicServiceVideoEligibility.findFirst.mockResolvedValue({ packageId: "package-1", packageHash: "package-hash", proposalId: "proposal-1" });
+
+    const response = await POST(request({ reasonCategory: "copyright" }));
+
+    expect(response.status).toBe(201);
+    expect(h.tx.contentReport.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ reporterUserId: "shared-admin-employee", reporterRole: "vendor" }),
+    });
+    expect(h.tx.contentReportCaseEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actorUserId: "shared-admin-employee", actorRole: "vendor" }),
+    });
+  });
+
   it("allows reports only for canonical Public written comments from countable identities", async () => {
     vi.mocked(requireRequestActor).mockResolvedValue({ userId: "viewer-1", email: "viewer@example.com", accountStatus: "active", platformRoles: [], vendorMemberships: [] });
     h.tx.contentReport.create.mockResolvedValue(reportRow({ targetType: "review", targetId: "review-1" }));

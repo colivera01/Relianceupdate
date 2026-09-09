@@ -26,11 +26,10 @@ async function authorize(request: Request, bookingId: string) {
   const manager = actor.vendorMemberships.some(
     (membership) => membership.vendorId === booking.vendorId && membership.role === "MANAGER",
   );
-  const admin = actor.platformRoles.includes("ADMIN");
-  if (!customer && !manager && !admin) {
+  if (!customer && !manager) {
     throw new AuthorizationError("FORBIDDEN", "You do not have access to this visibility record.", 403);
   }
-  return { actor, booking, customer, manager, admin };
+  return { actor, booking, customer, manager };
 }
 
 function failure(error: unknown) {
@@ -48,12 +47,10 @@ export async function GET(request: Request, context: Context) {
     const { id } = await context.params;
     const access = await authorize(request, id);
     const visibility = await loadPackageVisibilityView({ bookingId: id });
-    const roleVisibility = visibility && !access.admin
-      ? { ...visibility, publicDisplayReason: null }
-      : visibility;
+    const roleVisibility = visibility ? { ...visibility, publicDisplayReason: null } : visibility;
     return NextResponse.json({
       success: true,
-      role: access.customer ? "CUSTOMER" : access.manager ? "VENDOR_MANAGER" : "ADMIN",
+      role: access.customer ? "CUSTOMER" : "VENDOR_MANAGER",
       canDecide: access.customer &&
         visibility?.auditPassed === true &&
         visibility?.publicDisplayEligibility !== "PRIVATE_ONLY",

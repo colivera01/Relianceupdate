@@ -87,7 +87,7 @@ for (const device of [
         const url = new URL(request.url());
         const type = url.searchParams.get('type') || 'all';
         const vendor = { entityType: 'vendor', favoriteId: 'vf-1', vendorId: 'vendor-1', vendorName: 'Electro LLC', vendorCategory: 'Electrical', vendorBusinessType: 'Electrician', location: 'Orlando, FL', rating: 4.8, reviewCount: 18, serviceCount: 4, isPubliclyListed: true, favoritedAt: '2026-09-02T12:00:00.000Z' };
-        const service = { entityType: 'service', favoriteId: 'sf-1', serviceId: 'service-1', serviceName: 'Breaker Replacement', serviceDescription: 'Replace a faulty breaker.', price: 275, vendorId: 'vendor-1', vendorName: 'Electro LLC', vendorCategory: 'Electrical', vendorBusinessType: 'Electrician', location: 'Orlando, FL', rating: 4.8, reviewCount: 18, previewMediaUrl: null, previewMediaType: null, publicListing: { serviceEligible: true, hasPublicMedia: false }, favoritedAt: '2026-09-01T12:00:00.000Z' };
+        const service = { entityType: 'service', favoriteId: 'sf-1', serviceId: 'service-1', serviceName: 'Breaker Replacement', serviceDescription: 'Replace a faulty breaker.', price: 275, vendorId: 'vendor-1', vendorName: 'Electro LLC', vendorCategory: 'Electrical', vendorBusinessType: 'Electrician', location: 'Orlando, FL', rating: 4.8, reviewCount: 18, previewMediaUrl: null, previewMediaType: null, publicListing: { serviceEligible: false, vendorEligible: true, hasPublicMedia: false }, favoritedAt: '2026-09-01T12:00:00.000Z' };
         const items = type === 'vendor' ? (removedVendor ? [] : [vendor]) : type === 'service' ? [service] : [...(removedVendor ? [] : [vendor]), service];
         await route.fulfill({
           status: 200,
@@ -100,9 +100,12 @@ for (const device of [
       await expect(page.getByRole('heading', { name: 'Favorites' })).toBeVisible();
       await expect(page.getByRole('tab', { name: /Services 1/ })).toBeVisible();
       await expect(page.getByRole('tab', { name: /Businesses 1/ })).toBeVisible();
-      await expect(page.getByText('Saved Public Service')).toBeVisible();
+      await expect(page.getByText('Saved Service', { exact: true })).toBeVisible();
       await expect(page.getByText('Saved Business')).toBeVisible();
       await expect(page.getByText(/completed work remains in/i)).toBeVisible();
+      await expect(page.getByText('This saved Service is not currently available in Explore Proof.')).toBeVisible();
+      await expect(page.getByRole('link', { name: 'View Service' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'View Business' })).toHaveCount(2);
       await expect(page.getByText('videos, reviews, or vendors')).toHaveCount(0);
 
       await page.getByRole('tab', { name: /Businesses 1/ }).click();

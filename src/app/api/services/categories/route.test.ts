@@ -54,6 +54,7 @@ function createStageAsset(stage: "INTRO" | "IN_PROGRESS" | "COMPLETED") {
     blobUrl: `https://assets.example/${stage.toLowerCase()}.mp4`,
     mediaSession: {
       serviceId: "service-1",
+      bookingId: "booking-1",
       vendorJobVideoStage: stage,
       sessionType: "JOB_SERVICE_VIDEO",
     },
@@ -82,10 +83,32 @@ describe("GET /api/services/categories", () => {
     expect(json.meta.scannedPublishedServices).toBe(1);
   });
 
-  it("counts a category when a service has an exact approved Public Final Result", async () => {
+  it("does not count a category for only a Public Final Result", async () => {
     hoisted.serviceFindMany.mockResolvedValue([createService()]);
     vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(["asset-completed"]);
     hoisted.mediaAssetFindMany.mockResolvedValue([createStageAsset("COMPLETED")]);
+
+    const response = await GET();
+    const json = await readJson(response);
+
+    expect(response.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.categories).toEqual([]);
+    expect(json.meta.countedServices).toBe(0);
+  });
+
+  it("counts a category only when the exact three-stage Public package is available", async () => {
+    hoisted.serviceFindMany.mockResolvedValue([createService()]);
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([
+      "asset-intro",
+      "asset-in_progress",
+      "asset-completed",
+    ]);
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      createStageAsset("INTRO"),
+      createStageAsset("IN_PROGRESS"),
+      createStageAsset("COMPLETED"),
+    ]);
 
     const response = await GET();
     const json = await readJson(response);

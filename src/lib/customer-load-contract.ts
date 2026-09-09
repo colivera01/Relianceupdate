@@ -32,7 +32,7 @@ export const customerFavoritesResponseSchema = z.object({
   success: z.literal(true),
   items: z.array(z.discriminatedUnion('entityType', [
     z.object({ entityType: z.literal('vendor'), favoriteId: z.string(), vendorId: z.string(), vendorName: z.string() }).passthrough(),
-    z.object({ entityType: z.literal('service'), favoriteId: z.string(), serviceId: z.string(), serviceName: z.string(), publicListing: z.object({ serviceEligible: z.boolean() }).passthrough() }).passthrough(),
+    z.object({ entityType: z.literal('service'), favoriteId: z.string(), serviceId: z.string(), serviceName: z.string(), publicListing: z.object({ serviceEligible: z.boolean(), vendorEligible: z.boolean().optional() }).passthrough() }).passthrough(),
   ])),
   counts: z.object({ all: count, services: count, vendors: count }), pagination: paginationSchema,
 });

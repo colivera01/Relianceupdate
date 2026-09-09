@@ -146,6 +146,18 @@ describe('GET /api/services/[id]', () => {
         isPrimaryProofVideo: true,
       },
     ]);
+    expect(hoisted.reviewCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        demo: false,
+        source: 'customer',
+        bookingId: { not: null },
+        comment: { not: null },
+        moderationStatus: 'approved',
+        visibilityStatus: 'public',
+        user: { is: expect.objectContaining({ demo: false }) },
+        vendor: expect.objectContaining({ demo: false }),
+      }),
+    });
   });
 
   it('returns 404 when the vendor is not publicly eligible', async () => {

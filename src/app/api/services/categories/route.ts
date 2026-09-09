@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
-import {
-  isCompletedStageProofVideo,
-  shouldIncludeAssetForCustomerPublicProof,
-} from "@/lib/proof-media-policy";
-import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
+import { groupCompletePublicProofPackagesByService } from "@/lib/proof-media-policy";
 import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 import {
   countableMediaAssetWhere,
@@ -21,12 +17,6 @@ import {
 
 const FALLBACK_CATEGORY_LABEL = "Other Services";
 
-type ProofStageAvailability = {
-  startingCondition: boolean;
-  workInProgress: boolean;
-  finalResult: boolean;
-};
-
 /**
  * GET /api/services/categories
  * Public-safe category aggregation for browse.
@@ -34,7 +24,7 @@ type ProofStageAvailability = {
  * Counts only services that are currently visible in public discovery:
  * - vendor is publicly listed and active
  * - service is explicitly published
- * - service has an exact approved, active Public Final Result video
+ * - service has the exact approved, active three-stage Public package
  */
 export async function GET(): Promise<NextResponse> {
   try {
@@ -92,6 +82,7 @@ export async function GET(): Promise<NextResponse> {
           mediaSession: {
             select: {
               serviceId: true,
+              bookingId: true,
               vendorJobVideoStage: true,
               sessionType: true,
             },
@@ -100,44 +91,9 @@ export async function GET(): Promise<NextResponse> {
       })
     );
 
-    const stageAvailabilityByServiceId = new Map<string, ProofStageAvailability>();
-    const completedPublicPreviewServiceIds = new Set<string>();
+    const completePackagesByServiceId = groupCompletePublicProofPackagesByService(publicAssets);
 
-    const ensureStageAvailability = (serviceId: string): ProofStageAvailability => {
-      const existing = stageAvailabilityByServiceId.get(serviceId);
-      if (existing) return existing;
-      const next = {
-        startingCondition: false,
-        workInProgress: false,
-        finalResult: false,
-      };
-      stageAvailabilityByServiceId.set(serviceId, next);
-      return next;
-    };
-
-    for (const asset of publicAssets) {
-      const mediaSession = asset?.mediaSession || null;
-      if (!shouldIncludeAssetForCustomerPublicProof(mediaSession)) continue;
-      if (!String(asset?.mimeType || "").startsWith("video/")) continue;
-
-      const serviceId = String(mediaSession?.serviceId || "");
-      if (!serviceId) continue;
-
-      if (isCompletedStageProofVideo(mediaSession)) {
-        completedPublicPreviewServiceIds.add(serviceId);
-      }
-
-      const stage = resolveVendorJobVideoStageFromSession(mediaSession);
-      const availability = ensureStageAvailability(serviceId);
-      if (stage === "INTRO") availability.startingCondition = true;
-      if (stage === "IN_PROGRESS") availability.workInProgress = true;
-      if (stage === "COMPLETED") availability.finalResult = true;
-    }
-
-    const proofEligibleServices = services.filter((service) => {
-      const availability = stageAvailabilityByServiceId.get(service.id);
-      return Boolean(completedPublicPreviewServiceIds.has(service.id) && availability?.finalResult);
-    });
+    const proofEligibleServices = services.filter((service) => completePackagesByServiceId.has(service.id));
 
     if (proofEligibleServices.length === 0) {
       return NextResponse.json({
@@ -147,7 +103,7 @@ export async function GET(): Promise<NextResponse> {
           countedServices: 0,
           scannedPublishedServices: services.length,
           eligibilityRule:
-            "No service categories are shown until a published service has an exact approved Public Final Result video.",
+            "No service categories are shown until a published service has an exact approved three-stage Public Service Video.",
         },
       });
     }
@@ -203,7 +159,7 @@ export async function GET(): Promise<NextResponse> {
         countedServices: proofEligibleServices.length,
         scannedPublishedServices: services.length,
         eligibilityRule:
-          "Only published services from active public vendors with an exact approved Public Final Result video are counted.",
+          "Only published services from active public vendors with an exact approved three-stage Public Service Video are counted.",
       },
     });
   } catch (error: any) {

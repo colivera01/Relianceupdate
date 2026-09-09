@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireVendorManager } from "@/lib/membership-auth";
+import { authorizationErrorResponse } from "@/lib/request-actor";
 import { markVendorManagerNotificationRead } from "@/lib/vendor-manager-notifications";
 import { prisma } from "@/server/db";
 
@@ -26,6 +27,8 @@ export async function POST(request: Request, context: Context) {
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     const message = error instanceof Error ? error.message : "Unable to update notification.";
     const status = message.includes("Unauthorized") || message.includes("Forbidden")
       ? 403

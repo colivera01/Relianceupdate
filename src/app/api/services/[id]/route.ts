@@ -13,6 +13,7 @@ import {
   cleanPublicServicePrice,
 } from '@/lib/launch-content-cleanup';
 import { countableReviewWhere } from '@/lib/metrics-exclusion';
+import { canonicalPublicWrittenReviewWhere } from '@/lib/review-rating-validity';
 import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 import {
   VENDOR_JOB_VIDEO_STAGE_LABELS,
@@ -156,8 +157,7 @@ export async function GET(
             prisma.review.count({
               where: countableReviewWhere({
                 vendorId: dbService.vendor.id,
-                moderationStatus: 'approved',
-                visibilityStatus: 'public',
+                ...canonicalPublicWrittenReviewWhere(),
                 OR: [
                   {
                     booking: {

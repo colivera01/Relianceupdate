@@ -85,6 +85,37 @@ describe("package visibility route authority", () => {
     expect(loadPackageVisibilityView).not.toHaveBeenCalled();
   });
 
+  it("does not inherit Admin visibility through a general Employee session", async () => {
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "shared-admin-employee",
+      vendorMemberships: [{ id: "membership-3", vendorId: "vendor-1", role: "EMPLOYEE" }],
+      platformRoles: ["ADMIN"],
+    } as any);
+
+    const response = await GET(new Request("http://localhost/api/bookings/booking-1/visibility"), context);
+
+    expect(response.status).toBe(403);
+    expect(loadPackageVisibilityView).not.toHaveBeenCalled();
+  });
+
+  it("keeps the internal Audit eligibility reason out of the manager response", async () => {
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "manager-1",
+      vendorMemberships: [{ id: "membership-1", vendorId: "vendor-1", role: "MANAGER" }],
+      platformRoles: [],
+    } as any);
+    vi.mocked(loadPackageVisibilityView).mockResolvedValue({
+      auditPassed: true,
+      state: "PRIVATE_ONLY",
+      publicDisplayReason: "Internal Audit evidence",
+    } as any);
+
+    const response = await GET(new Request("http://localhost/api/bookings/booking-1/visibility"), context);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).visibility.publicDisplayReason).toBeNull();
+  });
+
   it("keeps customer visibility control available during a Public hold so the customer can make it Private", async () => {
     vi.mocked(requireRequestActor).mockResolvedValue({
       userId: "customer-1",

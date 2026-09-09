@@ -3,12 +3,12 @@ import { prisma } from "@/server/db";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
 import {
+  groupCompletePublicProofPackagesByService,
   isCompletedStageProofVideo,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
 import { buildProofCard, rankProofFirstResults, type ProofStageAvailability } from "@/lib/proof-card";
 import { buildProofCardDemoDiscoverResponse } from "@/lib/proof-card-demo-fixtures";
-import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
 import { getGeocodingProvider } from "@/lib/geocoding";
 import { distanceMiles, hasValidCoordinates, roundDistanceMiles, type Coordinates } from "@/lib/distance";
 import {
@@ -331,6 +331,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               mediaSession: {
                 select: {
                   serviceId: true,
+                  bookingId: true,
                   vendorJobVideoStage: true,
                   sessionType: true,
                 },
@@ -352,44 +353,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const primaryProofPreviewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     const stageAvailabilityByServiceId = new Map<string, ProofStageAvailability>();
 
-    const ensureStageAvailability = (serviceId: string): ProofStageAvailability => {
-      const existing = stageAvailabilityByServiceId.get(serviceId);
-      if (existing) return existing;
-      const next = {
-        startingCondition: false,
-        workInProgress: false,
-        finalResult: false,
-      };
-      stageAvailabilityByServiceId.set(serviceId, next);
-      return next;
-    };
-
-    for (const asset of proofSafePublicAssets) {
-      const serviceId = String(asset?.mediaSession?.serviceId || "");
-      const blobUrl = asset?.id ? `/api/public/media/${asset.id}` : "";
-      if (!serviceId || !blobUrl || primaryProofPreviewByServiceId.has(serviceId)) continue;
-      if (!String(asset?.mimeType || "").startsWith("video/")) continue;
-      if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
-      primaryProofPreviewByServiceId.set(serviceId, { url: blobUrl, type: "video" });
-    }
-    for (const asset of proofSafePublicAssets) {
-      const serviceId = String(asset?.mediaSession?.serviceId || "");
-      if (!serviceId || !String(asset?.mimeType || "").startsWith("video/")) continue;
-      const stage = resolveVendorJobVideoStageFromSession(asset?.mediaSession || {});
-      const availability = ensureStageAvailability(serviceId);
-      if (stage === "INTRO") availability.startingCondition = true;
-      if (stage === "IN_PROGRESS") availability.workInProgress = true;
-      if (stage === "COMPLETED") availability.finalResult = true;
-    }
-    for (const asset of proofSafePublicAssets) {
-      const serviceId = String(asset?.mediaSession?.serviceId || "");
-      const blobUrl = asset?.id ? `/api/public/media/${asset.id}` : "";
-      if (!serviceId || !blobUrl || previewByServiceId.has(serviceId)) continue;
-      previewByServiceId.set(serviceId, {
-        url: blobUrl,
-        type: String(asset?.mimeType || "").startsWith("video/") ? "video" : "image",
+    const completePackagesByServiceId = groupCompletePublicProofPackagesByService(proofSafePublicAssets);
+    completePackagesByServiceId.forEach((packageAssets, serviceId) => {
+      stageAvailabilityByServiceId.set(serviceId, {
+        startingCondition: true,
+        workInProgress: true,
+        finalResult: true,
       });
-    }
+      const finalAsset = packageAssets.find((asset: any) =>
+        isCompletedStageProofVideo(asset?.mediaSession || null)
+      );
+      if (finalAsset?.id) {
+        primaryProofPreviewByServiceId.set(serviceId, {
+          url: `/api/public/media/${finalAsset.id}`,
+          type: "video",
+        });
+      }
+      const firstAsset = packageAssets[0];
+      if (firstAsset?.id) {
+        previewByServiceId.set(serviceId, {
+          url: `/api/public/media/${firstAsset.id}`,
+          type: "video",
+        });
+      }
+    });
 
     const vendorIds = Array.from(new Set([...services, ...promotedServices].map((s) => s.vendorId)));
     let vendorReviewAggregates = new Map<string, { rating: number | null; reviewCount: number }>();

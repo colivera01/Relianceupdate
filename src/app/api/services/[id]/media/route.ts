@@ -10,6 +10,7 @@ import {
   isCompletedStageProofVideo,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
+import { loadAuthorizedPrivateProof } from "@/lib/service-video-evidence";
 import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 
 interface RouteContext {
@@ -27,7 +28,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { id: serviceId } = await context.params;
     const { searchParams } = new URL(request.url);
     const audience = normalizeAudience(searchParams.get("audience"));
-    const bookingId = searchParams.get("bookingId");
+    const bookingId = String(searchParams.get("bookingId") || "").trim();
+
+    if (audience === "vendor_internal") {
+      return NextResponse.json(
+        { success: false, error: "Vendor media is not available from this route" },
+        { status: 403 }
+      );
+    }
 
     const service = await prisma.service.findUnique({
       where: { id: serviceId },
@@ -54,6 +62,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     let requestingUserId: string | null = null;
+    let privateProofAssetIds: string[] = [];
     if (audience === "customer") {
       requestingUserId = await getUserIdFromRequest(request);
       if (!requestingUserId) {
@@ -62,18 +71,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
           { status: 401 }
         );
       }
-
-      // Customer must be authorized for this service context.
-      const customerBookingWhere: any = {
-        userId: requestingUserId,
-        serviceId,
-      };
-      if (bookingId) {
-        customerBookingWhere.id = bookingId;
+      if (!bookingId) {
+        return NextResponse.json(
+          { success: false, error: "bookingId is required for customer media" },
+          { status: 400 }
+        );
       }
 
       const authorizedBooking = await prisma.booking.findFirst({
-        where: customerBookingWhere,
+        where: {
+          id: bookingId,
+          userId: requestingUserId,
+          serviceId,
+        },
         select: { id: true },
       });
 
@@ -83,6 +93,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
           { status: 403 }
         );
       }
+
+      const privateProof = await loadAuthorizedPrivateProof({
+        bookingId,
+        customerUserId: requestingUserId,
+      });
+      if (!privateProof) {
+        return NextResponse.json(
+          { success: false, error: "Active Private Proof access is required" },
+          { status: 403 }
+        );
+      }
+      privateProofAssetIds = privateProof.assetIds;
     }
 
     const where: any = {
@@ -92,11 +114,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       },
       mediaSession: {
         serviceId,
-        ...(audience === "customer" && bookingId ? { bookingId } : {}),
+        ...(audience === "customer" ? { bookingId } : {}),
       },
     };
     if (audience === "public") {
       where.id = { in: await resolveCanonicalPublicAssetIds({ serviceId }) };
+    } else if (audience === "customer") {
+      where.id = { in: privateProofAssetIds };
     }
 
     const assets = await (prisma as any).mediaAsset.findMany({

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { requireVendorManager } from "@/lib/membership-auth";
+import { AuthorizationError } from "@/lib/request-actor";
 import {
   listVendorManagerNotificationHistory,
   markVendorManagerNotificationRead,
@@ -50,6 +51,25 @@ describe("Vendor Manager notification routes", () => {
     expect(listVendorManagerNotificationHistory).not.toHaveBeenCalled();
   });
 
+  it("returns a clean unauthenticated denial for notification history", async () => {
+    vi.mocked(requireVendorManager).mockRejectedValue(
+      new AuthorizationError("UNAUTHENTICATED", "Sign in required.", 401),
+    );
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/notifications"),
+      { params: Promise.resolve({ vendorId: "vendor-1" }) },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "UNAUTHENTICATED",
+      error: "Sign in required.",
+    });
+    expect(listVendorManagerNotificationHistory).not.toHaveBeenCalled();
+  });
+
   it("marks only the authenticated manager's notice read", async () => {
     const request = new Request("http://localhost/api/vendors/vendor-1/notifications/notice-1/read", { method: "POST" });
     const response = await POST(request, {
@@ -93,6 +113,27 @@ describe("Vendor Manager notification routes", () => {
       params: Promise.resolve({ vendorId: "vendor-1", notificationId: "notice-1" }),
     });
     expect(response.status).toBe(403);
+    expect(markVendorManagerNotificationRead).not.toHaveBeenCalled();
+  });
+
+  it("returns a clean unauthenticated denial for read transitions", async () => {
+    vi.mocked(requireVendorManager).mockRejectedValue(
+      new AuthorizationError("UNAUTHENTICATED", "Sign in required.", 401),
+    );
+    const request = new Request("http://localhost/api/vendors/vendor-1/notifications/notice-1/read", {
+      method: "POST",
+    });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ vendorId: "vendor-1", notificationId: "notice-1" }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "UNAUTHENTICATED",
+      error: "Sign in required.",
+    });
     expect(markVendorManagerNotificationRead).not.toHaveBeenCalled();
   });
 

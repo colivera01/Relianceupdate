@@ -442,6 +442,7 @@ export interface FavoriteServiceItem {
   previewMediaType: 'image' | 'video' | null;
   publicListing: {
     serviceEligible: boolean;
+    vendorEligible?: boolean;
     hasPublicMedia: boolean;
   };
   favoritedAt: string;

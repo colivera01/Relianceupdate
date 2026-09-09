@@ -89,6 +89,7 @@ const sampleFavoriteRow = () => ({
     price: 199,
     vendorId: 'ven-1',
     isPublished: true,
+    demo: false,
     vendor: {
       id: 'ven-1',
       name: 'Acme',
@@ -98,6 +99,8 @@ const sampleFavoriteRow = () => ({
       city: 'Tampa',
       state: 'FL',
       isPubliclyListed: true,
+      accountStatus: 'active',
+      demo: false,
     },
   },
 });
@@ -112,6 +115,7 @@ describe('GET /api/users/favorites', () => {
     hoisted.vendorFavoriteFindMany.mockReset();
     hoisted.vendorFavoriteFindMany.mockResolvedValue([]);
     hoisted.mediaAssetFindMany.mockReset();
+    hoisted.mediaAssetFindMany.mockResolvedValue([]);
     vi.mocked(getVendorReviewAggregatesForPublic).mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockResolvedValue(new Map());
     vi.mocked(resolveCanonicalPublicAssetIds).mockReset();
@@ -155,6 +159,7 @@ describe('GET /api/users/favorites', () => {
       vendor: {
         id: 'vendor-1', name: 'Electro', businessName: 'Electro LLC', businessType: 'Electrical',
         category: 'Electrician', city: 'Orlando', state: 'FL', isPubliclyListed: true,
+        accountStatus: 'active', demo: false,
         _count: { services: 3 },
       },
     }]);
@@ -203,16 +208,26 @@ describe('GET /api/users/favorites', () => {
     expect(hoisted.favoriteFindMany).not.toHaveBeenCalled();
   });
 
-  it('returns 200 with normalized favorites and preview when media exists', async () => {
+  it('returns 200 with normalized favorites and preview for an exact three-stage Public package', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
     hoisted.favoriteCount.mockResolvedValue(1);
     hoisted.favoriteFindMany.mockResolvedValue([sampleFavoriteRow()]);
-    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-preview']);
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-intro', 'asset-progress', 'asset-final']);
     hoisted.mediaAssetFindMany.mockResolvedValue([
       {
-        id: 'asset-preview',
-        mimeType: 'image/jpeg',
-        mediaSession: { serviceId: 'svc-1' },
+        id: 'asset-intro',
+        mimeType: 'video/mp4',
+        mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'INTRO' },
+      },
+      {
+        id: 'asset-progress',
+        mimeType: 'video/mp4',
+        mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'IN_PROGRESS' },
+      },
+      {
+        id: 'asset-final',
+        mimeType: 'video/mp4',
+        mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'COMPLETED' },
       },
     ]);
     const agg = new Map([
@@ -225,10 +240,65 @@ describe('GET /api/users/favorites', () => {
     expect(res.status).toBe(200);
     const j = await getJson(res);
     const favorites = j.favorites as Record<string, unknown>[];
-    expect(favorites[0].previewMediaUrl).toBe('/api/public/media/asset-preview');
+    expect(favorites[0].previewMediaUrl).toBe('/api/public/media/asset-intro');
     expect(favorites[0].rating).toBe(4.5);
     expect(favorites[0].reviewCount).toBe(10);
+    expect(favorites[0].publicListing).toEqual({
+      serviceEligible: true,
+      vendorEligible: true,
+      hasPublicMedia: true,
+    });
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalled();
+  });
+
+  it('keeps a saved Service but removes Public actions when its complete package is no longer Public', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
+    hoisted.favoriteCount.mockResolvedValue(1);
+    hoisted.favoriteFindMany.mockResolvedValue([sampleFavoriteRow()]);
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-final']);
+    hoisted.mediaAssetFindMany.mockResolvedValue([{
+      id: 'asset-final',
+      mimeType: 'video/mp4',
+      mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'COMPLETED' },
+    }]);
+
+    const response = await favoritesGET(new NextRequest('http://localhost/api/users/favorites'));
+    const body = await getJson(response);
+    const favorite = (body.favorites as Record<string, any>[])[0];
+
+    expect(response.status).toBe(200);
+    expect(favorite.previewMediaUrl).toBeNull();
+    expect(favorite.publicListing).toEqual({
+      serviceEligible: false,
+      vendorEligible: true,
+      hasPublicMedia: false,
+    });
+  });
+
+  it('keeps demo Service and Vendor favorites saved but never labels them Public-eligible', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
+    hoisted.favoriteCount.mockResolvedValue(1);
+    const row = sampleFavoriteRow();
+    row.service.demo = true;
+    row.service.vendor.demo = true;
+    hoisted.favoriteFindMany.mockResolvedValue([row]);
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-intro', 'asset-progress', 'asset-final']);
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      { id: 'asset-intro', mimeType: 'video/mp4', mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'INTRO' } },
+      { id: 'asset-progress', mimeType: 'video/mp4', mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'IN_PROGRESS' } },
+      { id: 'asset-final', mimeType: 'video/mp4', mediaSession: { serviceId: 'svc-1', bookingId: 'booking-1', vendorJobVideoStage: 'COMPLETED' } },
+    ]);
+
+    const response = await favoritesGET(new NextRequest('http://localhost/api/users/favorites'));
+    const favorite = ((await getJson(response)).favorites as Record<string, any>[])[0];
+
+    expect(response.status).toBe(200);
+    expect(favorite.publicListing).toEqual({
+      serviceEligible: false,
+      vendorEligible: false,
+      hasPublicMedia: false,
+    });
+    expect(favorite.previewMediaUrl).toBeNull();
   });
 });
 
@@ -243,7 +313,7 @@ describe('POST /api/users/favorites', () => {
 
   it('saves a Vendor idempotently without fabricating a Service favorite', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'v1', isPubliclyListed: true, accountStatus: 'active' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'v1', isPubliclyListed: true, accountStatus: 'active', demo: false });
     hoisted.vendorFavoriteUpsert.mockResolvedValue({ id: 'vf1', vendorId: 'v1', createdAt: new Date('2026-09-03T00:00:00.000Z') });
     const res = await favoritesPOST(new NextRequest('http://localhost/api/users/favorites', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -254,6 +324,37 @@ describe('POST /api/users/favorites', () => {
     expect(hoisted.vendorFavoriteUpsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId_vendorId: { userId: 'u1', vendorId: 'v1' } },
     }));
+    expect(hoisted.favoriteUpsert).not.toHaveBeenCalled();
+  });
+
+  it('does not save a demo Vendor as a Public favorite', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'v1', isPubliclyListed: true, accountStatus: 'active', demo: true });
+
+    const response = await favoritesPOST(new NextRequest('http://localhost/api/users/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: 'vendor', vendorId: 'v1' }),
+    }));
+
+    expect(response.status).toBe(404);
+    expect(hoisted.vendorFavoriteUpsert).not.toHaveBeenCalled();
+  });
+
+  it('does not save a demo Service as a Public favorite', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    hoisted.serviceFindUnique.mockResolvedValue({
+      id: 'svc-1',
+      isPublished: true,
+      demo: true,
+      vendor: { id: 'ven-1', isPubliclyListed: true, accountStatus: 'active', demo: false },
+    });
+
+    const response = await favoritesPOST(new NextRequest('http://localhost/api/users/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serviceId: 'svc-1' }),
+    }));
+
+    expect(response.status).toBe(404);
     expect(hoisted.favoriteUpsert).not.toHaveBeenCalled();
   });
 
@@ -325,7 +426,8 @@ describe('POST /api/users/favorites', () => {
     hoisted.serviceFindUnique.mockResolvedValue({
       id: 'svc-1',
       isPublished: true,
-      vendor: { id: 'ven-1', isPubliclyListed: true, accountStatus: 'active' },
+      demo: false,
+      vendor: { id: 'ven-1', isPubliclyListed: true, accountStatus: 'active', demo: false },
     });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'existing-fav',
@@ -350,7 +452,8 @@ describe('POST /api/users/favorites', () => {
     hoisted.serviceFindUnique.mockResolvedValue({
       id: 'svc-2',
       isPublished: true,
-      vendor: { id: 'v1', isPubliclyListed: true, accountStatus: 'active' },
+      demo: false,
+      vendor: { id: 'v1', isPubliclyListed: true, accountStatus: 'active', demo: false },
     });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'f2',

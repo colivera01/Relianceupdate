@@ -12,6 +12,8 @@ import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from '@/
 import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregates';
 import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
+import { groupCompletePublicProofPackagesByService } from '@/lib/proof-media-policy';
+import { countableMediaAssetWhere } from '@/lib/metrics-exclusion';
 
 type FavoriteType = 'service' | 'vendor' | 'all';
 
@@ -98,8 +100,8 @@ export async function GET(request: NextRequest) {
               createdAt: true,
               service: {
                 select: {
-                  id: true, name: true, description: true, price: true, vendorId: true, isPublished: true,
-                  vendor: { select: { id: true, name: true, businessName: true, businessType: true, category: true, city: true, state: true, isPubliclyListed: true } },
+                  id: true, name: true, description: true, price: true, vendorId: true, isPublished: true, demo: true,
+                  vendor: { select: { id: true, name: true, businessName: true, businessType: true, category: true, city: true, state: true, isPubliclyListed: true, accountStatus: true, demo: true } },
                 },
               },
             },
@@ -116,8 +118,8 @@ export async function GET(request: NextRequest) {
               createdAt: true,
               vendor: {
                 select: {
-                  id: true, name: true, businessName: true, businessType: true, category: true, city: true, state: true, isPubliclyListed: true,
-                  _count: { select: { services: { where: { isPublished: true } } } },
+                  id: true, name: true, businessName: true, businessType: true, category: true, city: true, state: true, isPubliclyListed: true, accountStatus: true, demo: true,
+                  _count: { select: { services: { where: { isPublished: true, demo: false } } } },
                 },
               },
             },
@@ -128,25 +130,17 @@ export async function GET(request: NextRequest) {
     const canonicalPublicAssetIds = serviceIds.length ? await resolveCanonicalPublicAssetIds() : [];
     const media = serviceIds.length
       ? await (prisma as any).mediaAsset.findMany({
-          where: {
+          where: countableMediaAssetWhere({
             id: { in: canonicalPublicAssetIds },
             ...getApprovedActiveBaseWhere(),
             visibilityStatus: { in: getVisibilityStatusesForAudience('public') },
             mediaSession: { serviceId: { in: serviceIds } },
-          },
+          }),
           orderBy: { createdAt: 'desc' },
-          select: { id: true, mimeType: true, mediaSession: { select: { serviceId: true } } },
+          select: { id: true, mimeType: true, mediaSession: { select: { serviceId: true, bookingId: true, vendorJobVideoStage: true, sessionType: true } } },
         })
       : [];
-    const previewByServiceId = new Map<string, { url: string; type: 'image' | 'video' }>();
-    for (const item of media) {
-      const serviceId = String(item?.mediaSession?.serviceId || '');
-      if (!serviceId || previewByServiceId.has(serviceId)) continue;
-      previewByServiceId.set(serviceId, {
-        url: `/api/public/media/${item.id}`,
-        type: String(item?.mimeType || '').startsWith('video/') ? 'video' : 'image',
-      });
-    }
+    const completePackagesByServiceId = groupCompletePublicProofPackagesByService(media);
 
     const vendorIds = Array.from(new Set([
       ...serviceRows.map((row: any) => String(row.service.vendorId)),
@@ -156,7 +150,12 @@ export async function GET(request: NextRequest) {
     const serviceItems = serviceRows.map((row: any) => {
       const vendor = row.service.vendor;
       const vendorName = vendor.businessName || vendor.name || 'Service provider';
-      const preview = previewByServiceId.get(String(row.service.id)) || null;
+      const serviceId = String(row.service.id);
+      const completePublicPackage = completePackagesByServiceId.get(serviceId) || null;
+      const vendorEligible = Boolean(!vendor.demo && vendor.isPubliclyListed && !isVendorAccountRestricted(vendor.accountStatus));
+      const serviceEligible = Boolean(!row.service.demo && row.service.isPublished && vendorEligible && completePublicPackage);
+      const previewAsset = serviceEligible ? completePublicPackage?.[0] || null : null;
+      const preview = previewAsset?.id ? { url: `/api/public/media/${previewAsset.id}`, type: 'video' as const } : null;
       const aggregate = aggregates.get(String(row.service.vendorId));
       return {
         entityType: 'service' as const,
@@ -174,7 +173,11 @@ export async function GET(request: NextRequest) {
         reviewCount: aggregate?.reviewCount ?? null,
         previewMediaUrl: preview?.url || null,
         previewMediaType: preview?.type || null,
-        publicListing: { serviceEligible: Boolean(row.service.isPublished && vendor.isPubliclyListed), hasPublicMedia: Boolean(preview) },
+        publicListing: {
+          serviceEligible,
+          vendorEligible,
+          hasPublicMedia: Boolean(preview),
+        },
         favoritedAt: row.createdAt.toISOString(),
       };
     });
@@ -192,7 +195,7 @@ export async function GET(request: NextRequest) {
         rating: aggregate?.rating ?? null,
         reviewCount: aggregate?.reviewCount ?? null,
         serviceCount: Number(vendor._count?.services || 0),
-        isPubliclyListed: Boolean(vendor.isPubliclyListed),
+        isPubliclyListed: Boolean(!vendor.demo && vendor.isPubliclyListed && !isVendorAccountRestricted(vendor.accountStatus)),
         favoritedAt: row.createdAt.toISOString(),
       };
     });
@@ -233,9 +236,9 @@ export async function POST(request: NextRequest) {
       if (!vendorId) return NextResponse.json({ error: 'vendorId is required' }, { status: 400 });
       const vendor = await prisma.vendor.findUnique({
         where: { id: vendorId },
-        select: { id: true, isPubliclyListed: true, accountStatus: true },
+        select: { id: true, isPubliclyListed: true, accountStatus: true, demo: true },
       });
-      if (!vendor || !vendor.isPubliclyListed || isVendorAccountRestricted(vendor.accountStatus)) {
+      if (!vendor || vendor.demo || !vendor.isPubliclyListed || isVendorAccountRestricted(vendor.accountStatus)) {
         return NextResponse.json({ error: 'Vendor unavailable' }, { status: 404 });
       }
       const favorite = await (prisma as any).vendorFavorite.upsert({
@@ -256,9 +259,9 @@ export async function POST(request: NextRequest) {
     if (!serviceId) return NextResponse.json({ error: 'serviceId is required' }, { status: 400 });
     const service = await prisma.service.findUnique({
       where: { id: serviceId },
-      select: { id: true, isPublished: true, vendor: { select: { id: true, isPubliclyListed: true, accountStatus: true } } },
+      select: { id: true, isPublished: true, demo: true, vendor: { select: { id: true, isPubliclyListed: true, accountStatus: true, demo: true } } },
     });
-    if (!service || !service.isPublished || !service.vendor?.isPubliclyListed || isVendorAccountRestricted(service.vendor.accountStatus)) {
+    if (!service || service.demo || !service.isPublished || service.vendor?.demo || !service.vendor?.isPubliclyListed || isVendorAccountRestricted(service.vendor.accountStatus)) {
       return NextResponse.json({ error: 'Service unavailable' }, { status: 404 });
     }
     const favorite = await prisma.favorite.upsert({
