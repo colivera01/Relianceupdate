@@ -708,6 +708,53 @@ describe("package-level customer Service Video visibility", () => {
     expect(hoisted.prisma.employeePublicMediaNotification.upsert).toHaveBeenCalledTimes(1);
   });
 
+  it("resolves signed-in and secure-link access to the same canonical standing-consent record", async () => {
+    const decidedAt = new Date("2026-09-09T20:00:00.000Z");
+    const document = {
+      contractVersion: 1,
+      policyVersion: "employee-public-media-consent-v1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      membershipId: "employee-membership-1",
+      decision: "ALLOW",
+      coversLikeness: true,
+      coversAudio: true,
+      effectScope: "CURRENT_PENDING_AND_FUTURE_ELIGIBLE_SERVICE_VIDEOS",
+      consentTextSnapshot: "Allow my image, likeness, and voice to appear in eligible Reliance Service Videos that Customers choose to share publicly. This choice applies to eligible Service Videos currently waiting for my participation consent and to future eligible Service Videos while my consent remains active.",
+      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+      version: 1,
+      decidedAt: decidedAt.toISOString(),
+    };
+    const current = {
+      id: "standing-consent-1",
+      ...document,
+      decidedAt,
+      decisionHash: createHash("sha256").update(stableJson(document)).digest("hex"),
+      isCurrent: true,
+      supersededAt: null,
+    };
+    hoisted.prisma.vendorMembership.findUnique.mockResolvedValue({
+      id: "employee-membership-1",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+    });
+    hoisted.prisma.employeePublicMediaConsentDecision.findFirst.mockResolvedValue(current);
+
+    const { decideEmployeePublicMediaConsent } = await import("./service-video-publication");
+    await expect(decideEmployeePublicMediaConsent({
+      userId: "employee-1",
+      membershipId: "employee-membership-1",
+      decision: "ALLOW",
+      verificationMethod: "SIGNED_EMPLOYEE_SERVICE_ORDER_LINK",
+    })).resolves.toMatchObject({
+      decision: { id: "standing-consent-1" },
+      idempotent: true,
+    });
+    expect(hoisted.prisma.employeePublicMediaConsentDecision.create).not.toHaveBeenCalled();
+  });
+
   it("does not allow the superseded per-package Employee decision on a standing-consent proposal", async () => {
     installImmediateAudit();
     hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({

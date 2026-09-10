@@ -30,10 +30,12 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const statusUpper = String(status || "").trim().toUpperCase();
-    // Active roster reads are safe for any active member and unblock employee pages.
-    const managerRoster = statusUpper !== "ACTIVE";
-    if (!managerRoster) {
-      await requireVendorMembership(request, vendorId);
+    // Active roster reads remain available to any active member. Only a manager
+    // receives the Employee's read-only standing-participation status.
+    let managerRoster = true;
+    if (statusUpper === "ACTIVE") {
+      const actor = await requireVendorMembership(request, vendorId);
+      managerRoster = String(actor.role || "").trim().toUpperCase() === "MANAGER";
     } else {
       await requireVendorManager(request, vendorId);
     }

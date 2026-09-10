@@ -100,6 +100,7 @@ export default function EmployeesPage() {
   const [editPhone, setEditPhone] = useState("");
   const [editMessage, setEditMessage] = useState("");
   const [savingMembershipId, setSavingMembershipId] = useState<string | null>(null);
+  const [sendingParticipationMembershipId, setSendingParticipationMembershipId] = useState<string | null>(null);
 
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -342,6 +343,33 @@ export default function EmployeesPage() {
     }));
   };
 
+  const handleSendParticipationLink = async (membershipId: string) => {
+    if (!vendorId || !authUserId || !membershipId) return;
+    setSendingParticipationMembershipId(membershipId);
+    setInviteMessage("");
+    try {
+      const response = await fetch(
+        `/api/vendors/${vendorId}/memberships/${membershipId}/public-media-consent-link`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...getClientSessionHeaders(authUserId),
+          },
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.success === false) {
+        throw new Error(String(body?.error || "The participation link could not be sent."));
+      }
+      setInviteMessage("Secure participation link sent. The Employee must make their own choice within one hour.");
+    } catch (error) {
+      setInviteMessage(error instanceof Error ? error.message : "The participation link could not be sent.");
+    } finally {
+      setSendingParticipationMembershipId(null);
+    }
+  };
+
   return (
     <div className="w-full text-slate-100">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -381,9 +409,9 @@ export default function EmployeesPage() {
         <div className="mt-3 grid gap-3 md:grid-cols-4">
           {[
             "Send an invite with the team member's contact details.",
-            "They accept the invite and sign in with the same email or phone.",
+            "They accept the invite and become an active team member. A password is not required.",
             "A manager assigns scheduled work from Manage Jobs.",
-            "The employee opens Employee Jobs to record Starting Condition, Work in Progress, and Final Result clips.",
+            "The employee opens the secure Service Order link to complete assigned work.",
           ].map((step, index) => (
             <div key={step} className="rounded-xl border border-white/10 bg-slate-950/50 p-3 text-sm leading-6 text-slate-200">
               <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
@@ -608,6 +636,18 @@ export default function EmployeesPage() {
                 <Badge variant={String(emp.role).toUpperCase() === "MANAGER" ? "default" : "secondary"}>
                   {roleLabel(emp.role)}
                 </Badge>
+                {String(emp.role).toUpperCase() === "EMPLOYEE" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleSendParticipationLink(emp.membershipId)}
+                    disabled={sendingParticipationMembershipId === emp.membershipId}
+                    className="rounded border border-emerald-300 px-2 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10 disabled:opacity-60"
+                  >
+                    {sendingParticipationMembershipId === emp.membershipId
+                      ? "Sending…"
+                      : "Send participation link"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => openEditMember(emp)}

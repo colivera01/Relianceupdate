@@ -11,6 +11,7 @@ import { getClientSessionHeaders } from "@/lib/client-session";
 
 type ConsentMembership = {
   membershipId: string;
+  employeeName: string;
   vendorId: string;
   vendorName: string;
   status: "ALLOWED" | "NOT_ALLOWED" | "NOT_DECIDED";
@@ -35,7 +36,14 @@ type ConsentView = {
 export default function EmployeePublicMediaConsentPage() {
   const { user } = useAuth();
   const userId = String(user?.id || "").trim();
-  const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
+  const [captureToken, setCaptureToken] = useState("");
+  const [participationToken, setParticipationToken] = useState("");
+  const [accessInitialized, setAccessInitialized] = useState(false);
+  const headers = useMemo(() => ({
+    ...getClientSessionHeaders(userId),
+    ...(captureToken ? { "x-employee-capture-token": captureToken } : {}),
+    ...(participationToken ? { "x-employee-public-media-consent-token": participationToken } : {}),
+  }), [captureToken, participationToken, userId]);
   const [view, setView] = useState<ConsentView | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -43,8 +51,20 @@ export default function EmployeePublicMediaConsentPage() {
   const [message, setMessage] = useState("");
   const [confirmation, setConfirmation] = useState<{ membershipId: string; decision: "ALLOW" | "DENY" } | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setCaptureToken(String(params.get("ct") || params.get("captureToken") || "").trim());
+    setParticipationToken(String(params.get("pct") || params.get("consentToken") || "").trim());
+    setAccessInitialized(true);
+  }, []);
+
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!accessInitialized) return;
+    if (!userId && !captureToken && !participationToken) {
+      setLoading(false);
+      setError("Open the secure link sent to you, or sign in with an Employee-enabled account.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -61,7 +81,7 @@ export default function EmployeePublicMediaConsentPage() {
     } finally {
       setLoading(false);
     }
-  }, [headers, userId]);
+  }, [accessInitialized, captureToken, headers, participationToken, userId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -101,9 +121,15 @@ export default function EmployeePublicMediaConsentPage() {
   return (
     <div className="reliance-grid-lines min-h-screen bg-[#050a13] px-4 py-8 text-white">
       <main className="mx-auto w-full max-w-3xl space-y-5">
-        <Link href="/employee/jobs" className="inline-flex items-center gap-2 text-sm font-medium text-blue-200 hover:text-white">
-          <ArrowLeft className="h-4 w-4" /> Back to assigned work
-        </Link>
+        {captureToken ? (
+          <Link href={`/employee/jobs?ct=${encodeURIComponent(captureToken)}`} className="inline-flex items-center gap-2 text-sm font-medium text-blue-200 hover:text-white">
+            <ArrowLeft className="h-4 w-4" /> Back to this Service Order
+          </Link>
+        ) : userId ? (
+          <Link href="/employee/jobs" className="inline-flex items-center gap-2 text-sm font-medium text-blue-200 hover:text-white">
+            <ArrowLeft className="h-4 w-4" /> Back to assigned work
+          </Link>
+        ) : null}
         <header className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">Employee privacy choice</p>
           <h1 className="text-3xl font-bold">Public Service Video Participation</h1>
@@ -125,6 +151,11 @@ export default function EmployeePublicMediaConsentPage() {
             <p className="rounded-lg border border-amber-300/30 bg-amber-950/25 p-3 text-amber-100">
               Allowing may apply to an eligible Service Video currently waiting for this choice and to future eligible Service Videos. A Customer must still choose Share Publicly for each Service Video.
             </p>
+            <ul className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-3 text-slate-200">
+              <li>The Customer remains the visibility decision-maker for every Service Video.</li>
+              <li>This is one standing participation choice, not a separate approval for every job.</li>
+              <li>No additional Admin approval is required after all current requirements pass.</li>
+            </ul>
           </CardContent>
         </Card>
 
@@ -149,6 +180,13 @@ export default function EmployeePublicMediaConsentPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                <dl className="grid gap-2 rounded-lg border border-white/10 bg-white/5 p-3 text-sm sm:grid-cols-2">
+                  <div><dt className="text-slate-400">Employee recognized</dt><dd className="font-semibold text-white">{membership.employeeName}</dd></div>
+                  <div><dt className="text-slate-400">Vendor</dt><dd className="font-semibold text-white">{membership.vendorName}</dd></div>
+                  <div className="sm:col-span-2"><dt className="text-slate-400">Employee membership</dt><dd className="break-all font-mono text-xs text-white">{membership.membershipId}</dd></div>
+                  <div><dt className="text-slate-400">Scope</dt><dd className="text-white">Current pending and future eligible Service Videos</dd></div>
+                  <div><dt className="text-slate-400">Coverage</dt><dd className="text-white">Image, likeness, voice, and audio</dd></div>
+                </dl>
                 <p className="text-sm text-slate-300">
                   {membership.decision
                     ? `Current choice recorded ${new Date(membership.decision.decidedAt).toLocaleString()}.`

@@ -1788,15 +1788,21 @@ async function reevaluateStandingConsentPublication(tx: any, proposalId: string)
   return { status: PUBLICATION_STATUSES.PUBLIC, published: true };
 }
 
-export async function loadEmployeePublicMediaConsentView(input: { userId: string }) {
+export async function loadEmployeePublicMediaConsentView(input: { userId: string; membershipId?: string | null }) {
   const memberships = await (prisma as any).vendorMembership.findMany({
-    where: { userId: input.userId, role: "EMPLOYEE", status: "ACTIVE" },
+    where: {
+      userId: input.userId,
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      ...(input.membershipId ? { id: input.membershipId } : {}),
+    },
     select: {
       id: true,
       userId: true,
       vendorId: true,
       role: true,
       status: true,
+      user: { select: { name: true } },
       vendor: { select: { id: true, name: true, businessName: true, accountStatus: true } },
     },
     orderBy: { requestedAt: "asc" },
@@ -1821,6 +1827,7 @@ export async function loadEmployeePublicMediaConsentView(input: { userId: string
       const decision = decisions.find((row: any) => row.membershipId === membership.id) || null;
       return {
         membershipId: membership.id,
+        employeeName: membership.user?.name || "Employee",
         vendorId: membership.vendorId,
         vendorName: membership.vendor?.businessName || membership.vendor?.name || "Reliance business",
         status: decision?.decision === "ALLOW"
