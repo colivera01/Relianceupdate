@@ -70,10 +70,16 @@ function prettyStatus(value: string | null | undefined) {
     .join(' ');
 }
 
-function reviewVisibilityLabel(value: string | null | undefined) {
-  const normalized = String(value || '').trim().toLowerCase();
+function reviewVisibilityLabel(
+  review: Pick<ReviewQueueRow, 'visibilityStatus' | 'countsInCanonicalMetrics'>
+) {
+  const normalized = String(review.visibilityStatus || '').trim().toLowerCase();
   if (!normalized) return 'Unknown';
-  if (normalized === 'public') return 'Public';
+  if (normalized === 'public') {
+    return review.countsInCanonicalMetrics === false
+      ? 'Approved · Excluded from public display'
+      : 'Publicly Visible';
+  }
   if (normalized === 'private') return 'Private';
   return prettyStatus(normalized);
 }
@@ -245,7 +251,10 @@ function ReviewsPageContent() {
 
       setFeedback({
         type: 'success',
-        message: json?.message || 'Review moderation action applied successfully',
+        message:
+          action === 'approve_public' && review.countsInCanonicalMetrics === false
+            ? 'Written comment approved. This excluded Customer Review remains out of public vendor and service pages. Verified Vendor Rating was not changed.'
+            : json?.message || 'Review moderation action applied successfully',
       });
     } catch (e) {
       setFeedback({
@@ -356,21 +365,22 @@ function ReviewsPageContent() {
 
   const summary = useMemo(() => {
     const pending = reviews.filter((review) => String(review.moderationStatus).toLowerCase() === 'pending_review').length;
-    const approvedPublic = reviews.filter(
+    const publiclyVisible = reviews.filter(
       (review) =>
         String(review.moderationStatus).toLowerCase() === 'approved' &&
-        String(review.visibilityStatus).toLowerCase() === 'public'
+        String(review.visibilityStatus).toLowerCase() === 'public' &&
+        review.countsInCanonicalMetrics !== false
     ).length;
-    const approvedPrivate = reviews.filter(
-      (review) =>
-        String(review.moderationStatus).toLowerCase() === 'approved' &&
-        String(review.visibilityStatus).toLowerCase() === 'private'
-    ).length;
+    const privateOrExcluded = reviews.filter((review) => {
+      if (String(review.moderationStatus).toLowerCase() !== 'approved') return false;
+      const visibility = String(review.visibilityStatus).toLowerCase();
+      return visibility === 'private' || (visibility === 'public' && review.countsInCanonicalMetrics === false);
+    }).length;
     const flaggedOrRejected = reviews.filter((review) => {
       const status = String(review.moderationStatus).toLowerCase();
       return status === 'flagged' || status === 'rejected';
     }).length;
-    return { pending, approvedPublic, approvedPrivate, flaggedOrRejected };
+    return { pending, publiclyVisible, privateOrExcluded, flaggedOrRejected };
   }, [reviews]);
 
   const openModerationNoteModal = (review: ReviewQueueRow, action: 'reject' | 'flag' | 'invalidate_review') => {
@@ -417,14 +427,14 @@ function ReviewsPageContent() {
               <p className="mt-1 text-sm text-amber-800">Needs an Admin written-comment decision.</p>
             </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Public Written Comments</div>
-              <div className="mt-2 text-2xl font-bold text-emerald-900">{summary.approvedPublic}</div>
-              <p className="mt-1 text-sm text-emerald-800">Visible on public vendor and service pages.</p>
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Publicly Visible Comments</div>
+              <div className="mt-2 text-2xl font-bold text-emerald-900">{summary.publiclyVisible}</div>
+              <p className="mt-1 text-sm text-emerald-800">Approved comments currently shown on public vendor and service pages.</p>
             </div>
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Private Written Comments</div>
-              <div className="mt-2 text-2xl font-bold text-blue-900">{summary.approvedPrivate}</div>
-              <p className="mt-1 text-sm text-blue-800">Kept out of public discovery while still retained.</p>
+              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Private Or Excluded Comments</div>
+              <div className="mt-2 text-2xl font-bold text-blue-900">{summary.privateOrExcluded}</div>
+              <p className="mt-1 text-sm text-blue-800">Retained comments that remain out of public discovery.</p>
             </div>
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Flagged Or Rejected Comments</div>
@@ -603,7 +613,7 @@ function ReviewsPageContent() {
                   <div className="lg:col-span-2 space-y-2">
                       <Badge className="block w-fit">{prettyStatus(review.moderationStatus)}</Badge>
                       <Badge variant="outline" className="block w-fit">
-                        {reviewVisibilityLabel(review.visibilityStatus)}
+                        {reviewVisibilityLabel(review)}
                       </Badge>
                       {review.moderationReason ? (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
@@ -771,7 +781,7 @@ function ReviewsPageContent() {
                 <div>Rating evidence: {ratingEvidenceLabel(selectedReview)}</div>
                 <div>Created: {new Date(selectedReview.createdAt).toLocaleString()}</div>
                 <div>Moderation: {prettyStatus(selectedReview.moderationStatus)}</div>
-                <div>Visibility: {reviewVisibilityLabel(selectedReview.visibilityStatus)}</div>
+                <div>Visibility: {reviewVisibilityLabel(selectedReview)}</div>
               </div>
               <div className="rounded border p-3 bg-gray-50">
                 <p className="font-medium mb-1">Comment</p>
