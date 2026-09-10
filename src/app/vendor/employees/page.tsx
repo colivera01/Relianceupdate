@@ -567,6 +567,19 @@ export default function EmployeesPage() {
                   <div className="truncate text-sm text-slate-400">
                     Phone: {emp.phone || "Not provided"}
                   </div>
+                  {String(emp.role).toUpperCase() === "EMPLOYEE" ? (
+                    <div className="mt-2 text-xs text-slate-300">
+                      Public media participation:{" "}
+                      <span className="font-semibold text-white">
+                        {emp.publicMediaConsentStatus === "ALLOWED"
+                          ? "Allowed"
+                          : emp.publicMediaConsentStatus === "NOT_ALLOWED"
+                            ? "Not allowed"
+                            : "No choice recorded"}
+                      </span>
+                      {emp.publicMediaConsentDecidedAt ? ` · ${new Date(emp.publicMediaConsentDecidedAt).toLocaleDateString()}` : ""}
+                    </div>
+                  ) : null}
                   {(() => {
                     const row = employeeRatingsByMembershipId[String(emp.membershipId)] || {
                       averageRating: 0,

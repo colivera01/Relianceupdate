@@ -33,6 +33,8 @@ const protectedTests = [
   "src/app/api/admin/media/admin-media-moderation.integration.test.ts",
   "src/lib/private-proof-access-audit.test.ts",
   "src/lib/service-video-package-visibility.test.ts",
+  "src/app/api/employee/public-media-consent/route.test.ts",
+  "src/app/api/vendors/[vendorId]/memberships/memberships.integration.test.ts",
   "src/lib/service-video-publication.test.ts",
   "src/app/api/reports/content/content-report.integration.test.ts",
   "src/lib/prisma-artifact.test.ts",

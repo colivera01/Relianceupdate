@@ -5168,7 +5168,7 @@ export default function VendorJobs() {
               <li><strong>Send the employee service order link</strong> so the employee can open it on the phone they will use to record.</li>
               <li><strong>If location is required, the employee verifies location</strong> from that phone before recording unlocks.</li>
               <li><strong>The employee records all three stages</strong>: Starting Condition, Work in Progress, and Final Result. Each stage can be previewed, saved, or retaken.</li>
-              <li><strong>The employee sends the finished package to the manager</strong>. Manager review and Reliance Audit PASS release the exact package as customer Private Proof. Public visibility still requires the customer to Share Publicly and every required participant to allow Public use.</li>
+              <li><strong>The employee sends the finished package to the manager</strong>. Manager review and Reliance Audit PASS release the exact package as customer Private Proof. Public visibility still requires the customer to Share Publicly and active standing Public Media Consent from each Service Professional who appears or is heard.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               Each work card shows its current <strong>Next step</strong>: assign employee, wait for recording permission,

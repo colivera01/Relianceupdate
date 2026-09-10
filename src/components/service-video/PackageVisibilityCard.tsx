@@ -64,8 +64,8 @@ const COPY: Record<VisibilityState, { title: string; detail: string }> = {
     detail: "Reliance is investigating a reported concern. Your Public authorization and Private Proof remain preserved.",
   },
   PUBLIC_WAITING_PERMISSION: {
-    title: "Waiting for Public-sharing permission",
-    detail: "Your Service Video remains Private until all required participant permissions are complete.",
+    title: "Public Sharing Pending",
+    detail: "Your Service Video is still Private. It will become Public after the Service Professional allows standing Public Service Video participation and all current requirements pass.",
   },
   PUBLIC_REVIEW_PENDING: {
     title: "Public visibility pending",
@@ -126,7 +126,7 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
         ? "Your Service Video is now Private. Your Private Proof remains available."
         : body?.proposal?.status === "PUBLIC"
           ? "Your complete Service Video is now Public."
-          : "Your Service Video remains Private while required Public-sharing permission is completed.");
+          : "Your Share Publicly request was saved. Your Service Video is still Private until all required Public-sharing requirements are complete.");
       setConfirmation(null);
       await load();
     } catch (nextError) {
@@ -142,6 +142,7 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
   const canDecide = role === "customer" && data?.canDecide === true;
   const canShare = canDecide && data?.visibility?.publicRestrictionActive !== true && ["PRIVATE_DEFAULT", "PRIVATE"].includes(state);
   const canMakePrivate = canDecide && ["PUBLIC", "PUBLIC_VISIBILITY_HOLD"].includes(state);
+  const canCancelPublicSharing = canDecide && ["PUBLIC_WAITING_PERMISSION", "PUBLIC_REVIEW_PENDING"].includes(state);
   const statusLabel = isPublic
     ? "Public"
     : state === "PUBLIC_VISIBILITY_HOLD"
@@ -188,6 +189,11 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
               </Button>
             </div>
           ) : null}
+          {canCancelPublicSharing && confirmation === null ? (
+            <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation("private")}>
+              <LockKeyhole className="mr-2 h-4 w-4" /> Cancel Public Sharing
+            </Button>
+          ) : null}
           {canMakePrivate && confirmation === null ? (
             <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation("private")}>
               <LockKeyhole className="mr-2 h-4 w-4" /> Make Private
@@ -211,14 +217,18 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
               </div>
             </div>
           ) : null}
-          {canMakePrivate && confirmation === "private" ? (
+          {(canMakePrivate || canCancelPublicSharing) && confirmation === "private" ? (
             <div className="rounded-md border border-slate-500 bg-slate-900 p-4" data-testid="package-private-confirmation">
-              <p className="font-semibold text-white">Make this Service Video private?</p>
-              <p className="mt-2 text-sm text-slate-300">It will no longer be publicly viewable on Reliance. You will still have access through your Private Proof.</p>
+              <p className="font-semibold text-white">{canCancelPublicSharing ? "Cancel Public Sharing?" : "Make this Service Video private?"}</p>
+              <p className="mt-2 text-sm text-slate-300">
+                {canCancelPublicSharing
+                  ? "Your Service Video will remain Private and this pending Public-sharing request will be withdrawn. Your Private Proof and Reliance Audit remain unchanged."
+                  : "It will no longer be publicly viewable on Reliance. You will still have access through your Private Proof."}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button disabled={working} onClick={() => void decide("KEEP_PRIVATE")}>
                   {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LockKeyhole className="mr-2 h-4 w-4" />}
-                  Confirm Make Private
+                  {canCancelPublicSharing ? "Confirm Cancel Public Sharing" : "Confirm Make Private"}
                 </Button>
                 <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation(null)}>Cancel</Button>
               </div>

@@ -10,6 +10,8 @@ export type VendorTeamMember = {
   phone: string | null;
   role: string;
   status: string;
+  publicMediaConsentStatus?: "ALLOWED" | "NOT_ALLOWED" | "NOT_DECIDED";
+  publicMediaConsentDecidedAt?: string | null;
 };
 
 export async function fetchVendorTeamMembers(
@@ -72,6 +74,8 @@ export async function fetchVendorTeamMembers(
       phone: m?.user?.phone != null ? String(m.user.phone) : null,
       role: String(m?.role || "").trim().toUpperCase(),
       status: String(m?.status || "").trim().toUpperCase(),
+      publicMediaConsentStatus: m?.publicMediaConsent?.status,
+      publicMediaConsentDecidedAt: m?.publicMediaConsent?.decidedAt || null,
     });
   }
   const allowedStatuses = options?.includePending ? new Set(["ACTIVE", "PENDING"]) : new Set(["ACTIVE"]);

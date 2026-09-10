@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Flashlight, FlashlightOff, LoaderCircle } from "lucide-react";
+import { Flashlight, FlashlightOff, LoaderCircle, ShieldCheck } from "lucide-react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -2063,7 +2063,7 @@ export default function EmployeeJobsPage() {
                     : "border-blue-300 text-blue-700 hover:bg-blue-50"
                 }`}
               >
-                Open Public-sharing permission
+                View Public-sharing status
               </Link>
             ) : null}
           </div>
@@ -2205,6 +2205,12 @@ export default function EmployeeJobsPage() {
             </div>
             {!hasCaptureToken ? (
               <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/employee/public-media-consent"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 transition hover:bg-blue-100"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" /> Public Media Consent
+                </Link>
                 <TutorialEntryPoint guide={tutorialGuides.employeeJobs} surface="dark" />
                 <Link
                   href="/help"

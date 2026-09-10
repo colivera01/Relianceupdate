@@ -9,7 +9,8 @@ import { normalizePrismaSqlServerUrl } from './prisma-sqlserver-url';
 // Opt-in release check only. Never seeds, authenticates, or invokes mutations.
 const artifact = process.env.RELIANCE_ARTIFACT_READONLY_ROOT;
 const customerUserId = process.env.RELIANCE_READONLY_CUSTOMER_ID;
-const expectedAppliedMigrationCount = 56;
+const expectedAppliedMigrationCount = 57;
+const expectedLatestMigration = '20260910014500_add_employee_public_media_consent';
 it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta contracts and the actual customer loader without adapters', async () => {
   const root = resolve(artifact!);
   const packagedRequire = createRequire(resolve(root, 'package.json'));
@@ -23,7 +24,9 @@ it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta c
     const database = await db.$queryRaw`SELECT DB_NAME() AS name`;
     expect(database[0].name).toBe('reliance-beta-db');
     const migrations = await db.$queryRaw`SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations`;
-    expect(migrations.filter((row: any) => row.finished_at && !row.rolled_back_at)).toHaveLength(expectedAppliedMigrationCount);
+    const appliedMigrations = migrations.filter((row: any) => row.finished_at && !row.rolled_back_at);
+    expect(appliedMigrations).toHaveLength(expectedAppliedMigrationCount);
+    expect(appliedMigrations.some((row: any) => row.migration_name === expectedLatestMigration)).toBe(true);
     expect(migrations.filter((row: any) => !row.finished_at && !row.rolled_back_at)).toHaveLength(0);
     const protectedId = 'cmtj89mlo004llufi0b6tvdpj';
     const snapshot = async () => {

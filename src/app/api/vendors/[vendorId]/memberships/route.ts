@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
+import { loadVendorEmployeePublicMediaConsentStatuses } from "@/lib/service-video-publication";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -30,7 +31,8 @@ export async function GET(
     const status = searchParams.get("status");
     const statusUpper = String(status || "").trim().toUpperCase();
     // Active roster reads are safe for any active member and unblock employee pages.
-    if (statusUpper === "ACTIVE") {
+    const managerRoster = statusUpper !== "ACTIVE";
+    if (!managerRoster) {
       await requireVendorMembership(request, vendorId);
     } else {
       await requireVendorManager(request, vendorId);
@@ -55,6 +57,14 @@ export async function GET(
       },
       orderBy: { requestedAt: "desc" },
     });
+    const consentStatuses = managerRoster
+      ? await loadVendorEmployeePublicMediaConsentStatuses({
+          vendorId,
+          membershipIds: memberships
+            .filter((membership: any) => String(membership.role).toUpperCase() === "EMPLOYEE")
+            .map((membership: any) => membership.id),
+        })
+      : new Map<string, { status: string; decidedAt: Date | null }>();
 
     return NextResponse.json({
       memberships: memberships.map((m: any) => ({
@@ -72,6 +82,9 @@ export async function GET(
         pendingDeviceOs: m.pendingDeviceOs,
         pendingAppVersion: m.pendingAppVersion,
         user: m.user,
+        publicMediaConsent: managerRoster
+          ? consentStatuses.get(m.id) || { status: "NOT_DECIDED", decidedAt: null }
+          : undefined,
       })),
     });
   } catch (error: any) {

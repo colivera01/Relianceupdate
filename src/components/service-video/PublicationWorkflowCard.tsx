@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, Globe2, Loader2, LockKeyhole, RotateCcw, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,6 +55,10 @@ const STATUS_COPY: Record<string, { title: string; detail: string }> = {
   AWAITING_VENDOR_APPROVAL: {
     title: "Ready for vendor representation approval",
     detail: "Confirm that these exact clips fairly represent the business before the legacy Admin Public decision.",
+  },
+  AWAITING_STANDING_EMPLOYEE_CONSENT: {
+    title: "Standing Public Media Consent needed",
+    detail: "The Service Video remains Private until the Service Professional makes one standing participation choice.",
   },
   AWAITING_ADMIN_REVIEW: {
     title: "Waiting for a legacy Admin Public decision",
@@ -175,6 +180,10 @@ export function PublicationWorkflowCard({
     Number(publication?.proposal?.contractVersion || 0) >= 3 &&
     publication?.proposal?.authorizationModel ===
       "CUSTOMER_COMPLETE_PACKAGE_IMMEDIATE_PUBLICATION";
+  const standingConsentPublication =
+    Number(publication?.proposal?.contractVersion || 0) >= 4 &&
+    publication?.proposal?.authorizationModel ===
+      "CUSTOMER_COMPLETE_PACKAGE_STANDING_EMPLOYEE_CONSENT";
   const statusCopy = immediatePublication && status === "AWAITING_PARTICIPANT_DECISIONS"
     ? {
         title: "Waiting for Public-sharing permission",
@@ -357,6 +366,15 @@ export function PublicationWorkflowCard({
 
         {status === "PUBLIC" ? (
           <div className="flex items-center gap-2 text-sm text-emerald-200"><CheckCircle2 className="h-4 w-4" /> Canonical Public visibility evidence is active.</div>
+        ) : null}
+
+        {role === "employee" && standingConsentPublication && status === "AWAITING_STANDING_EMPLOYEE_CONSENT" ? (
+          <div className="space-y-3 rounded-lg border border-blue-400/30 bg-blue-950/30 p-4">
+            <p className="text-sm text-blue-100/85">This Service Video does not require a per-job approval. Open your standing Public Media Consent to make one choice covering eligible pending and future Service Videos.</p>
+            <Button asChild className="bg-blue-600 text-white hover:bg-blue-700">
+              <Link href="/employee/public-media-consent">Open Public Media Consent</Link>
+            </Button>
+          </div>
         ) : null}
       </CardContent>
     </Card>

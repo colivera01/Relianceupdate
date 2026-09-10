@@ -11,6 +11,7 @@ import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader"
 export const PUBLICATION_STATUSES = {
   AWAITING_CUSTOMER: "AWAITING_CUSTOMER_DECISION",
   AWAITING_PARTICIPANTS: "AWAITING_PARTICIPANT_DECISIONS",
+  AWAITING_STANDING_CONSENT: "AWAITING_STANDING_EMPLOYEE_CONSENT",
   AWAITING_VENDOR: "AWAITING_VENDOR_APPROVAL",
   AWAITING_ADMIN: "AWAITING_ADMIN_REVIEW",
   CORRECTION_REQUESTED: "CORRECTION_REQUESTED",
@@ -28,10 +29,17 @@ export const PACKAGE_VISIBILITY_DECISIONS = {
 
 const PACKAGE_VISIBILITY_CONTRACT_VERSION = 2;
 const IMMEDIATE_PUBLICATION_CONTRACT_VERSION = 3;
+const STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION = 4;
 const PACKAGE_VISIBILITY_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE";
 const IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE_IMMEDIATE_PUBLICATION";
+const STANDING_CONSENT_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE_STANDING_EMPLOYEE_CONSENT";
 const PUBLIC_DISPLAY_ELIGIBLE = "PUBLIC_DISPLAY_ELIGIBLE";
 const PRIVATE_ONLY = "PRIVATE_ONLY";
+
+export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION = "employee-public-media-consent-v1";
+export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT =
+  "Allow my image, likeness, and voice to appear in eligible Reliance Service Videos that Customers choose to share publicly. This choice applies to eligible Service Videos currently waiting for my participation consent and to future eligible Service Videos while my consent remains active.";
+export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_EFFECT_SCOPE = "CURRENT_PENDING_AND_FUTURE_ELIGIBLE_SERVICE_VIDEOS";
 
 export type PublicationStageInput = {
   stage: ServiceVideoStage;
@@ -100,8 +108,14 @@ function isPackageVisibilityProposal(proposal: any): boolean {
 }
 
 function isImmediatePublicationProposal(proposal: any): boolean {
-  return Number(proposal?.contractVersion || 1) >= IMMEDIATE_PUBLICATION_CONTRACT_VERSION &&
-    String(proposal?.authorizationModel || "") === IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL;
+  return (Number(proposal?.contractVersion || 1) >= IMMEDIATE_PUBLICATION_CONTRACT_VERSION &&
+    String(proposal?.authorizationModel || "") === IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL) ||
+    isStandingConsentProposal(proposal);
+}
+
+function isStandingConsentProposal(proposal: any): boolean {
+  return Number(proposal?.contractVersion || 1) >= STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION &&
+    String(proposal?.authorizationModel || "") === STANDING_CONSENT_AUTHORIZATION_MODEL;
 }
 
 function isImmediatePublicationAudit(adminDecision: any): boolean {
@@ -115,6 +129,13 @@ function isImmediatePublicationAudit(adminDecision: any): boolean {
   const stages = parseJson<ExactPackageStage[]>(adminDecision.stageEvidenceJson, []);
   const decidedAt = new Date(adminDecision.decidedAt);
   if (stages.length !== REQUIRED_SERVICE_VIDEO_STAGES.length || Number.isNaN(decidedAt.getTime())) return false;
+  const canonicalStages = stages.map((stage) => ({
+    stage: stage.stage,
+    stageEvidenceId: stage.stageEvidenceId,
+    stageVersion: stage.stageVersion,
+    mediaAssetId: stage.mediaAssetId,
+    contentHash: stage.contentHash,
+  }));
   const evidenceDocument = {
     evidenceVersion: Number(adminDecision.publicEligibilityEvidenceVersion),
     bookingId: adminDecision.bookingId,
@@ -123,7 +144,7 @@ function isImmediatePublicationAudit(adminDecision: any): boolean {
     packageVersion: adminDecision.packageVersion,
     packageHash: adminDecision.packageHash,
     stageEvidence: REQUIRED_SERVICE_VIDEO_STAGES.map(
-      (stage) => stages.find((candidate) => candidate.stage === stage),
+      (stage) => canonicalStages.find((candidate) => candidate.stage === stage),
     ),
     adminUserId: adminDecision.adminUserId,
     eligibility: String(adminDecision.publicDisplayEligibility).toUpperCase(),
@@ -421,7 +442,7 @@ export async function decidePackageVisibility(input: {
     const version = Number(latest?.version || 0) + 1;
     const evidenceDocument = {
       evidenceVersion: immediatePublicationContract
-        ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+        ? STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION
         : PACKAGE_VISIBILITY_CONTRACT_VERSION,
       bookingId: input.bookingId,
       vendorId: foundation.booking.vendorId,
@@ -456,7 +477,7 @@ export async function decidePackageVisibility(input: {
         version,
         isCurrent: true,
         evidenceVersion: immediatePublicationContract
-          ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+          ? STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION
           : PACKAGE_VISIBILITY_CONTRACT_VERSION,
         decisionHash,
         verificationMethod: input.verificationMethod,
@@ -530,10 +551,10 @@ export async function decidePackageVisibility(input: {
     exactStages.sort((a, b) => a.packaged.stage.localeCompare(b.packaged.stage));
     const proposalDocument = {
       contractVersion: immediatePublicationContract
-        ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+        ? STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION
         : PACKAGE_VISIBILITY_CONTRACT_VERSION,
       authorizationModel: immediatePublicationContract
-        ? IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL
+        ? STANDING_CONSENT_AUTHORIZATION_MODEL
         : PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
       visibilityDecisionId: visibilityDecision.id,
       visibilityDecisionHash: decisionHash,
@@ -560,15 +581,15 @@ export async function decidePackageVisibility(input: {
         version: Number(latestProposal?.version || 0) + 1,
         isCurrent: true,
         status: immediatePublicationContract
-          ? PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
+          ? PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT
           : PUBLICATION_STATUSES.AWAITING_ADMIN,
         audience: "PUBLIC",
         proposalHash,
         contractVersion: immediatePublicationContract
-          ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+          ? STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION
           : PACKAGE_VISIBILITY_CONTRACT_VERSION,
         authorizationModel: immediatePublicationContract
-          ? IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL
+          ? STANDING_CONSENT_AUTHORIZATION_MODEL
           : PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
         packageVisibilityDecisionId: visibilityDecision.id,
         proposedByUserId: input.customerUserId,
@@ -600,11 +621,18 @@ export async function decidePackageVisibility(input: {
       data: { publicationProposalId: proposal.id },
     });
     const stages = await tx.serviceVideoPublicationStage.findMany({ where: { proposalId: proposal.id } });
-    const requirements = await requiredParticipantRows(tx, proposal, stages, visibilityDecision);
-    const nextStatus = requirements.length
-      ? PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
-      : immediatePublicationContract
+    const participantRequirements = immediatePublicationContract
+      ? []
+      : await requiredParticipantRows(tx, proposal, stages, visibilityDecision);
+    const standingCoverage = immediatePublicationContract
+      ? await loadStandingConsentCoverage(tx, proposal, stages)
+      : null;
+    const nextStatus = immediatePublicationContract
+      ? standingCoverage?.complete
         ? PUBLICATION_STATUSES.PUBLIC
+        : PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT
+      : participantRequirements.length
+        ? PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
         : PUBLICATION_STATUSES.AWAITING_ADMIN;
     if (nextStatus !== proposal.status && nextStatus !== PUBLICATION_STATUSES.PUBLIC) {
       await tx.serviceVideoPublicationProposal.update({ where: { id: proposal.id }, data: { status: nextStatus } });
@@ -612,7 +640,7 @@ export async function decidePackageVisibility(input: {
     if (nextStatus === PUBLICATION_STATUSES.PUBLIC) {
       await activateImmediatePublicVisibility(tx, {
         foundation,
-        proposal: { ...proposal, status: PUBLICATION_STATUSES.AWAITING_PARTICIPANTS },
+        proposal: { ...proposal, status: PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT },
         stages,
         visibilityDecision: { ...visibilityDecision, publicationProposalId: proposal.id },
       });
@@ -631,6 +659,7 @@ export async function decidePackageVisibility(input: {
         stageSetHash,
         status: nextStatus,
         immediatePublication: immediatePublicationContract,
+        standingEmployeeConsent: immediatePublicationContract,
       },
     });
     return {
@@ -714,7 +743,7 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
         ? proposal?.status === PUBLICATION_STATUSES.PUBLIC
           ? "PUBLIC"
           : immediatePublicationContract
-            ? proposal?.status === PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
+            ? proposal?.status === PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT
               ? "PUBLIC_WAITING_PERMISSION"
               : "PRIVATE"
             : "PUBLIC_REVIEW_PENDING"
@@ -730,7 +759,7 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
     publicRestrictionActive: Boolean(activePublicRestriction),
     publicRestrictionReason: activePublicRestriction?.reasonCode || null,
     visibilityContractVersion: immediatePublicationContract
-      ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+      ? STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION
       : PACKAGE_VISIBILITY_CONTRACT_VERSION,
     package: pkg ? { id: pkg.id, version: pkg.version, packageHash: pkg.packageHash, audioIncluded: Boolean(pkg.audioExpected) } : null,
     visibilityDecision,
@@ -941,6 +970,138 @@ async function requiredParticipantRows(db: any, proposal: any, stages: any[], cu
   return requirements;
 }
 
+type StandingConsentRequirement = {
+  membershipId: string;
+  userId: string;
+  vendorId: string;
+  membershipStatus: string;
+  requiresLikeness: boolean;
+  requiresAudio: boolean;
+  stageIds: string[];
+};
+
+function standingConsentEvidenceDocument(input: {
+  userId: string;
+  vendorId: string;
+  membershipId: string;
+  decision: string;
+  coversLikeness: boolean;
+  coversAudio: boolean;
+  effectScope: string;
+  policyVersion: string;
+  contractVersion: number;
+  consentTextSnapshot: string;
+  verificationMethod: string;
+  version: number;
+  decidedAt: Date | string;
+}) {
+  return {
+    contractVersion: Number(input.contractVersion),
+    policyVersion: input.policyVersion,
+    userId: input.userId,
+    vendorId: input.vendorId,
+    membershipId: input.membershipId,
+    decision: input.decision,
+    coversLikeness: input.coversLikeness,
+    coversAudio: input.coversAudio,
+    effectScope: input.effectScope,
+    consentTextSnapshot: input.consentTextSnapshot,
+    verificationMethod: input.verificationMethod,
+    version: Number(input.version),
+    decidedAt: new Date(input.decidedAt).toISOString(),
+  };
+}
+
+function standingConsentDecisionValid(
+  row: any,
+  requirement: StandingConsentRequirement,
+  options: { requireCurrent?: boolean } = { requireCurrent: true },
+): boolean {
+  if (!row || row.decision !== "ALLOW") return false;
+  if (options.requireCurrent !== false && (row.isCurrent !== true || row.supersededAt)) return false;
+  if (
+    row.userId !== requirement.userId ||
+    row.vendorId !== requirement.vendorId ||
+    row.membershipId !== requirement.membershipId ||
+    requirement.membershipStatus !== "ACTIVE" ||
+    Number(row.contractVersion || 0) !== 1 ||
+    row.policyVersion !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION ||
+    row.effectScope !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_EFFECT_SCOPE ||
+    row.consentTextSnapshot !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT ||
+    (requirement.requiresLikeness && row.coversLikeness !== true) ||
+    (requirement.requiresAudio && row.coversAudio !== true)
+  ) return false;
+  return standingConsentEvidenceHashValid(row);
+}
+
+function standingConsentEvidenceHashValid(row: any): boolean {
+  if (!row) return false;
+  const decidedAt = new Date(row.decidedAt);
+  if (Number.isNaN(decidedAt.getTime())) return false;
+  return sha256(stableJson(standingConsentEvidenceDocument(row))) === row.decisionHash;
+}
+
+async function requiredStandingConsentRows(db: any, proposal: any, stages: any[]): Promise<StandingConsentRequirement[]> {
+  const byMembership = new Map<string, StandingConsentRequirement>();
+  for (const stage of stages) {
+    if (!stage.containsEmployeeLikeness && !stage.includesAudio) continue;
+    const evidence = await db.serviceVideoStageEvidence.findUnique({ where: { id: stage.stageEvidenceId } });
+    const membership = evidence
+      ? await db.vendorMembership.findUnique({
+          where: { id: evidence.employeeMembershipId },
+          select: { id: true, userId: true, vendorId: true, role: true, status: true },
+        })
+      : null;
+    if (
+      !membership?.userId ||
+      membership.vendorId !== proposal.vendorId ||
+      membership.role !== "EMPLOYEE"
+    ) throw new Error("PUBLICATION_STANDING_CONSENT_AUTHORITY_UNRESOLVED");
+    const current: StandingConsentRequirement = byMembership.get(membership.id) || {
+      membershipId: membership.id,
+      userId: membership.userId,
+      vendorId: membership.vendorId,
+      membershipStatus: membership.status,
+      requiresLikeness: false,
+      requiresAudio: false,
+      stageIds: [],
+    };
+    current.requiresLikeness ||= stage.containsEmployeeLikeness === true;
+    current.requiresAudio ||= stage.includesAudio === true;
+    if (!current.stageIds.includes(stage.id)) current.stageIds.push(stage.id);
+    byMembership.set(membership.id, current);
+  }
+  return Array.from(byMembership.values()).sort((left, right) => left.membershipId.localeCompare(right.membershipId));
+}
+
+async function loadStandingConsentCoverage(db: any, proposal: any, stages: any[]) {
+  const requirements = await requiredStandingConsentRows(db, proposal, stages);
+  const decisions = requirements.length
+    ? await db.employeePublicMediaConsentDecision.findMany({
+        where: { membershipId: { in: requirements.map((row) => row.membershipId) }, isCurrent: true },
+        orderBy: { decidedAt: "desc" },
+      })
+    : [];
+  const validDecisions = requirements.map((requirement) => ({
+    requirement,
+    decision: decisions.find((row: any) =>
+      row.membershipId === requirement.membershipId && standingConsentDecisionValid(row, requirement),
+    ) || null,
+  }));
+  return {
+    requirements,
+    decisions,
+    validDecisions,
+    complete: validDecisions.every((row) => Boolean(row.decision)),
+  };
+}
+
+async function assertStandingConsentCoverage(db: any, proposal: any, stages: any[]) {
+  const coverage = await loadStandingConsentCoverage(db, proposal, stages);
+  if (!coverage.complete) throw new Error("PUBLICATION_STANDING_EMPLOYEE_CONSENT_INCOMPLETE");
+  return coverage;
+}
+
 async function assertNoActivePublicRestriction(db: any, bookingId: string) {
   const restriction = db.mediaLifecycleRestriction?.findFirst
     ? await db.mediaLifecycleRestriction.findFirst({
@@ -992,7 +1153,12 @@ async function activateImmediatePublicVisibility(
     throw new Error("PUBLICATION_CUSTOMER_APPROVAL_INCOMPLETE");
   }
   await assertNoActivePublicRestriction(tx, proposal.bookingId);
-  const approvals = await assertRequiredDecisions(tx, proposal, stages);
+  const standingCoverage = isStandingConsentProposal(proposal)
+    ? await assertStandingConsentCoverage(tx, proposal, stages)
+    : null;
+  const approvals = standingCoverage
+    ? null
+    : await assertRequiredDecisions(tx, proposal, stages);
   const now = new Date();
   for (const stage of stages) {
     if (stage.containsMinor || stage.containsBystander) {
@@ -1010,12 +1176,20 @@ async function activateImmediatePublicVisibility(
       throw new Error("PUBLICATION_STAGE_VERSION_MISMATCH");
     }
     await loadExactStage(tx, foundation, packaged);
-    const relatedParticipantIds = approvals.participantDecisions
-      .filter((row: any) => row.stageId === stage.id)
-      .map((row: any) => row.id)
-      .sort();
+    const relatedParticipantIds = approvals
+      ? approvals.participantDecisions
+          .filter((row: any) => row.stageId === stage.id)
+          .map((row: any) => row.id)
+          .sort()
+      : [];
+    const relatedStandingConsentIds = standingCoverage
+      ? standingCoverage.validDecisions
+          .filter((row) => row.requirement.stageIds.includes(stage.id))
+          .map((row) => row.decision!.id)
+          .sort()
+      : [];
     const eligibilityDocument = {
-      contractVersion: IMMEDIATE_PUBLICATION_CONTRACT_VERSION,
+      contractVersion: Number(proposal.contractVersion),
       proposalHash: proposal.proposalHash,
       packageHash: proposal.packageHash,
       presentationHash: stage.presentationHash,
@@ -1023,7 +1197,9 @@ async function activateImmediatePublicVisibility(
       packageVisibilityDecisionId: visibilityDecision.id,
       coreAdminAuditDecisionId: foundation.adminAuditDecision.id,
       coreAdminPublicEligibilityHash: foundation.adminAuditDecision.publicEligibilityHash,
-      participantDecisionIds: relatedParticipantIds,
+      ...(isStandingConsentProposal(proposal)
+        ? { standingConsentDecisionIds: relatedStandingConsentIds }
+        : { participantDecisionIds: relatedParticipantIds }),
       audience: "PUBLIC",
     };
     await tx.publicServiceVideoEligibility.create({
@@ -1046,6 +1222,9 @@ async function activateImmediatePublicVisibility(
         vendorDecisionId: null,
         packageVisibilityDecisionId: visibilityDecision.id,
         participantDecisionIdsJson: stableJson(relatedParticipantIds),
+        standingConsentDecisionIdsJson: isStandingConsentProposal(proposal)
+          ? stableJson(relatedStandingConsentIds)
+          : null,
         eligibleAt: now,
       },
     });
@@ -1062,6 +1241,31 @@ async function activateImmediatePublicVisibility(
   if (Number(published.count || 0) !== REQUIRED_SERVICE_VIDEO_STAGES.length) {
     throw new Error("PUBLICATION_MEDIA_ACTIVATION_RACE");
   }
+  if (standingCoverage) {
+    for (const row of standingCoverage.validDecisions) {
+      await tx.employeePublicMediaNotification.upsert({
+        where: {
+          proposalId_employeeMembershipId_notificationType: {
+            proposalId: proposal.id,
+            employeeMembershipId: row.requirement.membershipId,
+            notificationType: "SERVICE_VIDEO_PUBLICATION_INFO_V1",
+          },
+        },
+        create: {
+          employeeUserId: row.requirement.userId,
+          employeeMembershipId: row.requirement.membershipId,
+          vendorId: proposal.vendorId,
+          bookingId: proposal.bookingId,
+          packageId: proposal.packageId,
+          proposalId: proposal.id,
+          notificationType: "SERVICE_VIDEO_PUBLICATION_INFO_V1",
+          title: "A Service Video you participated in was shared publicly",
+          message: "The Customer chose to share an eligible Reliance Service Video publicly. Your standing Public Media Consent was verified; no additional approval was requested.",
+        },
+        update: {},
+      });
+    }
+  }
   await tx.serviceVideoPublicationProposal.update({
     where: { id: proposal.id },
     data: { status: PUBLICATION_STATUSES.PUBLIC },
@@ -1074,7 +1278,7 @@ async function activateImmediatePublicVisibility(
     actorRole: "CUSTOMER",
     eventType: "CUSTOMER_PACKAGE_PUBLIC_VISIBILITY_ACTIVATED",
     metadata: {
-      contractVersion: IMMEDIATE_PUBLICATION_CONTRACT_VERSION,
+      contractVersion: Number(proposal.contractVersion),
       packageVisibilityDecisionId: visibilityDecision.id,
       coreAdminAuditDecisionId: foundation.adminAuditDecision.id,
       packageHash: proposal.packageHash,
@@ -1165,6 +1369,9 @@ export async function decidePublicationAsParticipant(input: {
 }) {
   return prisma.$transaction(async (tx: any) => {
     const { proposal, stages } = await publicationContext(tx, input.proposalId);
+    if (isStandingConsentProposal(proposal)) {
+      throw new Error("PUBLICATION_PER_PACKAGE_EMPLOYEE_DECISION_NOT_ALLOWED");
+    }
     const customer = isPackageVisibilityProposal(proposal)
       ? await tx.serviceVideoPackageVisibilityDecision.findFirst({
           where: {
@@ -1360,6 +1567,16 @@ async function assertRequiredDecisions(db: any, proposal: any, stages: any[]) {
     })));
     if (customer.stageSetHash !== stageSetHash) throw new Error("PUBLICATION_PACKAGE_STAGE_SET_MISMATCH");
   }
+  if (isStandingConsentProposal(proposal)) {
+    const standingCoverage = await assertStandingConsentCoverage(db, proposal, stages);
+    return {
+      customer,
+      approved,
+      participantDecisions: [],
+      standingConsentDecisions: standingCoverage.validDecisions.map((row) => row.decision),
+      packageLevel,
+    };
+  }
   const requirements = await requiredParticipantRows(db, proposal, stages, customer);
   const decisions = requirements.length
     ? await db.serviceVideoPublicationParticipantDecision.findMany({ where: { proposalId: proposal.id } })
@@ -1540,6 +1757,380 @@ export async function loadPublicationView(input: { bookingId: string; proposalId
   return { proposal, stages, customerDecision, packageVisibilityDecision, participantDecisions, vendorDecision, adminDecision, audit };
 }
 
+async function reevaluateStandingConsentPublication(tx: any, proposalId: string) {
+  const proposal = await tx.serviceVideoPublicationProposal.findUnique({ where: { id: proposalId } });
+  if (
+    !proposal ||
+    !proposal.isCurrent ||
+    !isStandingConsentProposal(proposal) ||
+    proposal.status !== PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT
+  ) return { status: proposal?.status || null, published: false };
+  const stages = await tx.serviceVideoPublicationStage.findMany({
+    where: { proposalId: proposal.id },
+    orderBy: { stage: "asc" },
+  });
+  const visibilityDecision = await tx.serviceVideoPackageVisibilityDecision.findFirst({
+    where: {
+      id: proposal.packageVisibilityDecisionId,
+      bookingId: proposal.bookingId,
+      packageId: proposal.packageId,
+      packageVersion: proposal.packageVersion,
+      packageHash: proposal.packageHash,
+      isCurrent: true,
+      decision: PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY,
+    },
+  });
+  if (!visibilityDecision) return { status: proposal.status, published: false };
+  const coverage = await loadStandingConsentCoverage(tx, proposal, stages);
+  if (!coverage.complete) return { status: proposal.status, published: false };
+  const foundation = await loadPrivateFoundation(tx, proposal.bookingId, proposal.vendorId);
+  await activateImmediatePublicVisibility(tx, { foundation, proposal, stages, visibilityDecision });
+  return { status: PUBLICATION_STATUSES.PUBLIC, published: true };
+}
+
+export async function loadEmployeePublicMediaConsentView(input: { userId: string }) {
+  const memberships = await (prisma as any).vendorMembership.findMany({
+    where: { userId: input.userId, role: "EMPLOYEE", status: "ACTIVE" },
+    select: {
+      id: true,
+      userId: true,
+      vendorId: true,
+      role: true,
+      status: true,
+      vendor: { select: { id: true, name: true, businessName: true, accountStatus: true } },
+    },
+    orderBy: { requestedAt: "asc" },
+  });
+  const decisions = memberships.length
+    ? await (prisma as any).employeePublicMediaConsentDecision.findMany({
+        where: { membershipId: { in: memberships.map((row: any) => row.id) }, isCurrent: true },
+        orderBy: { decidedAt: "desc" },
+      })
+    : [];
+  const notifications = memberships.length
+    ? await (prisma as any).employeePublicMediaNotification.findMany({
+        where: { employeeUserId: input.userId, employeeMembershipId: { in: memberships.map((row: any) => row.id) } },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+      })
+    : [];
+  return {
+    policyVersion: EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION,
+    consentText: EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT,
+    memberships: memberships.map((membership: any) => {
+      const decision = decisions.find((row: any) => row.membershipId === membership.id) || null;
+      return {
+        membershipId: membership.id,
+        vendorId: membership.vendorId,
+        vendorName: membership.vendor?.businessName || membership.vendor?.name || "Reliance business",
+        status: decision?.decision === "ALLOW"
+          ? "ALLOWED"
+          : decision?.decision === "DENY"
+            ? "NOT_ALLOWED"
+            : "NOT_DECIDED",
+        decision: decision ? {
+          id: decision.id,
+          decision: decision.decision,
+          decidedAt: decision.decidedAt,
+          policyVersion: decision.policyVersion,
+          coversLikeness: decision.coversLikeness,
+          coversAudio: decision.coversAudio,
+          effectScope: decision.effectScope,
+        } : null,
+      };
+    }),
+    notifications,
+  };
+}
+
+export async function loadVendorEmployeePublicMediaConsentStatuses(input: {
+  vendorId: string;
+  membershipIds: string[];
+}) {
+  const rows = input.membershipIds.length
+    ? await (prisma as any).employeePublicMediaConsentDecision.findMany({
+        where: {
+          vendorId: input.vendorId,
+          membershipId: { in: input.membershipIds },
+          isCurrent: true,
+        },
+        orderBy: { decidedAt: "desc" },
+      })
+    : [];
+  return new Map(input.membershipIds.map((membershipId) => {
+    const row = rows.find((candidate: any) => candidate.membershipId === membershipId) || null;
+    return [membershipId, {
+      status: row?.decision === "ALLOW" ? "ALLOWED" : row?.decision === "DENY" ? "NOT_ALLOWED" : "NOT_DECIDED",
+      decidedAt: row?.decidedAt || null,
+    }];
+  }));
+}
+
+export async function decideEmployeePublicMediaConsent(input: {
+  userId: string;
+  membershipId: string;
+  decision: "ALLOW" | "DENY";
+  verificationMethod: string;
+}) {
+  return (prisma as any).$transaction(async (tx: any) => {
+    const decision = String(input.decision || "").trim().toUpperCase();
+    if (!['ALLOW', 'DENY'].includes(decision)) throw new Error("EMPLOYEE_PUBLIC_MEDIA_CONSENT_DECISION_INVALID");
+    const membership = await tx.vendorMembership.findUnique({
+      where: { id: input.membershipId },
+      select: { id: true, userId: true, vendorId: true, role: true, status: true },
+    });
+    if (
+      !membership ||
+      membership.userId !== input.userId ||
+      membership.role !== "EMPLOYEE" ||
+      membership.status !== "ACTIVE"
+    ) throw new Error("EMPLOYEE_PUBLIC_MEDIA_CONSENT_FORBIDDEN");
+
+    let alreadyPublicAffected = false;
+    if (decision === "DENY") {
+      const evidence = await tx.serviceVideoStageEvidence.findMany({
+        where: { employeeMembershipId: membership.id },
+        select: { id: true },
+      });
+      const publicationStages = evidence.length
+        ? await tx.serviceVideoPublicationStage.findMany({
+            where: { stageEvidenceId: { in: evidence.map((row: any) => row.id) } },
+            select: { id: true },
+          })
+        : [];
+      const activePublic = publicationStages.length
+        ? await tx.publicServiceVideoEligibility.findFirst({
+            where: {
+              stageId: { in: publicationStages.map((row: any) => row.id) },
+              status: "ACTIVE",
+              invalidatedAt: null,
+            },
+            select: { id: true },
+          })
+        : null;
+      alreadyPublicAffected = Boolean(activePublic);
+    }
+
+    const current = await tx.employeePublicMediaConsentDecision.findFirst({
+      where: { membershipId: membership.id, isCurrent: true },
+      orderBy: { version: "desc" },
+    });
+    if (
+      current?.decision === decision &&
+      current.userId === membership.userId &&
+      current.vendorId === membership.vendorId &&
+      current.membershipId === membership.id &&
+      standingConsentEvidenceHashValid(current)
+    ) return { decision: current, idempotent: true, publishedProposalIds: [], alreadyPublicAffected };
+    const latest = await tx.employeePublicMediaConsentDecision.findFirst({
+      where: { membershipId: membership.id },
+      orderBy: { version: "desc" },
+    });
+    const now = new Date();
+    const version = Number(latest?.version || 0) + 1;
+    const document = standingConsentEvidenceDocument({
+      userId: membership.userId,
+      vendorId: membership.vendorId,
+      membershipId: membership.id,
+      decision,
+      coversLikeness: decision === "ALLOW",
+      coversAudio: decision === "ALLOW",
+      effectScope: EMPLOYEE_PUBLIC_MEDIA_CONSENT_EFFECT_SCOPE,
+      policyVersion: EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION,
+      contractVersion: 1,
+      consentTextSnapshot: EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT,
+      verificationMethod: input.verificationMethod,
+      version,
+      decidedAt: now,
+    });
+    if (current) {
+      await tx.employeePublicMediaConsentDecision.update({
+        where: { id: current.id },
+        data: { isCurrent: false, supersededAt: now },
+      });
+    }
+    const created = await tx.employeePublicMediaConsentDecision.create({
+      data: {
+        ...document,
+        decisionHash: sha256(stableJson(document)),
+        isCurrent: true,
+      },
+    });
+
+    const publishedProposalIds: string[] = [];
+    if (decision === "ALLOW") {
+      const evidence = await tx.serviceVideoStageEvidence.findMany({
+        where: { employeeMembershipId: membership.id },
+        select: { id: true },
+      });
+      const stages = evidence.length
+        ? await tx.serviceVideoPublicationStage.findMany({
+            where: { stageEvidenceId: { in: evidence.map((row: any) => row.id) } },
+            select: { proposalId: true },
+          })
+        : [];
+      const proposalIds = Array.from(new Set(stages.map((row: any) => row.proposalId))) as string[];
+      const proposals = proposalIds.length
+        ? await tx.serviceVideoPublicationProposal.findMany({
+            where: {
+              id: { in: proposalIds },
+              vendorId: membership.vendorId,
+              isCurrent: true,
+              status: PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT,
+              contractVersion: { gte: STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION },
+              authorizationModel: STANDING_CONSENT_AUTHORIZATION_MODEL,
+            },
+          })
+        : [];
+      for (const proposal of proposals) {
+        const result = await reevaluateStandingConsentPublication(tx, proposal.id);
+        if (result.published) publishedProposalIds.push(proposal.id);
+      }
+    }
+    return { decision: created, idempotent: false, publishedProposalIds, alreadyPublicAffected };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function transitionCurrentPublicationToStandingConsent(input: {
+  bookingId: string;
+  actorUserId?: string | null;
+}) {
+  return (prisma as any).$transaction(async (tx: any) => {
+    const foundation = await loadPrivateFoundation(tx, input.bookingId);
+    if (
+      !isImmediatePublicationAudit(foundation.adminAuditDecision) ||
+      String(foundation.adminAuditDecision.publicDisplayEligibility).toUpperCase() !== PUBLIC_DISPLAY_ELIGIBLE
+    ) throw new Error("PUBLICATION_CURRENT_CONTRACT_AUDIT_REQUIRED");
+    const visibilityDecision = await tx.serviceVideoPackageVisibilityDecision.findFirst({
+      where: {
+        bookingId: input.bookingId,
+        packageId: foundation.package.id,
+        packageHash: foundation.package.packageHash,
+        isCurrent: true,
+        decision: PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY,
+      },
+    });
+    if (!visibilityDecision) throw new Error("PUBLICATION_CURRENT_CUSTOMER_SHARE_DECISION_REQUIRED");
+    const previous = visibilityDecision.publicationProposalId
+      ? await tx.serviceVideoPublicationProposal.findUnique({ where: { id: visibilityDecision.publicationProposalId } })
+      : null;
+    if (!previous || !previous.isCurrent) throw new Error("PUBLICATION_CURRENT_PROPOSAL_REQUIRED");
+    if (isStandingConsentProposal(previous)) return { previousProposal: previous, proposal: previous, idempotent: true };
+    if (previous.status === PUBLICATION_STATUSES.PUBLIC) throw new Error("PUBLICATION_PUBLIC_TRANSITION_NOT_ALLOWED");
+    const activeEligibility = await tx.publicServiceVideoEligibility.findMany({
+      where: { proposalId: previous.id, status: "ACTIVE", invalidatedAt: null },
+      select: { id: true },
+    });
+    if (activeEligibility.length) throw new Error("PUBLICATION_ACTIVE_ELIGIBILITY_TRANSITION_NOT_ALLOWED");
+    const priorStages = await tx.serviceVideoPublicationStage.findMany({
+      where: { proposalId: previous.id },
+      orderBy: { stage: "asc" },
+    });
+    if (
+      priorStages.length !== REQUIRED_SERVICE_VIDEO_STAGES.length ||
+      !REQUIRED_SERVICE_VIDEO_STAGES.every((stage) => priorStages.filter((row: any) => row.stage === stage).length === 1)
+    ) throw new Error("PUBLICATION_PACKAGE_STAGE_SET_INVALID");
+    const now = new Date();
+    await tx.serviceVideoPublicationProposal.update({
+      where: { id: previous.id },
+      data: { isCurrent: false, status: PUBLICATION_STATUSES.SUPERSEDED, supersededAt: now },
+    });
+    const latest = await tx.serviceVideoPublicationProposal.findFirst({
+      where: { bookingId: input.bookingId },
+      orderBy: { version: "desc" },
+    });
+    const proposalDocument = {
+      contractVersion: STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION,
+      authorizationModel: STANDING_CONSENT_AUTHORIZATION_MODEL,
+      visibilityDecisionId: visibilityDecision.id,
+      visibilityDecisionHash: visibilityDecision.decisionHash,
+      bookingId: input.bookingId,
+      vendorId: foundation.booking.vendorId,
+      packageId: foundation.package.id,
+      packageVersion: foundation.package.version,
+      packageHash: foundation.package.packageHash,
+      stageSetHash: visibilityDecision.stageSetHash,
+      stages: priorStages.map((stage: any) => ({
+        stage: stage.stage,
+        stageEvidenceId: stage.stageEvidenceId,
+        stageVersion: stage.stageVersion,
+        mediaAssetId: stage.mediaAssetId,
+        contentHash: stage.contentHash,
+        presentationHash: stage.presentationHash,
+      })),
+    };
+    const proposal = await tx.serviceVideoPublicationProposal.create({
+      data: {
+        bookingId: input.bookingId,
+        vendorId: foundation.booking.vendorId,
+        packageId: foundation.package.id,
+        packageVersion: foundation.package.version,
+        packageHash: foundation.package.packageHash,
+        version: Number(latest?.version || 0) + 1,
+        isCurrent: true,
+        status: PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT,
+        audience: "PUBLIC",
+        proposalHash: sha256(stableJson(proposalDocument)),
+        contractVersion: STANDING_CONSENT_PUBLICATION_CONTRACT_VERSION,
+        authorizationModel: STANDING_CONSENT_AUTHORIZATION_MODEL,
+        packageVisibilityDecisionId: visibilityDecision.id,
+        proposedByUserId: visibilityDecision.customerUserId,
+        proposedByMembershipId: null,
+      },
+    });
+    for (const stage of priorStages) {
+      await tx.serviceVideoPublicationStage.create({
+        data: {
+          proposalId: proposal.id,
+          bookingId: stage.bookingId,
+          stage: stage.stage,
+          stageEvidenceId: stage.stageEvidenceId,
+          mediaAssetId: stage.mediaAssetId,
+          stageVersion: stage.stageVersion,
+          contentHash: stage.contentHash,
+          presentationJson: stage.presentationJson,
+          presentationHash: stage.presentationHash,
+          containsCustomerLikeness: stage.containsCustomerLikeness,
+          containsEmployeeLikeness: stage.containsEmployeeLikeness,
+          containsMinor: stage.containsMinor,
+          containsBystander: stage.containsBystander,
+          includesAudio: stage.includesAudio,
+        },
+      });
+    }
+    await tx.serviceVideoPackageVisibilityDecision.update({
+      where: { id: visibilityDecision.id },
+      data: { publicationProposalId: proposal.id },
+    });
+    const transitionMetadata = {
+      transition: "SUPERSEDED_BY_STANDING_CONSENT_CONTRACT",
+      previousProposalId: previous.id,
+      nextProposalId: proposal.id,
+      customerVisibilityDecisionId: visibilityDecision.id,
+      packageHash: proposal.packageHash,
+    };
+    await writeAudit(tx, {
+      proposalId: previous.id,
+      bookingId: previous.bookingId,
+      vendorId: previous.vendorId,
+      actorUserId: input.actorUserId || null,
+      actorRole: "SYSTEM",
+      eventType: "PUBLICATION_PROPOSAL_SUPERSEDED_BY_STANDING_CONSENT_CONTRACT",
+      metadata: transitionMetadata,
+    });
+    await writeAudit(tx, {
+      proposalId: proposal.id,
+      bookingId: proposal.bookingId,
+      vendorId: proposal.vendorId,
+      actorUserId: input.actorUserId || null,
+      actorRole: "SYSTEM",
+      eventType: "PUBLICATION_STANDING_CONSENT_TRANSITION_CREATED",
+      metadata: transitionMetadata,
+    });
+    return { previousProposal: previous, proposal, idempotent: false };
+  }, { isolationLevel: "Serializable" });
+}
+
 async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceId?: string }) {
   const proposal = await db.serviceVideoPublicationProposal.findFirst({
     where: { id: row.proposalId, bookingId: row.bookingId, vendorId: row.vendorId, isCurrent: true, status: PUBLICATION_STATUSES.PUBLIC, proposalHash: row.proposalHash, packageId: row.packageId, packageHash: row.packageHash },
@@ -1624,16 +2215,29 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
       }
     }
   }
-  const requirements = await requiredParticipantRows(db, proposal, [stage], customer);
+  const standingProposal = isStandingConsentProposal(proposal);
   const expectedParticipantIds = parseJson<string[]>(row.participantDecisionIdsJson, []);
-  if (requirements.length) {
-    const decisions = await db.serviceVideoPublicationParticipantDecision.findMany({ where: { id: { in: expectedParticipantIds }, proposalId: proposal.id, stageId: stage.id, decision: "APPROVED", proposalHash: proposal.proposalHash, presentationHash: stage.presentationHash } });
-    if (!requirements.every((required) => decisions.some((decision: any) => decision.actorUserId === required.actorUserId && decision.authorityType === required.authorityType))) return false;
+  const expectedStandingConsentIds = parseJson<string[]>(row.standingConsentDecisionIdsJson, []);
+  if (standingProposal) {
+    const requirements = await requiredStandingConsentRows(db, proposal, [stage]);
+    const decisions = requirements.length
+      ? await db.employeePublicMediaConsentDecision.findMany({ where: { id: { in: expectedStandingConsentIds } } })
+      : [];
+    if (!requirements.every((requirement) => decisions.some((decision: any) =>
+      decision.membershipId === requirement.membershipId &&
+      standingConsentDecisionValid(decision, requirement, { requireCurrent: false }),
+    ))) return false;
+  } else {
+    const requirements = await requiredParticipantRows(db, proposal, [stage], customer);
+    if (requirements.length) {
+      const decisions = await db.serviceVideoPublicationParticipantDecision.findMany({ where: { id: { in: expectedParticipantIds }, proposalId: proposal.id, stageId: stage.id, decision: "APPROVED", proposalHash: proposal.proposalHash, presentationHash: stage.presentationHash } });
+      if (!requirements.every((required) => decisions.some((decision: any) => decision.actorUserId === required.actorUserId && decision.authorityType === required.authorityType))) return false;
+    }
   }
   if (immediatePublication) {
     if (!isImmediatePublicationAudit(admin)) return false;
     const eligibilityDocument = {
-      contractVersion: IMMEDIATE_PUBLICATION_CONTRACT_VERSION,
+      contractVersion: Number(proposal.contractVersion),
       proposalHash: proposal.proposalHash,
       packageHash: proposal.packageHash,
       presentationHash: stage.presentationHash,
@@ -1641,7 +2245,9 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
       packageVisibilityDecisionId: customer.id,
       coreAdminAuditDecisionId: admin.id,
       coreAdminPublicEligibilityHash: admin.publicEligibilityHash,
-      participantDecisionIds: [...expectedParticipantIds].sort(),
+      ...(standingProposal
+        ? { standingConsentDecisionIds: [...expectedStandingConsentIds].sort() }
+        : { participantDecisionIds: [...expectedParticipantIds].sort() }),
       audience: "PUBLIC",
     };
     if (sha256(stableJson(eligibilityDocument)) !== row.eligibilityHash) return false;
@@ -1707,7 +2313,7 @@ export async function restoreImmediatePublicVisibilityAfterHold(input: {
         isCurrent: true,
         status: PUBLICATION_STATUSES.PUBLIC,
         contractVersion: { gte: IMMEDIATE_PUBLICATION_CONTRACT_VERSION },
-        authorizationModel: IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL,
+        authorizationModel: { in: [IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL, STANDING_CONSENT_AUTHORIZATION_MODEL] },
       },
     });
     if (!proposal) throw new Error("PUBLICATION_CURRENT_PUBLIC_PROPOSAL_NOT_FOUND");

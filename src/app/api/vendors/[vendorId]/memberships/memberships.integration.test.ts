@@ -8,6 +8,9 @@ const hoisted = vi.hoisted(() => {
     vendorMembership: {
       findMany: vendorMembershipFindMany,
     },
+    employeePublicMediaConsentDecision: {
+      findMany: vi.fn(),
+    },
   };
   return { prisma, vendorMembershipFindMany };
 });
@@ -29,6 +32,8 @@ describe("GET /api/vendors/[vendorId]/memberships", () => {
     vi.mocked(requireVendorManager).mockReset();
     vi.mocked(requireVendorManager).mockResolvedValue({} as any);
     hoisted.vendorMembershipFindMany.mockReset();
+    hoisted.prisma.employeePublicMediaConsentDecision.findMany.mockReset();
+    hoisted.prisma.employeePublicMediaConsentDecision.findMany.mockResolvedValue([]);
   });
 
   it("returns 403 when requester is not vendor manager", async () => {
@@ -92,6 +97,7 @@ describe("GET /api/vendors/[vendorId]/memberships", () => {
       role: "EMPLOYEE",
       status: "ACTIVE",
       pendingDeviceModel: "Pixel",
+      publicMediaConsent: { status: "NOT_DECIDED", decidedAt: null },
     });
   });
 });

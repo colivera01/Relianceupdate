@@ -17,10 +17,10 @@ export default function EmployeePublicationDecisionPage() {
           <ArrowLeft className="h-4 w-4" /> Back to assigned work
         </Link>
         <header className="space-y-2">
-          <p className="text-xs font-semibold uppercase text-blue-200">Participant decision</p>
-          <h1 className="text-2xl font-bold">Public use of your likeness or audio</h1>
+          <p className="text-xs font-semibold uppercase text-blue-200">Public-sharing status</p>
+          <h1 className="text-2xl font-bold">Public Service Video participation</h1>
           <p className="max-w-2xl text-sm text-slate-300">
-            You are deciding only for your own appearance or audio. Declining does not change the completed service or its Private proof.
+            Current Service Videos use your standing Public Media Consent. Genuine historical records retain their original, version-aware decisions.
           </p>
         </header>
         {jobId ? <PublicationWorkflowCard role="employee" bookingId={jobId} /> : null}
