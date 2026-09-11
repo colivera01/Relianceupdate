@@ -1,0 +1,642 @@
+[
+  {
+    "applied_steps_count": 0,
+    "checksum": "a47d680e3145ee03063f3951d8bfe444abcb482b98ddbf7ce368c7d624115cfc",
+    "finished_at": null,
+    "id": "78f1f95b-035d-41c4-8206-93984c61abfd",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20250101000000_add_unique_active_assignment\n\nDatabase error code: 208\n\nDatabase error:\nInvalid object name 'DeviceAssignment'.\n\n",
+    "migration_name": "20250101000000_add_unique_active_assignment",
+    "rolled_back_at": "2026-06-11T11:57:43.338Z",
+    "started_at": "2026-06-11T11:54:56.221Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "a47d680e3145ee03063f3951d8bfe444abcb482b98ddbf7ce368c7d624115cfc",
+    "finished_at": "2026-06-11T11:58:17.42Z",
+    "id": "ab2c5416-ecd1-4b20-9ffb-e696f2e3f0cd",
+    "logs": "",
+    "migration_name": "20250101000000_add_unique_active_assignment",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:17.42Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "6ac282cbda57c7be32d6edb1b327235832e6322c458de632ac6dfaa058849479",
+    "finished_at": "2026-06-11T11:58:22.053Z",
+    "id": "2400ffd9-f45d-4d96-a3c6-a400f3dcaedd",
+    "logs": "",
+    "migration_name": "20250816033121_init",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:22.053Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "fa946bb760f1ede3c01fe1f1a02c5d1c01199d9b4cdcc422de11ee23b1ae4b70",
+    "finished_at": "2026-06-11T11:58:26.652Z",
+    "id": "8045a588-5214-4586-b9ec-5fac37e41a38",
+    "logs": "",
+    "migration_name": "20260408173000_add_publish_controls",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:26.652Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "1973d82b6fe45a29a8b2ab175cbd034be7c8306613ae903f89c9ed588f11601f",
+    "finished_at": "2026-06-11T11:58:31.417Z",
+    "id": "a2d988bd-588b-47bb-959b-c51071b03b07",
+    "logs": "",
+    "migration_name": "20260408190000_add_admin_audit_logs",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:31.417Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "b721ab1801a18b39025bc979fe4d3785ea3ea11fddaf5278095934e17d74ddcb",
+    "finished_at": "2026-06-11T11:58:36.034Z",
+    "id": "6d662b19-11da-47a6-ba55-0f2bf501e615",
+    "logs": "",
+    "migration_name": "20260408201500_add_review_governance_foundation",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:36.034Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "35effd31f1fb6ed4af10533a50c988a076b156e13f260cc044bc9e6218273bb7",
+    "finished_at": "2026-06-11T11:58:40.581Z",
+    "id": "a7aaccb8-2984-4619-86be-3de7997c6214",
+    "logs": "",
+    "migration_name": "20260409102000_add_favorites_foundation",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:40.581Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "61d0799b653b8e6264e646e0a5e713f25e1648a6850e6a727061523eb7fcfff9",
+    "finished_at": "2026-06-11T11:58:45.205Z",
+    "id": "2eacfa53-a195-427a-b9fe-20f985f43e39",
+    "logs": "",
+    "migration_name": "20260409103000_mediaasset_moderation_foundation",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:45.205Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "131621a3e2358bfb5e3679059fa52ca5b416156338d90ba44a2f34a167584c2d",
+    "finished_at": "2026-06-11T11:58:49.651Z",
+    "id": "e28a726e-77f9-48d3-a00f-7e98bce66bf2",
+    "logs": "",
+    "migration_name": "20260410113000_add_smart_review_capture_foundation",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:49.651Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "870399194b11e62fd184b065e871bc4fa381b0dc4cc4b3d213a08e50df823dd9",
+    "finished_at": "2026-06-11T11:58:54.305Z",
+    "id": "9a95bf25-0d4f-4786-9837-ed78eae92a43",
+    "logs": "",
+    "migration_name": "20260412120000_booking_customer_metadata",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:54.305Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "b4bab0b2f2f673796f15707b7e02a01964f84f40d521aba29b1c9926827a1373",
+    "finished_at": "2026-06-11T11:58:59.031Z",
+    "id": "e967ba44-d64c-45f3-9a13-43cfec85b920",
+    "logs": "",
+    "migration_name": "20260422130000_media_session_vendor_job_video_stage",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:58:59.031Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "f2e2292d1410fc35335a589bf9b943c248ec4cb647cbebb19fbb002ed67b1e33",
+    "finished_at": "2026-06-11T11:59:03.496Z",
+    "id": "3b3fb96b-a88b-4469-b014-fc980578dff6",
+    "logs": "",
+    "migration_name": "20260427094000_review_attribution_and_unique_booking_review",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:03.496Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "475983ae6cdefa7369514aabe188afdc717c9ea17791f6ef71bc76616f0d539e",
+    "finished_at": "2026-06-11T11:59:08.166Z",
+    "id": "92738612-4be5-4f01-a7bc-955257dfccf5",
+    "logs": "",
+    "migration_name": "20260427100000_add_booking_rejection_fields",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:08.166Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "9ff454d0ef0b0f5347f1fd9c6795062322ad9b19df64638ed5d5f156d26184f5",
+    "finished_at": "2026-06-11T11:59:13.342Z",
+    "id": "caa20655-39c2-4fbb-8b1e-53f46524f7d1",
+    "logs": "",
+    "migration_name": "20260427143000_add_deviceuid_column_backfill_legacy_employeeid",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:13.342Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "40aa13ea561825f2d3785bf3931c2f561d0ec22e0050c77da28c7af1cf116388",
+    "finished_at": "2026-06-11T11:59:17.905Z",
+    "id": "36ee5db3-57b2-476c-96e8-8c754c8783d7",
+    "logs": "",
+    "migration_name": "20260522041000_add_user_location_foundation",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:17.905Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "c7879e91ed21ae61c64c0040ee9f5ade4d46e76d32ad316d804065769dfcbd20",
+    "finished_at": "2026-06-11T11:59:22.631Z",
+    "id": "378203ec-5df4-44f5-ad29-be0ed3373714",
+    "logs": "",
+    "migration_name": "20260526010000_account_status_content_reports",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:22.631Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "c7a7bd562b998bc8296b3455a75ec3b27a3284366d72c000838fa6da1f6e6323",
+    "finished_at": "2026-06-11T11:59:27.405Z",
+    "id": "d8b85de3-0fda-4231-a04f-2b7cc476a89f",
+    "logs": "",
+    "migration_name": "20260527003000_promoted_listings_phase1",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:27.405Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "3fed682a5b8e1e65a995570cc738b357da621e9e2fcf7d536f4d90c66110e45c",
+    "finished_at": "2026-06-11T11:59:32.157Z",
+    "id": "52ea8811-d8de-47b8-83b7-e744f1cd3e1d",
+    "logs": "",
+    "migration_name": "20260527010700_promoted_listings_phase2a",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:32.157Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "59a05693c06ded8fbe7ba6a5ee5f997d7ca640ce7c10e9775e22f0875fe003be",
+    "finished_at": "2026-06-11T11:59:36.685Z",
+    "id": "23a2cb91-a614-4216-95e9-ea6a8566c501",
+    "logs": "",
+    "migration_name": "20260527114000_promoted_listings_phase2b",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:36.685Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "1fe52a55bec1825f4a069674b5ba5b99e3baf4fe789548e862ee52d1719cdbf9",
+    "finished_at": "2026-06-11T11:59:41.561Z",
+    "id": "e2a20d18-196d-4618-835e-9a152ffcc312",
+    "logs": "",
+    "migration_name": "20260527165000_promoted_listings_phase2b5",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:41.561Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "f53da2c217e276a741207482506d47d3a35952ff1171f139a2fff846214dbbfb",
+    "finished_at": "2026-06-11T11:59:45.994Z",
+    "id": "a14f3c36-6deb-4094-8bfa-1c00ed88d5ee",
+    "logs": "",
+    "migration_name": "20260528210000_trust_score_outcome_foundation",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:45.994Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "140b5504c5f2ff9db5dcc495dcbba77184d1d0574dcaadf1c7cd677a94219773",
+    "finished_at": "2026-06-11T11:59:50.502Z",
+    "id": "8a47b1cc-ef5c-400d-a18a-302eb2c34d38",
+    "logs": "",
+    "migration_name": "20260528220000_trust_score_snapshot",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:50.502Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "8886f7631c1fb71f665f4bacba4ae957514d864b0d52514d27ad2d7c178b3752",
+    "finished_at": "2026-06-11T11:59:55.152Z",
+    "id": "c0f26219-e04a-46fe-bf55-0586b6a68082",
+    "logs": "",
+    "migration_name": "20260531201000_add_auth_credentials",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:55.152Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "de912f98beef0abfe29427c52882eff30b7a367e412528005eb2db5d3c589e27",
+    "finished_at": "2026-06-11T11:59:59.929Z",
+    "id": "8e1c8e3b-608e-46af-ae02-7e10f1187db7",
+    "logs": "",
+    "migration_name": "20260531214000_add_auth_mfa_challenges",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T11:59:59.929Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "75060d793b3ad0034ec1526d1e2a281c38230f55a1b7edc76e852ea3edcfc45e",
+    "finished_at": "2026-06-11T12:00:04.514Z",
+    "id": "6331d780-39f6-443b-af63-86b6ba539020",
+    "logs": "",
+    "migration_name": "20260531220000_add_auth_trusted_devices",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T12:00:04.514Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "ce518a6833dffcadcf04d6f3b0e1641273ceb4a881d5786ffd437c5e880dfb6d",
+    "finished_at": "2026-06-11T12:00:09.028Z",
+    "id": "86fb334d-415c-421d-b74c-857a8fe3de5a",
+    "logs": "",
+    "migration_name": "20260531221500_add_email_verification_tokens",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T12:00:09.028Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "93f09d203bcb988dabd1abc8fe66bdf2e716e94bf327745f6c851c076f917670",
+    "finished_at": "2026-06-11T12:00:13.838Z",
+    "id": "a629db95-3198-4736-bbb9-97147a78c5e0",
+    "logs": "",
+    "migration_name": "20260531232000_add_auth_passkeys",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T12:00:13.838Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "d2b314015ca290baa0221d499d10a54f69415be4d89535c728465c41a5037fea",
+    "finished_at": "2026-06-11T12:00:18.325Z",
+    "id": "bd3ca95f-e307-4587-a1b3-6dc231317ebe",
+    "logs": "",
+    "migration_name": "20260609173000_add_user_profile_photo",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T12:00:18.325Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "669f2920ead247c0dba08c73875f090b484704151723570df79deead3568afcc",
+    "finished_at": "2026-06-11T12:00:23.039Z",
+    "id": "b92e7d16-95d5-41d1-8453-071795ca1033",
+    "logs": "",
+    "migration_name": "add_unique_active_assignment",
+    "rolled_back_at": null,
+    "started_at": "2026-06-11T12:00:23.039Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "dde9ec8eaa36bc813935c79c25302e7d9cd62ec2a6fed88ad5c18f69efb92e88",
+    "finished_at": "2026-06-28T03:55:32.592Z",
+    "id": "9473d18b-e803-418f-ba6f-6721c7263952",
+    "logs": null,
+    "migration_name": "20260628001000_add_vendor_business_hours",
+    "rolled_back_at": null,
+    "started_at": "2026-06-28T03:55:32.257Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "b69471cc0bd357e81cc419cb5119bfb0cbfe6c8fb842f4ca00bf494bbe1a4f6b",
+    "finished_at": "2026-07-07T06:10:35.913Z",
+    "id": "b5de7981-63c9-4cf2-a6e3-e137cd2d3bbc",
+    "logs": null,
+    "migration_name": "20260707012500_add_vendor_invite_recipient_fields",
+    "rolled_back_at": null,
+    "started_at": "2026-07-07T06:10:35.629Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "570283b75429f685f24fbc64da02b3ed2046bfe3651a4a731437d0e8c5a5675b",
+    "finished_at": null,
+    "id": "c37cc6f7-0d9c-4c96-bf19-b69951fef6a3",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260726023000_fix_booking_consent_location\n\nDatabase error code: 102\n\nDatabase error:\nIncorrect syntax near 'REPLACE'.\n\n",
+    "migration_name": "20260726023000_fix_booking_consent_location",
+    "rolled_back_at": "2026-07-26T22:59:43.94Z",
+    "started_at": "2026-07-26T22:58:51.178Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "f7879fb06db270a8e69a9f1ac01d4d2c685f2e36564beda8d69ed99280692e2d",
+    "finished_at": "2026-07-26T22:59:50.369Z",
+    "id": "f73db501-b76f-424a-a8bc-3c0bd7902cc7",
+    "logs": null,
+    "migration_name": "20260726023000_fix_booking_consent_location",
+    "rolled_back_at": null,
+    "started_at": "2026-07-26T22:59:49.821Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "b8cc87abfd8689c74fceaad99cb518d77c532a748b91054e40d2bc74424ef0c1",
+    "finished_at": "2026-07-27T03:11:00.897Z",
+    "id": "09258808-04cb-4151-b1ea-bffa3ab57722",
+    "logs": null,
+    "migration_name": "20260726234500_booking_creation_reliability",
+    "rolled_back_at": null,
+    "started_at": "2026-07-27T03:11:00.555Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "2c0a9a5af5e1392caaf2ec5621f0036e0a6c880a397d4c81f15962237d88ed8a",
+    "finished_at": null,
+    "id": "10c9341f-7a9c-496c-a886-97849ecbb466",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260731201500_add_verified_permission_infrastructure\n\nDatabase error code: 207\n\nDatabase error:\nInvalid column name 'isCurrent'.\n\n",
+    "migration_name": "20260731201500_add_verified_permission_infrastructure",
+    "rolled_back_at": "2026-08-02T14:15:36.339Z",
+    "started_at": "2026-08-02T14:13:38.419Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "6afd964087a4a0886a3de3058034239ef6202492a39914a32592e55afe1784e0",
+    "finished_at": "2026-08-02T14:15:43.732Z",
+    "id": "9c251637-1fdc-49a5-b3a2-5ea30b24e72c",
+    "logs": null,
+    "migration_name": "20260731201500_add_verified_permission_infrastructure",
+    "rolled_back_at": null,
+    "started_at": "2026-08-02T14:15:43.114Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "699698c5e584fac31c5b7da8ab974229158f69a223c7cd76b030b6016837b6f1",
+    "finished_at": null,
+    "id": "e2711c71-4d09-4ed2-91c7-cf6640cb464e",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260731203000_normalize_legacy_permission_secrets\n\nDatabase error code: 3723\n\nDatabase error:\nAn explicit DROP INDEX is not allowed on index 'dbo.consent_records.consent_records_token_key'. It is being used for UNIQUE KEY constraint enforcement.\n\n",
+    "migration_name": "20260731203000_normalize_legacy_permission_secrets",
+    "rolled_back_at": "2026-08-02T14:17:19.436Z",
+    "started_at": "2026-08-02T14:15:43.848Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "1d8a7edfca870d2d0f2521353de30f0332773a15adb2ba698a38d70d6ec98430",
+    "finished_at": null,
+    "id": "d29729af-0d21-4417-90c3-f5935e0e3e9e",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260731203000_normalize_legacy_permission_secrets\n\nDatabase error code: 102\n\nDatabase error:\nIncorrect syntax near 'QUOTENAME'.\n\n",
+    "migration_name": "20260731203000_normalize_legacy_permission_secrets",
+    "rolled_back_at": "2026-08-02T14:18:17.103Z",
+    "started_at": "2026-08-02T14:17:25.151Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "30c0f3e7ecc686e1de32fae21cc2bd170f2842045a278ea60b1a5322f6221caf",
+    "finished_at": "2026-08-02T14:18:24.169Z",
+    "id": "2fc733a3-99c0-4ee6-bdb5-967a1f762fa9",
+    "logs": null,
+    "migration_name": "20260731203000_normalize_legacy_permission_secrets",
+    "rolled_back_at": null,
+    "started_at": "2026-08-02T14:18:23.478Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "df751c55ca7bdaeae4573c4db19834e1650d2b346109d91dccb60e2582df6dc7",
+    "finished_at": "2026-08-04T04:17:45.97Z",
+    "id": "01b74fb8-aba9-45f0-b9db-fc71289525dc",
+    "logs": null,
+    "migration_name": "20260802193000_add_platform_role_grants",
+    "rolled_back_at": null,
+    "started_at": "2026-08-04T04:17:45.518Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "9d62f2ed1036ba273bbe820d5c53995f7e1179ba586464cb13062d2d45f8dbb9",
+    "finished_at": "2026-08-04T04:17:46.333Z",
+    "id": "9bb564d5-2afa-4234-a872-45319fb187a9",
+    "logs": null,
+    "migration_name": "20260803200000_correct_beta_admin_platform_role_grant",
+    "rolled_back_at": null,
+    "started_at": "2026-08-04T04:17:46.063Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "c2881b28b995f76866bb86c4610a45e4420f2988d967c1ac3612170f04bd67aa",
+    "finished_at": "2026-08-05T00:07:15.59Z",
+    "id": "a7f9e24e-8137-48f8-9f49-200a74c7daa7",
+    "logs": null,
+    "migration_name": "20260804230000_add_customer_registration_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-05T00:07:15.261Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "f16bb7dc73746d49b159cf2030bc02666362b574b5bb0422e4b5d67493f55ae1",
+    "finished_at": "2026-08-06T03:36:24.021Z",
+    "id": "68926d3c-257a-4f98-a421-af473558bc36",
+    "logs": null,
+    "migration_name": "20260804231500_add_recording_scope_authority",
+    "rolled_back_at": null,
+    "started_at": "2026-08-06T03:36:23.647Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "fa6884e1c64a51a63676978863b631cb74e36395a5cc3f6a469a483cfe3106e6",
+    "finished_at": "2026-08-06T03:36:24.494Z",
+    "id": "5b84d4c9-861a-4f03-a4e3-8a47093fc64b",
+    "logs": null,
+    "migration_name": "20260804233000_add_recording_gate_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-06T03:36:24.113Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "481669f52af94c6de6aeed5ffba1203d9b7608ddc73365c0bb04c591addeb0c6",
+    "finished_at": "2026-08-06T03:36:25.061Z",
+    "id": "b92bf4d3-98fe-4e90-94f6-c54f4950425a",
+    "logs": null,
+    "migration_name": "20260805193000_add_private_service_video_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-06T03:36:24.587Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "bc2b6c9d5806cdb725af411810ab7e4abcebad050196d409a5f842bfd29d2e74",
+    "finished_at": "2026-08-06T03:36:25.843Z",
+    "id": "d153788a-5e55-4951-b421-3e100f98c25b",
+    "logs": null,
+    "migration_name": "20260805213000_add_exact_media_publication_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-06T03:36:25.15Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "dd4da39d9a71a852348c62d5336c3bd6ab8e7d809937d3d43de581915b2b0c92",
+    "finished_at": "2026-08-06T03:36:26.903Z",
+    "id": "93dc58ba-d433-4703-941e-57b29a5baa25",
+    "logs": null,
+    "migration_name": "20260805233000_add_media_lifecycle_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-06T03:36:25.933Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "d4fdf7771e948de6e3a5abf30e941c836824b9caa501d236e9213bd787b17587",
+    "finished_at": "2026-08-25T02:26:08.524Z",
+    "id": "fc6b87af-43b8-4b7b-ae78-e9a1aedcd193",
+    "logs": null,
+    "migration_name": "20260824213000_add_core_service_video_admin_audit_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-25T02:26:08.09Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "6b06f2709fbad129639e7588368d1867bceaeebf105091e8358b94798fe739de",
+    "finished_at": "2026-08-25T19:40:11.013Z",
+    "id": "43137b3c-0e55-4f40-b780-17bc3e44feeb",
+    "logs": null,
+    "migration_name": "20260825190000_add_package_visibility_decisions",
+    "rolled_back_at": null,
+    "started_at": "2026-08-25T19:40:10.58Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "74f9be9adddb679cd55a3cf293937791c956f27a3f7a0812e402c17929da15fa",
+    "finished_at": "2026-08-25T19:40:11.572Z",
+    "id": "7a672982-3ea4-4a70-a2de-843716e2179f",
+    "logs": null,
+    "migration_name": "20260825213000_add_service_video_audio_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-25T19:40:11.127Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "dd925e8ec9f6857223fd577f46be7aed58b8f3892d9c41a020662427ef6e0e1a",
+    "finished_at": "2026-08-27T22:38:53.616Z",
+    "id": "fff0c3d8-45e4-47fd-9023-4da097452c81",
+    "logs": null,
+    "migration_name": "20260827143000_add_recording_assessment_contract_version",
+    "rolled_back_at": null,
+    "started_at": "2026-08-27T22:38:53.224Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "0ce537e6266c6793949c20c2afdeec2ff92166bbbb9965d87e7f0c576370b2fb",
+    "finished_at": "2026-08-28T03:04:26.271Z",
+    "id": "9f1e8dcc-6bff-490b-9b1f-2cac267fd8f4",
+    "logs": null,
+    "migration_name": "20260827230000_add_employee_recording_safety_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-08-28T03:04:25.921Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "bef896eece2bec1f4cf636b218677c850ca77a95e5f11d43475b69a16e9e01eb",
+    "finished_at": null,
+    "id": "06c0369e-7847-4cf2-910f-45250b52a23b",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260827234500_harden_v2_recording_evidence_identity\n\nDatabase error code: 207\n\nDatabase error:\nInvalid column name 'submissionRequestHash'.\n\n",
+    "migration_name": "20260827234500_harden_v2_recording_evidence_identity",
+    "rolled_back_at": "2026-08-28T12:44:03.132Z",
+    "started_at": "2026-08-28T11:18:23.762Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "2632996783bedcabcc8d50e74982e63454ee317df5bbd5fb393c4dbad6217a94",
+    "finished_at": "2026-08-28T12:44:34.622Z",
+    "id": "eab87e1d-8bd9-447a-a8dc-93ec5a612630",
+    "logs": null,
+    "migration_name": "20260827234500_harden_v2_recording_evidence_identity",
+    "rolled_back_at": null,
+    "started_at": "2026-08-28T12:44:34.266Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "c7f6827d89e3ae479219c039ba17325674947e87cf468b02a0ec42e5f386a001",
+    "finished_at": "2026-09-02T17:27:23.883Z",
+    "id": "bc990180-b485-418f-82bf-cd375910ee77",
+    "logs": null,
+    "migration_name": "20260902150000_add_employee_customer_rating_evidence",
+    "rolled_back_at": null,
+    "started_at": "2026-09-02T17:27:23.41Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "e0863f4e24847d2c2dffeef0228745aa45cf0898cb44989b326e74044589d14b",
+    "finished_at": "2026-09-02T17:27:24.283Z",
+    "id": "d34aab57-2630-47dd-bb5d-6d48fbfd223a",
+    "logs": null,
+    "migration_name": "20260902210000_add_admin_public_display_eligibility",
+    "rolled_back_at": null,
+    "started_at": "2026-09-02T17:27:23.976Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "9e4d70f1edf1e879af4f0a77f6e4e90a28467ebe63b917396fdfb570c0bfbf3c",
+    "finished_at": "2026-09-02T22:41:24.45Z",
+    "id": "f825363e-ff84-4416-99b1-dcf5a9ba7a92",
+    "logs": null,
+    "migration_name": "20260902233000_add_service_video_report_cases",
+    "rolled_back_at": null,
+    "started_at": "2026-09-02T22:41:23.964Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "c3cce0e6e094137c9aa057da53f37f4db2033d6385b1d63eb45bf49b9347c1f0",
+    "finished_at": "2026-09-03T01:58:03.43Z",
+    "id": "dca4fafe-0ead-4868-88f3-6a5037c5dc5c",
+    "logs": null,
+    "migration_name": "20260902235900_add_customer_service_record_organization_events",
+    "rolled_back_at": null,
+    "started_at": "2026-09-03T01:58:03.074Z"
+  },
+  {
+    "applied_steps_count": 0,
+    "checksum": "f195adde6259d43d998621b27036fcd63b1e2a9b80dbea7033897df78e09cc3d",
+    "finished_at": null,
+    "id": "0b1ac45e-46bc-4fe0-ad0b-da6fc0f5c458",
+    "logs": "A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260903003000_add_verified_review_and_vendor_favorites\n\nDatabase error code: 207\n\nDatabase error:\nInvalid column name 'ratingValidityStatus'.\n\n",
+    "migration_name": "20260903003000_add_verified_review_and_vendor_favorites",
+    "rolled_back_at": "2026-09-03T02:43:21.927Z",
+    "started_at": "2026-09-03T01:58:03.521Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "673a3ca9a7b10de6997c1131d1ec469260e86d15be373647860d96e240b7fae9",
+    "finished_at": "2026-09-03T02:43:50.96Z",
+    "id": "6caa8c56-1f20-4f0a-bfb2-dd883e55641a",
+    "logs": null,
+    "migration_name": "20260903003000_add_verified_review_and_vendor_favorites",
+    "rolled_back_at": null,
+    "started_at": "2026-09-03T02:43:50.589Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "99f96aebf64892726624914532b004681e1b98133791701bbb5fb5c37ec48ad2",
+    "finished_at": "2026-09-06T17:02:27.862Z",
+    "id": "8c890feb-c79f-4bd9-9deb-590f6b143689",
+    "logs": null,
+    "migration_name": "20260906130000_add_vendor_manager_notification_state",
+    "rolled_back_at": null,
+    "started_at": "2026-09-06T17:02:27.505Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "eb4feb604c95fc8a00ae6602d00d5ab8d88ac6050e34fc249899feffcfcb9c6e",
+    "finished_at": "2026-09-07T18:11:49.35Z",
+    "id": "53214ca3-7924-444d-9377-912498ab26cd",
+    "logs": null,
+    "migration_name": "20260906183000_fix_review_window_nullable_unique",
+    "rolled_back_at": null,
+    "started_at": "2026-09-07T18:11:48.898Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "9c9402908f9f69e189226ba3b7dda12f38bad3ef570b1f6d73c0367c69473939",
+    "finished_at": "2026-09-08T02:24:42.267Z",
+    "id": "60db5e50-49c0-4698-acf6-ce610a240d62",
+    "logs": null,
+    "migration_name": "20260907210000_restore_reviews_booking_unique_not_null",
+    "rolled_back_at": null,
+    "started_at": "2026-09-08T02:24:41.861Z"
+  },
+  {
+    "applied_steps_count": 1,
+    "checksum": "859fa358a511b8391439ae74a78af11ea609a4a96ea7212bf6b7c5e73e0c486f",
+    "finished_at": "2026-09-10T01:44:59.512Z",
+    "id": "9d812f9a-faa9-4769-a9e0-e4ae673fb33e",
+    "logs": null,
+    "migration_name": "20260910014500_add_employee_public_media_consent",
+    "rolled_back_at": null,
+    "started_at": "2026-09-10T01:44:59.023Z"
+  }
+]

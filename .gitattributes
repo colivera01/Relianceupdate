@@ -1,0 +1,2 @@
+/prisma/migrations/**/migration.sql text eol=lf
+/docs/database/migration-history-legacy/** -text

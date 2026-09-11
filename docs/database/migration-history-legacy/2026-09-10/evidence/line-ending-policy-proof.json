@@ -1,0 +1,23 @@
+{
+  "policy": [
+    "/prisma/migrations/**/migration.sql text eol=lf",
+    "/docs/database/migration-history-legacy/** -text"
+  ],
+  "coreAutocrlfUnderWindowsSimulation": true,
+  "windowsCheckout": {
+    "activeBaselineSha256": "a3f0fe48867caefdc3103dc6d2e9c95a6f0f8be299b684e09fd04d6b1f81c8f4",
+    "activeReconciliationSha256": "dbef734da13b593e5709c268c96a074fb61a7b39fec6cb6d54aad9cb7eefcd8d",
+    "archivedMigrationSqlCount": 57,
+    "archivedMigrationSqlMismatches": 0,
+    "verdict": "PASS"
+  },
+  "linuxLikeCheckout": {
+    "activeBaselineSha256": "a3f0fe48867caefdc3103dc6d2e9c95a6f0f8be299b684e09fd04d6b1f81c8f4",
+    "activeReconciliationSha256": "dbef734da13b593e5709c268c96a074fb61a7b39fec6cb6d54aad9cb7eefcd8d",
+    "archivedMigrationSqlCount": 57,
+    "archivedMigrationSqlMismatches": 0,
+    "verdict": "PASS"
+  },
+  "newActiveMigrationRawHashStable": true,
+  "archivedMigrationRawHashStable": true
+}
