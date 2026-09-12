@@ -16,6 +16,31 @@ const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const fileEvidence = (file) => ({ name: path.basename(file), bytes: fs.statSync(file).size, sha256: sha256(fs.readFileSync(file)) });
 const normalizedTextBytes = (value) => Buffer.from(String(value).replace(/\r\n/g, '\n'), 'utf8');
 
+function assertSha256Fingerprint(value, label = 'SHA-256 fingerprint') {
+  assert.equal(typeof value, 'string', `${label} must be a string`);
+  assert(/^[0-9a-f]{64}$/.test(value), `${label} must be exactly 64 lowercase hexadecimal characters`);
+  return value;
+}
+
+function assertStructuralFingerprintMatch(actual, expected, label = 'Structural fingerprint differs') {
+  assertSha256Fingerprint(actual, 'Observed structural SHA-256 fingerprint');
+  assertSha256Fingerprint(expected, 'Expected structural SHA-256 fingerprint');
+  assert.equal(actual, expected, label);
+}
+
+function validateTargetSpecStructuralFingerprints(spec) {
+  let count = 0;
+  for (const [phase, state] of Object.entries(spec.expectedStates || {})) {
+    for (const [name, value] of Object.entries(state || {})) {
+      if (!/structuralSha256$/i.test(name)) continue;
+      assertSha256Fingerprint(value, `Target ${phase}.${name}`);
+      count += 1;
+    }
+  }
+  assert(count > 0, 'Target specification has no structural SHA-256 fingerprint');
+  return count;
+}
+
 function aggregateDirectory(directory, ignored = () => false) {
   const files = [];
   const walk = (current) => {
@@ -38,6 +63,7 @@ function aggregateDirectory(directory, ignored = () => false) {
 
 function targetSpecEvidence(file) {
   const spec = readJson(file);
+  validateTargetSpecStructuralFingerprints(spec);
   const declared = spec.sha256;
   const withoutHash = { ...spec };
   delete withoutHash.sha256;
@@ -135,4 +161,18 @@ function verifyReceipt(receipt, options) {
   return { verdict: 'PASS', sourceCommit: source.sourceCommit, activeMigrationAggregateHash: source.activeMigrationAggregateHash, structuralContractHash: source.structuralContractHash };
 }
 
-module.exports = { aggregateDirectory, canonical, createReceipt, fileEvidence, normalizedTextBytes, readJson, sha256, sourceEvidence, targetSpecEvidence, verifyReceipt };
+module.exports = {
+  aggregateDirectory,
+  assertSha256Fingerprint,
+  assertStructuralFingerprintMatch,
+  canonical,
+  createReceipt,
+  fileEvidence,
+  normalizedTextBytes,
+  readJson,
+  sha256,
+  sourceEvidence,
+  targetSpecEvidence,
+  validateTargetSpecStructuralFingerprints,
+  verifyReceipt,
+};

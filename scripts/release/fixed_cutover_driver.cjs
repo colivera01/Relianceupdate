@@ -13,7 +13,13 @@ const { assertProtectedReliance, captureApplicationEvidence } = require('./cutov
 const { createStage, destroyStage, verifyStage } = require('./migration_staging.cjs');
 const { capture, connect } = require('./sqlserver_contract.cjs');
 const { readJson, sha256 } = require('./cutover_orchestrator_lib.cjs');
-const { fileEvidence, sourceEvidence, verifyReceipt } = require('./release_receipt_lib.cjs');
+const {
+  assertStructuralFingerprintMatch,
+  fileEvidence,
+  sourceEvidence,
+  targetSpecEvidence,
+  verifyReceipt,
+} = require('./release_receipt_lib.cjs');
 
 const OLD_SHA = '5b27df55e3e53409aa8b61979128d44d39541fba';
 const BASELINE = '00000000000000_reliance_forward_baseline_20260910';
@@ -160,7 +166,7 @@ class FixedCutoverDriver {
   }
 
   targetValidation() {
-    const spec = readJson(this.context.targetSpec);
+    const { spec } = targetSpecEvidence(this.context.targetSpec);
     assert.equal(spec.resourceId.toLowerCase(), this.context.resourceId.toLowerCase(), 'Target resource ID differs');
     assert.equal(spec.environment, this.context.environment, 'Execution target environment differs');
     return { resourceId: spec.resourceId, server: spec.server, database: spec.database };
@@ -394,7 +400,8 @@ class FixedCutoverDriver {
       }
       const evidence = await this.databaseEvidence();
       const spec = readJson(context.targetSpec).expectedStates.preCutover;
-      assert.equal(evidence.contract.structuralSha256, spec.structuralSha256, 'Live structural fingerprint differs');
+      assertStructuralFingerprintMatch(evidence.contract.structuralSha256, spec.structuralSha256,
+        'Live structural fingerprint differs');
       assert.equal(evidence.contract.ledgerSha256, spec.ledgerSha256, 'Live ledger fingerprint differs');
       assert.equal(evidence.contract.ledgerRows, spec.ledgerRows, 'Live ledger row count differs');
       assert.equal(evidence.application.preflight.assignmentDuplicates.length, 0, 'Duplicate active assignments exist');

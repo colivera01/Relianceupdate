@@ -16,6 +16,7 @@ const commands = [
   ['node', ['scripts/release/verify_migration_package_boundaries.cjs', '.']],
   ['node', ['scripts/release/verify_no_dangerous_prisma_commands.cjs']],
   ['node', ['scripts/release/verify_database_target_spec.cjs']],
+  ['node', ['scripts/release/test_structural_fingerprint.cjs']],
   ['node', ['scripts/release/test_migration_safety.cjs']],
   ['node', ['scripts/release/test_migration_immutability.cjs']],
   ['node', ['scripts/release/test_migration_staging.cjs']],
