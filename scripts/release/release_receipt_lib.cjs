@@ -14,6 +14,7 @@ const stable = (value) => Array.isArray(value) ? value.map(stable)
 const canonical = (value) => `${JSON.stringify(stable(value), null, 2)}\n`;
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const fileEvidence = (file) => ({ name: path.basename(file), bytes: fs.statSync(file).size, sha256: sha256(fs.readFileSync(file)) });
+const normalizedTextBytes = (value) => Buffer.from(String(value).replace(/\r\n/g, '\n'), 'utf8');
 
 function aggregateDirectory(directory, ignored = () => false) {
   const files = [];
@@ -55,7 +56,7 @@ function sourceEvidence(root, targetSpecPath) {
   const active = readJson(path.join(root, 'prisma', 'active-migration-manifest.json'));
   const target = targetSpecEvidence(targetSpecPath);
   const lock = readJson(path.join(root, 'package-lock.json'));
-  const schemaBytes = fs.readFileSync(path.join(root, 'prisma', 'schema.prisma'));
+  const schemaBytes = normalizedTextBytes(fs.readFileSync(path.join(root, 'prisma', 'schema.prisma'), 'utf8'));
   const structuralContract = {
     schemaSha256: sha256(schemaBytes),
     activeMigrationAggregateHash: active.aggregateSha256,
@@ -76,7 +77,7 @@ function sourceEvidence(root, targetSpecPath) {
       cli: lock.packages['node_modules/prisma'].version,
       client: lock.packages['node_modules/@prisma/client'].version,
     },
-    lockfileHash: sha256(fs.readFileSync(path.join(root, 'package-lock.json'))),
+    lockfileHash: sha256(normalizedTextBytes(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'))),
     structuralContractHash: sha256(Buffer.from(canonical(structuralContract))),
     target,
   };
@@ -134,4 +135,4 @@ function verifyReceipt(receipt, options) {
   return { verdict: 'PASS', sourceCommit: source.sourceCommit, activeMigrationAggregateHash: source.activeMigrationAggregateHash, structuralContractHash: source.structuralContractHash };
 }
 
-module.exports = { aggregateDirectory, canonical, createReceipt, fileEvidence, readJson, sha256, sourceEvidence, targetSpecEvidence, verifyReceipt };
+module.exports = { aggregateDirectory, canonical, createReceipt, fileEvidence, normalizedTextBytes, readJson, sha256, sourceEvidence, targetSpecEvidence, verifyReceipt };

@@ -18,6 +18,11 @@ const commands = [
   ['node', ['scripts/release/verify_database_target_spec.cjs']],
   ['node', ['scripts/release/test_migration_safety.cjs']],
   ['node', ['scripts/release/test_migration_immutability.cjs']],
+  ['node', ['scripts/release/test_migration_staging.cjs']],
+  ['node', ['scripts/release/test_cutover_orchestrator.cjs']],
+  ['node', ['scripts/release/test_app_quiescence.cjs']],
+  ['node', ['scripts/release/test_azure_cli.cjs']],
+  ['node', ['scripts/release/test_cutover_authorization.cjs']],
   ['node', ['node_modules/prisma/build/index.js', 'validate', '--schema=prisma/schema.prisma']],
   ['node', ['node_modules/prisma/build/index.js', 'generate', '--schema=prisma/schema.prisma']],
 ];

@@ -1,0 +1,13 @@
+{
+  "authorizationVersion": 1,
+  "approval": "TEMPLATE_NOT_AUTHORIZED",
+  "environment": "beta",
+  "resourceId": "/subscriptions/f50140d7-274d-4eec-b309-b109c6763615/resourceGroups/rg-reliance-beta-eastus/providers/Microsoft.Sql/servers/sql-reliance-beta-wcus/databases/reliance-beta-db",
+  "candidateSha": "REPLACE_WITH_APPROVED_CANDIDATE_SHA",
+  "receiptSha256": "REPLACE_WITH_APPROVED_RECEIPT_SHA256",
+  "operator": "REPLACE_WITH_APPROVED_OPERATOR",
+  "exclusiveOperatorCustodyConfirmed": false,
+  "proceduralResidualRiskAccepted": false,
+  "expiresAt": "1970-01-01T00:00:00.000Z",
+  "nonce": "REPLACE_WITH_SINGLE_USE_NONCE"
+}

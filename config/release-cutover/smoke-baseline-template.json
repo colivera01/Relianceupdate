@@ -1,0 +1,18 @@
+{
+  "receiptVersion": 1,
+  "capturedAt": null,
+  "candidateParent": "5b27df55e3e53409aa8b61979128d44d39541fba",
+  "customer": { "surface": "/user-dashboard and GET /api/bookings/cmtoz4dp40016nzfju8bcqbva", "result": "UNPROVEN" },
+  "vendor": { "surface": "/vendor/employees and /vendor/jobs/cmtoz4dp40016nzfju8bcqbva", "result": "UNPROVEN" },
+  "employee": { "surface": "No conventional Employee dashboard/login is required for Bradley Coopers", "result": "NOT_APPLICABLE_ACCOUNTLESS_WORK_ORDER_ONLY" },
+  "employeeAccountless": {
+    "surface": "existing valid accountless Service Order / Employee Work Order token only",
+    "result": "UNPROVEN_NO_CURRENT_VALID_TOKEN",
+    "priorPhysicalAcceptance": "PASS",
+    "releaseChangesEmployeeAccess": false,
+    "protectedRegression": "PASS"
+  },
+  "admin": { "surface": "/admin/dashboard and /admin/publication-moderation", "result": "UNPROVEN" },
+  "protected": { "package": "PRIVATE_APPROVED", "visibility": "PRIVATE", "customerSharePublicly": "PRESERVED", "bradleyConsent": "NONE" },
+  "containsCredentials": false
+}

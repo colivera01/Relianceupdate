@@ -35,6 +35,12 @@ Any difference stops execution.
 
 `with_migration_lock.cjs` obtains a SQL Server session-owned exclusive `sp_getapplock` keyed by the SHA-256 of the exact Azure database resource ID. It holds the connection while the verified child command runs.
 
+The final cutover uses `cutover_orchestrator.cjs` and `continuous_cutover_lock.cjs`. It holds an environment-control lock in the SQL server's `master` database plus a separate lock in the original application database. Both are pinned to control sessions for the complete operation, heartbeated, and verified before and after every phase. The environment-control lock survives independently when PITR creates another database. A restored database receives its own database-scoped lock, with a blocked-second-actor proof, before inspection or connection switching. The older single-child wrapper remains available for narrow guarded operations but is not sufficient by itself for the forward-baseline cutover.
+
+`stage_active_migrations.cjs` and the independent `verify_migration_stage.cjs` create two isolated, temporary stages. The baseline stage contains only the baseline. The reconciliation stage contains baseline plus reconciliation so that reconciliation is the sole pending migration. Both stages are copied byte-for-byte from the reviewed active manifest, reject archive content, and are destroyed after use.
+
+Beta cutover execution additionally requires the exact Product Owner authorization digest, App Service quiescence, external-actor assertions, a complete authenticated smoke baseline, PITR readiness, an exact Linux artifact/receipt pair, and a forward-only Git recovery commit. Dry-run mode never consumes those permissions and executes no writes.
+
 - Acquisition: exclusive, session-owned; default timeout zero, configurable only from 0–60 seconds.
 - Owner: host, process ID, and required release-owner label are logged without credentials.
 - Timeout: failure to acquire stops the operation.
@@ -42,7 +48,7 @@ Any difference stops execution.
 - Normal release: `sp_releaseapplock` in `finally` after the child exits.
 - Emergency release: an authorized DBA verifies the recorded session ID and dead owner, then terminates that SQL session. No automatic force-release command is supplied.
 
-Every deployment/migration actor must use the same wrapper and resource key. CI must block unguarded commands. The lock does not make arbitrary external commands safe.
+Every deployment/migration actor must use the same environment-control and database resource keys. CI must block unguarded commands. The App Service is also stopped across the restore and switch window, so losing a database lock cannot reopen application traffic. A lock failure stops before switching or unfreezing; recovery requires explicit operator assessment. These cooperative locks do not make arbitrary external commands safe, so Deployment Center remains manual or unconfigured and exclusive Azure operator custody remains required.
 
 ## Credentials
 
