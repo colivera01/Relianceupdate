@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { assertSha256ControlMatch, validateSha256ControlObject } = require('./sha256_controls.cjs');
 
 const args = process.argv.slice(2);
 const value = (flag) => {
@@ -21,6 +22,7 @@ const fail = (message) => {
 const slash = (file) => file.replace(/\\/g, '/');
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+validateSha256ControlObject(manifest, 'Active migration manifest');
 const migrationRoot = path.join(root, 'prisma', 'migrations');
 const entries = fs.readdirSync(migrationRoot, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -35,14 +37,14 @@ const entries = fs.readdirSync(migrationRoot, { withFileTypes: true })
 const aggregateSha256 = sha256(Buffer.from(entries.map((entry) => `${entry.name}\0${entry.sha256}\0${entry.bytes}\n`).join('')));
 
 if (JSON.stringify(entries) !== JSON.stringify(manifest.entries)) fail('active migration order, file set, raw hash, or byte count differs');
-if (aggregateSha256 !== manifest.aggregateSha256) fail('active aggregate hash differs');
+assertSha256ControlMatch(aggregateSha256, manifest.aggregateSha256, 'active aggregate hash differs');
 
 const archiveRoot = path.resolve(root, 'docs', 'database', 'migration-history-legacy');
 const archiveManifestPath = path.resolve(root, manifest.legacyArchiveManifest);
 if (!archiveManifestPath.startsWith(`${archiveRoot}${path.sep}`)) fail('legacy archive manifest is outside the non-executable archive root');
 const archiveBytes = fs.readFileSync(archiveManifestPath);
 const archiveHash = sha256(archiveBytes);
-if (archiveHash !== manifest.legacyArchiveManifestSha256) fail('legacy archive manifest hash differs');
+assertSha256ControlMatch(archiveHash, manifest.legacyArchiveManifestSha256, 'legacy archive manifest hash differs');
 const archiveManifest = JSON.parse(archiveBytes.toString('utf8'));
 const archiveFiles = archiveManifest.entries.flatMap((entry) => entry.archivedFiles || []);
 if (archiveManifest.migrationDirectoryCount !== 57 || archiveManifest.archivedSqlFileCount !== 61 || archiveFiles.length !== 61) {
@@ -62,7 +64,7 @@ actualArchivePaths.sort();
 if (JSON.stringify(actualArchivePaths) !== JSON.stringify(expectedArchivePaths)) fail('archived SQL file set differs from archive manifest');
 for (const archived of archiveFiles) {
   const actual = fs.readFileSync(path.join(root, archived.destinationPath));
-  if (sha256(actual) !== archived.archivedRawSha256) fail(`archived SQL bytes differ: ${archived.destinationPath}`);
+  assertSha256ControlMatch(sha256(actual), archived.archivedRawSha256, `archived SQL bytes differ: ${archived.destinationPath}`);
   if (archived.sourceGitBlobSha !== archived.archivedGitBlobSha || archived.match !== true) fail(`archive blob-preservation assertion is false: ${archived.destinationPath}`);
 }
 const activeNames = new Set(entries.map((entry) => entry.name));
@@ -72,8 +74,9 @@ for (const archived of archiveManifest.entries) {
 
 if (receiptArg) {
   const receipt = JSON.parse(fs.readFileSync(path.resolve(root, receiptArg), 'utf8'));
-  if (receipt.activeMigrationAggregateHash !== manifest.aggregateSha256) fail('release receipt aggregate differs');
-  if (receipt.legacyArchiveManifestHash !== manifest.legacyArchiveManifestSha256) fail('release receipt archive hash differs');
+  validateSha256ControlObject(receipt, 'Release receipt');
+  assertSha256ControlMatch(receipt.activeMigrationAggregateHash, manifest.aggregateSha256, 'release receipt aggregate differs');
+  assertSha256ControlMatch(receipt.legacyArchiveManifestHash, manifest.legacyArchiveManifestSha256, 'release receipt archive hash differs');
   if (JSON.stringify(receipt.activeMigrationManifest) !== JSON.stringify(manifest.entries)) fail('release receipt migration entries differ');
 }
 

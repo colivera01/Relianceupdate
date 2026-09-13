@@ -7,6 +7,7 @@ const path = require('node:path');
 const { runAzure } = require('./azure_cli.cjs');
 const { capture, connect } = require('./sqlserver_contract.cjs');
 const { parsePrismaSqlServerUrl } = require('./migration_safety.cjs');
+const { assertSha256ControlMatch, validateSha256ControlObject } = require('./sha256_controls.cjs');
 
 const args = process.argv.slice(2);
 const value = (flag) => { const index = args.indexOf(flag); return index >= 0 ? args[index + 1] : null; };
@@ -32,6 +33,7 @@ async function main() {
   const app = value('--app');
   const expectedResourceId = String(value('--expected-resource-id') || '').toLowerCase();
   const expected = JSON.parse(fs.readFileSync(path.resolve(value('--expected-fingerprints') || ''), 'utf8'));
+  validateSha256ControlObject(expected, 'Recovery expected fingerprints');
   const observedResource = az(['sql', 'db', 'show', '--subscription', subscription, '-g', group, '-s', server, '-n', expectedDatabase, '-o', 'json']);
   assert.equal(String(observedResource.id).toLowerCase(), expectedResourceId, 'Azure recovery database resource ID differs');
   assert.equal(String(observedResource.status).toLowerCase(), 'online', 'Recovery database is not online');
@@ -39,8 +41,8 @@ async function main() {
   let observed;
   try { observed = await capture(pool); } finally { await pool.close(); }
   assert.equal(String(observed.identity.databaseName).toLowerCase(), identity.database, 'Connected recovery database identity differs');
-  assert.equal(observed.structuralSha256, expected.structuralSha256, 'Recovery structural fingerprint differs');
-  assert.equal(observed.ledgerSha256, expected.ledgerSha256, 'Recovery ledger fingerprint differs');
+  assertSha256ControlMatch(observed.structuralSha256, expected.structuralSha256, 'Recovery structural fingerprint differs');
+  assertSha256ControlMatch(observed.ledgerSha256, expected.ledgerSha256, 'Recovery ledger fingerprint differs');
   if (!execute) {
     console.log(JSON.stringify({ verdict: 'PASS', mode: 'DRY_RUN', database: expectedDatabase,
       resourceId: observedResource.id, structuralSha256: observed.structuralSha256, ledgerSha256: observed.ledgerSha256,

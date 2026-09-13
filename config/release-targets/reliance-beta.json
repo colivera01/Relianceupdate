@@ -4,12 +4,12 @@
   "server": "sql-reliance-beta-wcus.database.windows.net",
   "database": "reliance-beta-db",
   "resourceId": "/subscriptions/f50140d7-274d-4eec-b309-b109c6763615/resourceGroups/rg-reliance-beta-eastus/providers/Microsoft.Sql/servers/sql-reliance-beta-wcus/databases/reliance-beta-db",
-  "sha256": "d7946b2e9bb6f13c53479cb4c512078d3ba29cff7e8249ec302474aad5338ff1",
+  "sha256": "28c41b004d7ce2f35077623d85ea8a4daf826f1ed7f8813067fb3c9c3f8d9ad6",
   "expectedStates": {
     "preCutover": {
       "captureVersion": 1,
       "structuralSha256": "a2332a6a984076439d3797f00addb667ad4107ae195897837577df90f7b788c0",
-      "ledgerSha256": "4f578c8b23b08b1499c97d03d4ba49e2426bb58ad9edefa6bec1801d3cfacc6bd",
+      "ledgerSha256": "4f578c8b23b08b1499c97d03d4ba49e2426bb58ad9edefa6bec1801d3cfac6bd",
       "referenceNormalizedStructuralSha256": "bd1c7053bc3ab39348eb69a3b70effcfbf589fca63cbf5d3d46c4c8ec750014f",
       "referenceCompactLedgerSha256": "cfa35019326fef952ef58321423530914d2dd23d91f024cec1df277a31bbc400",
       "ledgerRows": 64,

@@ -6,6 +6,11 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const {
+  assertSha256Control,
+  assertSha256ControlMatch,
+  validateSha256ControlObject,
+} = require('./sha256_controls.cjs');
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const stable = (value) => Array.isArray(value) ? value.map(stable)
@@ -16,30 +21,19 @@ const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const fileEvidence = (file) => ({ name: path.basename(file), bytes: fs.statSync(file).size, sha256: sha256(fs.readFileSync(file)) });
 const normalizedTextBytes = (value) => Buffer.from(String(value).replace(/\r\n/g, '\n'), 'utf8');
 
-function assertSha256Fingerprint(value, label = 'SHA-256 fingerprint') {
-  assert.equal(typeof value, 'string', `${label} must be a string`);
-  assert(/^[0-9a-f]{64}$/.test(value), `${label} must be exactly 64 lowercase hexadecimal characters`);
-  return value;
-}
+const assertSha256Fingerprint = assertSha256Control;
 
 function assertStructuralFingerprintMatch(actual, expected, label = 'Structural fingerprint differs') {
-  assertSha256Fingerprint(actual, 'Observed structural SHA-256 fingerprint');
-  assertSha256Fingerprint(expected, 'Expected structural SHA-256 fingerprint');
-  assert.equal(actual, expected, label);
+  assertSha256ControlMatch(actual, expected, label);
 }
 
-function validateTargetSpecStructuralFingerprints(spec) {
-  let count = 0;
-  for (const [phase, state] of Object.entries(spec.expectedStates || {})) {
-    for (const [name, value] of Object.entries(state || {})) {
-      if (!/structuralSha256$/i.test(name)) continue;
-      assertSha256Fingerprint(value, `Target ${phase}.${name}`);
-      count += 1;
-    }
-  }
-  assert(count > 0, 'Target specification has no structural SHA-256 fingerprint');
+function validateTargetSpecSha256Controls(spec) {
+  const count = validateSha256ControlObject(spec, 'Target specification');
+  assert(count > 0, 'Target specification has no SHA-256 controls');
   return count;
 }
+
+const validateTargetSpecStructuralFingerprints = validateTargetSpecSha256Controls;
 
 function aggregateDirectory(directory, ignored = () => false) {
   const files = [];
@@ -63,12 +57,12 @@ function aggregateDirectory(directory, ignored = () => false) {
 
 function targetSpecEvidence(file) {
   const spec = readJson(file);
-  validateTargetSpecStructuralFingerprints(spec);
+  validateTargetSpecSha256Controls(spec);
   const declared = spec.sha256;
   const withoutHash = { ...spec };
   delete withoutHash.sha256;
   const actual = sha256(Buffer.from(canonical(withoutHash)));
-  assert.equal(actual, declared, 'Target specification canonical hash differs');
+  assertSha256ControlMatch(actual, declared, 'Target specification canonical hash differs');
   return { spec, sha256: actual };
 }
 
@@ -80,6 +74,7 @@ function git(root, ...args) {
 
 function sourceEvidence(root, targetSpecPath) {
   const active = readJson(path.join(root, 'prisma', 'active-migration-manifest.json'));
+  validateSha256ControlObject(active, 'Active migration manifest');
   const target = targetSpecEvidence(targetSpecPath);
   const lock = readJson(path.join(root, 'package-lock.json'));
   const schemaBytes = normalizedTextBytes(fs.readFileSync(path.join(root, 'prisma', 'schema.prisma'), 'utf8'));
@@ -118,7 +113,7 @@ function createReceipt(options) {
   const linuxResults = readJson(options.linuxResults);
   assert.equal(testResults.verdict, 'PASS', 'Protected/local test result is not PASS');
   assert.equal(linuxResults.verdict, 'PASS', 'Linux result is not PASS');
-  return {
+  const receipt = {
     receiptVersion: 2,
     sourceCommit: source.sourceCommit,
     branch: source.branch,
@@ -146,9 +141,12 @@ function createReceipt(options) {
       legacyLedgerPreservedSha256: source.target.spec.expectedStates.preCutover.ledgerSha256,
     },
   };
+  validateSha256ControlObject(receipt, 'Release receipt');
+  return receipt;
 }
 
 function verifyReceipt(receipt, options) {
+  validateSha256ControlObject(receipt, 'Release receipt');
   const source = sourceEvidence(options.root, options.targetSpec);
   for (const key of ['sourceCommit', 'branch', 'cleanStatus', 'schemaHash', 'baseline', 'reconciliation', 'activeMigrationManifest', 'activeMigrationAggregateHash', 'legacyArchiveManifestHash', 'prismaVersions', 'lockfileHash', 'structuralContractHash']) {
     assert.deepEqual(receipt[key], source[key], `Release receipt source mismatch: ${key}`);
@@ -164,6 +162,7 @@ function verifyReceipt(receipt, options) {
 module.exports = {
   aggregateDirectory,
   assertSha256Fingerprint,
+  assertSha256ControlMatch,
   assertStructuralFingerprintMatch,
   canonical,
   createReceipt,
@@ -173,6 +172,8 @@ module.exports = {
   sha256,
   sourceEvidence,
   targetSpecEvidence,
+  validateSha256ControlObject,
+  validateTargetSpecSha256Controls,
   validateTargetSpecStructuralFingerprints,
   verifyReceipt,
 };

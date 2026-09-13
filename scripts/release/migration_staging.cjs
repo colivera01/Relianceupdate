@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { assertSha256ControlMatch, validateSha256ControlObject } = require('./sha256_controls.cjs');
 
 const BASELINE = '00000000000000_reliance_forward_baseline_20260910';
 const RECONCILIATION = '20260910030000_enforce_one_active_device_assignment';
@@ -21,6 +22,7 @@ function expectedEntries(root, stageName) {
   assert(Object.hasOwn(STAGES, stageName), `Unknown migration stage: ${stageName}`);
   const manifestPath = path.join(root, 'prisma', 'active-migration-manifest.json');
   const manifest = readJson(manifestPath);
+  validateSha256ControlObject(manifest, 'Active migration manifest');
   const entries = STAGES[stageName].map((name) => {
     const entry = manifest.entries.find((candidate) => candidate.name === name);
     assert(entry, `Migration ${name} is absent from reviewed manifest`);
@@ -38,7 +40,7 @@ function verifySourceEntry(root, entry) {
   assert(fs.statSync(source).isFile(), `Migration source missing: ${entry.name}`);
   const bytes = fs.readFileSync(source);
   assert.equal(bytes.length, entry.bytes, `Migration byte count differs: ${entry.name}`);
-  assert.equal(sha256(bytes), entry.sha256, `Migration checksum differs: ${entry.name}`);
+  assertSha256ControlMatch(sha256(bytes), entry.sha256, `Migration checksum differs: ${entry.name}`);
   return { source, bytes };
 }
 
@@ -74,6 +76,7 @@ function verifyStage({ root, stageRoot, stageName }) {
   const { manifest, entries } = expectedEntries(root, stageName);
   const receiptPath = path.join(stageRoot, 'stage-receipt.json');
   const receipt = readJson(receiptPath);
+  validateSha256ControlObject(receipt, 'Migration stage receipt');
   assert.equal(receipt.stage, stageName, 'Stage receipt names a different stage');
   assert.equal(receipt.archiveIncluded, false, 'Stage receipt indicates archive content');
   assert.equal(receipt.sourceManifestSha256,
@@ -90,14 +93,14 @@ function verifyStage({ root, stageRoot, stageName }) {
     const stagedBytes = fs.readFileSync(staged);
     const sourceBytes = fs.readFileSync(source);
     assert.deepEqual(stagedBytes, sourceBytes, `Staged bytes differ: ${entry.name}`);
-    assert.equal(sha256(stagedBytes), entry.sha256, `Staged checksum differs: ${entry.name}`);
+    assertSha256ControlMatch(sha256(stagedBytes), entry.sha256, `Staged checksum differs: ${entry.name}`);
     files.push({ name: entry.name, bytes: stagedBytes.length, sha256: sha256(stagedBytes) });
   }
   const allPaths = [];
   fs.readdirSync(stageRoot, { recursive: true, withFileTypes: true }).forEach((entry) => allPaths.push(entry.name));
   assert(!allPaths.some((name) => /migration-history-legacy|archive-manifest|legacy-migration/i.test(name)),
     'Archive content entered executable migration stage');
-  assert.equal(receipt.activeMigrationAggregateSha256, manifest.aggregateSha256, 'Active manifest aggregate differs');
+  assertSha256ControlMatch(receipt.activeMigrationAggregateSha256, manifest.aggregateSha256, 'Active manifest aggregate differs');
   return { verdict: 'PASS', stage: stageName, schemaPath: path.join(stageRoot, 'prisma', 'schema.prisma'), files, archiveIncluded: false };
 }
 

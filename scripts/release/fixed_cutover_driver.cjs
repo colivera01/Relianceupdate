@@ -14,12 +14,13 @@ const { createStage, destroyStage, verifyStage } = require('./migration_staging.
 const { capture, connect } = require('./sqlserver_contract.cjs');
 const { readJson, sha256 } = require('./cutover_orchestrator_lib.cjs');
 const {
-  assertStructuralFingerprintMatch,
   fileEvidence,
   sourceEvidence,
   targetSpecEvidence,
+  validateSha256ControlObject,
   verifyReceipt,
 } = require('./release_receipt_lib.cjs');
+const { assertSha256Control, assertSha256ControlMatch } = require('./sha256_controls.cjs');
 
 const OLD_SHA = '5b27df55e3e53409aa8b61979128d44d39541fba';
 const BASELINE = '00000000000000_reliance_forward_baseline_20260910';
@@ -83,7 +84,9 @@ class FixedCutoverDriver {
   async databaseEvidence() {
     const pool = await connect(this.context.databaseUrl);
     try {
-      return { contract: await capture(pool), application: await captureApplicationEvidence(pool) };
+      const evidence = { contract: await capture(pool), application: await captureApplicationEvidence(pool) };
+      validateSha256ControlObject(evidence, 'Observed database evidence');
+      return evidence;
     } finally { await pool.close(); }
   }
 
@@ -125,11 +128,14 @@ class FixedCutoverDriver {
     for (const file of [c.applicationArtifact, c.migrationArtifact, c.releaseReceipt, c.protectedResults, c.linuxValidation]) {
       assert(file && fs.statSync(file).isFile(), `Artifact evidence missing: ${file || '(not supplied)'}`);
     }
-    assert.equal(sha256(fs.readFileSync(c.releaseReceipt)), c.receiptSha256, 'Receipt SHA differs');
+    assertSha256Control(c.receiptSha256, 'Expected release receipt SHA-256');
+    assertSha256Control(c.previousApplicationSha256, 'Expected previous runtime SHA-256');
+    assertSha256ControlMatch(sha256(fs.readFileSync(c.releaseReceipt)), c.receiptSha256, 'Receipt SHA differs');
     const receipt = readJson(c.releaseReceipt);
+    validateSha256ControlObject(receipt, 'Release receipt');
     assert.equal(receipt.sourceCommit, c.candidateSha, 'Receipt source differs');
-    assert.equal(receipt.applicationArtifact.sha256, sha256(fs.readFileSync(c.applicationArtifact)), 'Application artifact SHA differs');
-    assert.equal(receipt.migrationArtifact.sha256, sha256(fs.readFileSync(c.migrationArtifact)), 'Migration artifact SHA differs');
+    assertSha256ControlMatch(sha256(fs.readFileSync(c.applicationArtifact)), receipt.applicationArtifact.sha256, 'Application artifact SHA differs');
+    assertSha256ControlMatch(sha256(fs.readFileSync(c.migrationArtifact)), receipt.migrationArtifact.sha256, 'Migration artifact SHA differs');
     assert.deepEqual(receipt.testResults, { ...fileEvidence(c.protectedResults),
       verdict: readJson(c.protectedResults).verdict,
       files: readJson(c.protectedResults).files,
@@ -142,7 +148,7 @@ class FixedCutoverDriver {
     const linux = readJson(c.linuxValidation);
     assert.equal(linux.verdict, 'PASS', 'Linux validation is not PASS');
     assert.equal(linux.platform, 'linux', 'Application artifact was not built on Linux');
-    assert.equal(sha256(fs.readFileSync(c.previousApplicationArtifact)), c.previousApplicationSha256,
+    assertSha256ControlMatch(sha256(fs.readFileSync(c.previousApplicationArtifact)), c.previousApplicationSha256,
       'Previous runtime artifact SHA differs');
     if (c.buildRoot && fs.existsSync(path.join(c.buildRoot, '.next'))
       && fs.existsSync(path.join(c.buildRoot, 'node_modules', '.prisma', 'client'))) {
@@ -400,9 +406,9 @@ class FixedCutoverDriver {
       }
       const evidence = await this.databaseEvidence();
       const spec = readJson(context.targetSpec).expectedStates.preCutover;
-      assertStructuralFingerprintMatch(evidence.contract.structuralSha256, spec.structuralSha256,
+      assertSha256ControlMatch(evidence.contract.structuralSha256, spec.structuralSha256,
         'Live structural fingerprint differs');
-      assert.equal(evidence.contract.ledgerSha256, spec.ledgerSha256, 'Live ledger fingerprint differs');
+      assertSha256ControlMatch(evidence.contract.ledgerSha256, spec.ledgerSha256, 'Live ledger fingerprint differs');
       assert.equal(evidence.contract.ledgerRows, spec.ledgerRows, 'Live ledger row count differs');
       assert.equal(evidence.application.preflight.assignmentDuplicates.length, 0, 'Duplicate active assignments exist');
       assertProtectedReliance(evidence.application);
@@ -493,11 +499,14 @@ class FixedCutoverDriver {
         context.databaseUrl = recoveryUrl;
         recovered = await this.databaseEvidence();
       } finally { context.databaseUrl = originalUrl; }
-      assert.equal(recovered.contract.structuralSha256, this.state.before.contract.structuralSha256);
-      assert.equal(recovered.contract.ledgerSha256, this.state.before.contract.ledgerSha256);
-      assert.equal(recovered.application.materialTableFingerprintsSha256,
-        this.state.before.application.materialTableFingerprintsSha256);
-      assert.equal(recovered.application.protectedEvidenceSha256, this.state.before.application.protectedEvidenceSha256);
+      assertSha256ControlMatch(recovered.contract.structuralSha256, this.state.before.contract.structuralSha256,
+        'Recovered structural fingerprint differs');
+      assertSha256ControlMatch(recovered.contract.ledgerSha256, this.state.before.contract.ledgerSha256,
+        'Recovered ledger fingerprint differs');
+      assertSha256ControlMatch(recovered.application.materialTableFingerprintsSha256,
+        this.state.before.application.materialTableFingerprintsSha256, 'Recovered application data fingerprint differs');
+      assertSha256ControlMatch(recovered.application.protectedEvidenceSha256,
+        this.state.before.application.protectedEvidenceSha256, 'Recovered protected-data fingerprint differs');
       assertProtectedReliance(recovered.application);
       runAzure(['webapp', 'config', 'appsettings', 'set', '--subscription', context.azure.subscription,
         '-g', context.azure.resourceGroup, '-n', context.azure.appService, '--settings', `DATABASE_URL=${recoveryUrl}`,

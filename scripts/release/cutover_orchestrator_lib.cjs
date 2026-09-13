@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { CutoverLockSet } = require('./continuous_cutover_lock.cjs');
+const { assertSha256Control, assertSha256ControlMatch } = require('./sha256_controls.cjs');
 
 const MUTATING_PHASES = new Set([
   'externalActorFreeze', 'gitPromotion', 'ledgerRotation', 'baselineRecognition',
@@ -32,13 +33,15 @@ function validateAuthorization({ file, expected }) {
   assert.equal(authorization.environment, expected.environment, 'Authorization environment differs');
   assert.equal(authorization.resourceId, expected.resourceId, 'Authorization resource differs');
   assert.equal(authorization.candidateSha, expected.candidateSha, 'Authorization candidate differs');
-  assert.equal(authorization.receiptSha256, expected.receiptSha256, 'Authorization receipt differs');
+  assertSha256Control(expected.receiptSha256, 'Expected release receipt SHA-256');
+  assertSha256ControlMatch(authorization.receiptSha256, expected.receiptSha256, 'Authorization receipt differs');
   assert.equal(authorization.exclusiveOperatorCustodyConfirmed, true, 'Exclusive operator custody was not confirmed');
   assert.equal(authorization.proceduralResidualRiskAccepted, true, 'Procedural residual risk was not accepted');
   assert(String(authorization.operator || '').trim(), 'Authorized operator is missing');
   assert(new Date(authorization.expiresAt).getTime() > Date.now(), 'Authorization expired');
   assert(/^[a-f0-9-]{16,}$/i.test(authorization.nonce || ''), 'Authorization nonce missing');
-  assert.equal(process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256, sha256(bytes), 'Authorization digest environment value differs');
+  assertSha256ControlMatch(process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256, sha256(bytes),
+    'Authorization digest environment value differs');
   return { verdict: 'PASS', authorizationSha256: sha256(bytes), expiresAt: authorization.expiresAt };
 }
 

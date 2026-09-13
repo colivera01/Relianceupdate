@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createRequire } = require('node:module');
 const assert = require('node:assert/strict');
+const { assertSha256ControlMatch, validateSha256ControlObject, validateSha256Map } = require('./sha256_controls.cjs');
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -76,13 +77,20 @@ function createManifest(root, schema, lockfile, commit) {
   assert.equal(runtime.clientVersion, lock.packages['node_modules/@prisma/client'].version, 'Client differs from lockfile');
   assert.equal(runtime.clientVersion, lock.packages['node_modules/prisma'].version, 'CLI/client version mismatch');
   const { generatedSchema, ...evidence } = runtime;
-  return { contractVersion: 1, sourceCommit: commit, sourceSchemaSha256: sha256(source), sourceSchemaNormalizedSha256: sha256(generatedSchema), lockfileSha256: sha256(fs.readFileSync(lockfile)), prismaCliVersion: lock.packages['node_modules/prisma'].version, ...evidence };
+  const manifest = { contractVersion: 1, sourceCommit: commit, sourceSchemaSha256: sha256(source), sourceSchemaNormalizedSha256: sha256(generatedSchema), lockfileSha256: sha256(fs.readFileSync(lockfile)), prismaCliVersion: lock.packages['node_modules/prisma'].version, ...evidence };
+  validateSha256ControlObject(manifest, 'Prisma artifact manifest');
+  validateSha256Map(manifest.engines, 'Prisma engine SHA-256');
+  validateSha256Map(manifest.codeHashes, 'Prisma generated-code SHA-256');
+  return manifest;
 }
 
 function verify(root, manifest) {
+  validateSha256ControlObject(manifest, 'Prisma artifact manifest');
+  validateSha256Map(manifest.engines, 'Prisma engine SHA-256');
+  validateSha256Map(manifest.codeHashes, 'Prisma generated-code SHA-256');
   const runtime = inspect(root);
   assert.equal(manifest.contractVersion, 1, 'Unsupported artifact manifest');
-  assert.equal(sha256(runtime.generatedSchema), manifest.sourceSchemaNormalizedSha256, 'Source semantic schema mismatch');
+  assertSha256ControlMatch(sha256(runtime.generatedSchema), manifest.sourceSchemaNormalizedSha256, 'Source semantic schema mismatch');
   for (const key of ['generatedSchemaSha256', 'clientVersion', 'engineVersion', 'engines', 'codeHashes', 'models', 'requiredReviewFields']) {
     assert.deepEqual(runtime[key], manifest[key], `Packaged Prisma ${key} differs from current generation`);
   }
