@@ -15,21 +15,6 @@ function withBetaNoIndex(response: NextResponse, enabled: boolean): NextResponse
 }
 
 export async function middleware(request: NextRequest) {
-  const acceptanceReadOnly = process.env["RELIANCE_ACCEPTANCE_READ_ONLY"] === "YES";
-  const safeMethod = ["GET", "HEAD", "OPTIONS"].includes(request.method.toUpperCase());
-  if (acceptanceReadOnly && !safeMethod) {
-    const response = NextResponse.json(
-      {
-        error: "Beta is temporarily read-only during Product Owner acceptance.",
-        code: "ACCEPTANCE_READ_ONLY",
-      },
-      { status: 423 }
-    );
-    response.headers.set("Cache-Control", "no-store");
-    response.headers.set("Retry-After", "60");
-    return withBetaNoIndex(response, true);
-  }
-
   const betaGate = getBetaGateConfig();
 
   if (!betaGate.enabled) {

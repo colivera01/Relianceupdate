@@ -1639,7 +1639,7 @@ model Review {
   moderatedByUserId         String?
   contractVersion           Int?
   ratingValidityStatus      String?
-  ratingInvalidationReason  String?   @db.NVarChar(Max)
+  ratingInvalidationReason  String?
   ratingInvalidatedAt       DateTime?
   ratingInvalidatedByUserId String?
   submissionRequestId       String?
