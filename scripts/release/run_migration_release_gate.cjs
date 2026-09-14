@@ -24,6 +24,7 @@ const commands = [
   ['node', ['scripts/release/test_migration_immutability.cjs']],
   ['node', ['scripts/release/test_migration_staging.cjs']],
   ['node', ['scripts/release/test_cutover_orchestrator.cjs']],
+  ['node', ['scripts/release/test_cutover_acceptance.cjs']],
   ['node', ['scripts/release/test_app_quiescence.cjs']],
   ['node', ['scripts/release/test_azure_cli.cjs']],
   ['node', ['scripts/release/test_cutover_authorization.cjs']],

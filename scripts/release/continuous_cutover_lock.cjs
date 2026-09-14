@@ -164,11 +164,15 @@ async function assertSecondActorBlocked({ databaseUrl, resourceId }) {
 
 class CutoverLockSet {
   constructor({ databaseUrl, resourceId, heartbeatMs = 5000 }) {
+    this.databaseUrl = databaseUrl;
+    this.resourceId = resourceId;
+    this.heartbeatMs = heartbeatMs;
     this.environmentDatabaseUrl = replaceDatabase(databaseUrl, 'master');
     this.environmentResourceId = environmentResourceId(resourceId);
     this.environmentLock = new ContinuousCutoverLock({ databaseUrl: this.environmentDatabaseUrl,
       resourceId: this.environmentResourceId, heartbeatMs });
     this.databaseLock = new ContinuousCutoverLock({ databaseUrl, resourceId, heartbeatMs });
+    this.databaseLockReleasedForAcceptance = false;
   }
 
   async acquire() {
@@ -188,12 +192,41 @@ class CutoverLockSet {
 
   async assertOwned() {
     const environment = await this.environmentLock.assertOwned();
-    const database = await this.databaseLock.assertOwned();
+    const database = this.databaseLockReleasedForAcceptance
+      ? { verdict: 'DATABASE_LOCK_RELEASED_FOR_ACCEPTANCE' }
+      : await this.databaseLock.assertOwned();
     return { verdict: 'LOCK_SET_HELD', environment, database };
   }
 
-  async release() {
+  async assertEnvironmentOwned() {
+    const environment = await this.environmentLock.assertOwned();
+    return { verdict: 'ENVIRONMENT_LOCK_HELD', environment };
+  }
+
+  async releaseDatabaseForAcceptance() {
+    assert.equal(this.databaseLockReleasedForAcceptance, false, 'Database lock was already released');
     const database = await this.databaseLock.release();
+    assert.equal(database.verdict, 'LOCK_RELEASED', 'Database lock could not be released cleanly');
+    this.databaseLockReleasedForAcceptance = true;
+    return { verdict: 'DATABASE_LOCK_RELEASED_FOR_BOUNDED_ACCEPTANCE', database };
+  }
+
+  async reacquireDatabaseForRollback() {
+    if (!this.databaseLockReleasedForAcceptance) return { verdict: 'DATABASE_LOCK_ALREADY_HELD' };
+    this.databaseLock = new ContinuousCutoverLock({
+      databaseUrl: this.databaseUrl,
+      resourceId: this.resourceId,
+      heartbeatMs: this.heartbeatMs,
+    });
+    const database = await this.databaseLock.acquire();
+    this.databaseLockReleasedForAcceptance = false;
+    return { verdict: 'DATABASE_LOCK_REACQUIRED_FOR_ROLLBACK', database };
+  }
+
+  async release() {
+    const database = this.databaseLockReleasedForAcceptance
+      ? { verdict: 'LOCK_ALREADY_RELEASED_FOR_ACCEPTANCE' }
+      : await this.databaseLock.release();
     const environment = await this.environmentLock.release();
     return { verdict: 'LOCK_RELEASED', database, environment };
   }

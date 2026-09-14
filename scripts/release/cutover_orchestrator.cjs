@@ -49,7 +49,13 @@ async function main() {
     recoveryDatabase: value('--recovery-database'),
     smokeBaseline,
     postSmokeReceipt: value('--post-smoke-receipt') ? path.resolve(value('--post-smoke-receipt')) : null,
-    physicalAcceptance: value('--physical-acceptance') ? path.resolve(value('--physical-acceptance')) : null,
+    postSmokeTimeoutMs: Number(value('--post-smoke-timeout-minutes') || '10') * 60 * 1000,
+    acceptanceState: value('--acceptance-state') ? path.resolve(value('--acceptance-state')) : null,
+    acceptanceDecision: value('--acceptance-decision') ? path.resolve(value('--acceptance-decision')) : null,
+    acceptanceReceipt: value('--acceptance-receipt') ? path.resolve(value('--acceptance-receipt')) : null,
+    acceptanceTimeoutMs: Number(value('--acceptance-timeout-minutes') || '30') * 60 * 1000,
+    acceptancePollMs: Number(value('--acceptance-poll-ms') || '30000'),
+    acceptanceSimulation: value('--simulate-acceptance') ? String(value('--simulate-acceptance')).toUpperCase() : null,
     finalReceiptOutput: value('--final-receipt') ? path.resolve(value('--final-receipt')) : null,
     quiescencePlan: path.resolve(value('--quiescence-plan') || path.join(root, 'config', 'release-cutover', 'quiescence-plan.json')),
     quiescenceSnapshot: path.resolve(value('--quiescence-snapshot') || path.join(root, '.reliance-cutover-quiescence.json')),
@@ -58,6 +64,7 @@ async function main() {
     candidateParent: value('--candidate-parent') || '3c078165a9483f862ada39c8df8279e06f864d76',
     candidateTree: value('--candidate-tree') || commandGit(root, ['rev-parse', 'HEAD^{tree}']),
     authoritativeBranch: 'codex/rv8-package-visibility-part1-work',
+    preCutoverSha: '5b27df55e3e53409aa8b61979128d44d39541fba',
     lockToken: crypto.randomUUID(),
     heartbeatMs: 1000,
     azure: {
@@ -72,6 +79,19 @@ async function main() {
       previous: 'reliance-pre-forward-baseline-20260910',
       release: 'reliance-forward-baseline-20260910',
     },
+    onEvent: (event) => {
+      if (event.phase === 'physicalAcceptance' && event.verdict === 'PENDING') {
+        console.log(JSON.stringify({ cutoverStatus: event.result.status, technicalCutover: event.result.technicalCutover,
+          physicalAcceptance: 'PENDING', environment: event.result.environment,
+          cutoverId: event.result.cutoverId, challenge: event.result.challenge,
+          expiresAt: event.result.expiresAt, checklistVersion: event.result.checklistVersion }, null, 2));
+      }
+      if (event.phase === 'authenticatedSmoke' && event.verdict === 'PENDING') {
+        console.log(JSON.stringify({ cutoverStatus: 'WAITING_FOR_POST_CUTOVER_AUTHENTICATED_SMOKE',
+          receiptOutput: event.result.receiptOutput, expiresAt: event.result.expiresAt,
+          environment: 'CONTROLLED_READ_ONLY' }, null, 2));
+      }
+    },
   };
   if (!context.databaseUrl) throw new Error('DATABASE_URL is required');
   if (environment === 'disposable') {
@@ -81,6 +101,9 @@ async function main() {
     await adapter.attach(context);
   } else if (value('--rehearsal-adapter')) {
     throw new Error('Custom adapters are permanently forbidden for beta');
+  }
+  if (context.acceptanceSimulation && environment !== 'disposable') {
+    throw new Error('Acceptance simulation is permanently forbidden for beta');
   }
   const driver = new FixedCutoverDriver(context);
   const result = await runCutover({ mode: dryRun ? 'dry-run' : 'execute', context, driver,

@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { CutoverLockSet } = require('./continuous_cutover_lock.cjs');
+const { createAcceptanceReceipt, waitForAcceptance } = require('./cutover_acceptance.cjs');
 const { assertSha256Control, assertSha256ControlMatch } = require('./sha256_controls.cjs');
 
 const MUTATING_PHASES = new Set([
@@ -53,19 +54,19 @@ async function runCutover({ mode, context, driver, authorizationFile, injectFail
   let mutationOccurred = false;
   let lock = null;
   let rollback = null;
+  let acceptance = null;
   const priorLockToken = process.env.RELIANCE_MIGRATION_LOCK_TOKEN;
   const emit = (event) => { events.push({ at: new Date().toISOString(), ...event }); context.onEvent?.(event); };
 
   if (mode === 'execute') {
     if (context.environment === 'beta') {
-      validateAuthorization({ file: authorizationFile, expected: context });
+      context.authorizationReference = validateAuthorization({ file: authorizationFile, expected: context });
       assert.equal(process.env.RELIANCE_CUTOVER_EXECUTE, 'YES', 'RELIANCE_CUTOVER_EXECUTE=YES is required');
       assert.equal(process.env.RELIANCE_MIGRATION_WRITE_APPROVED, 'YES', 'Protected migration approval is required');
     } else {
       assert.equal(process.env.RELIANCE_REHEARSAL_AUTHORIZATION, 'DISPOSABLE_ONLY', 'Disposable rehearsal authorization is required');
     }
   }
-
   try {
     for (const phase of PHASES.slice(0, 5)) {
       const result = await driver.runPhase(phase, { mode, context, emit });
@@ -78,6 +79,16 @@ async function runCutover({ mode, context, driver, authorizationFile, injectFail
       return { verdict: 'PASS', mode, liveMutations: 0, cutoverWouldProceedIfAuthorized: true, events };
     }
 
+    for (const [label, file] of [['acceptance state', context.acceptanceState],
+      ['acceptance decision', context.acceptanceDecision], ['acceptance receipt', context.acceptanceReceipt]]) {
+      assert(file, `${label} output is required`);
+      assert(!fs.existsSync(file), `${label} output already exists`);
+    }
+    if (context.environment === 'beta') {
+      assert(context.postSmokeReceipt, 'Post-cutover authenticated smoke output is required');
+      assert(!fs.existsSync(context.postSmokeReceipt), 'Post-cutover authenticated smoke output already exists');
+    }
+
     lock = lockFactory
       ? await lockFactory(context)
       : new CutoverLockSet({ databaseUrl: context.databaseUrl, resourceId: context.resourceId,
@@ -87,7 +98,8 @@ async function runCutover({ mode, context, driver, authorizationFile, injectFail
     emit({ phase: 'continuousLock', verdict: 'PASS', result: acquired });
     if (driver.assertSecondActorBlocked) await driver.assertSecondActorBlocked(context);
 
-    for (const phase of PHASES.slice(5)) {
+    const physicalAcceptanceIndex = PHASES.indexOf('physicalAcceptance');
+    for (const phase of PHASES.slice(5, physicalAcceptanceIndex)) {
       await lock.assertOwned();
       if (MUTATING_PHASES.has(phase)) mutationOccurred = true;
       const result = await driver.runPhase(phase, { mode, context, emit, lock });
@@ -96,18 +108,94 @@ async function runCutover({ mode, context, driver, authorizationFile, injectFail
       if (driver.assertSecondActorBlocked) await driver.assertSecondActorBlocked(context);
       if (injectFailureAfter === phase) throw new Error(`Injected failure after ${phase}`);
     }
+
+    const binding = await driver.prepareAcceptance({ context });
+    const databaseLockTransition = typeof lock.releaseDatabaseForAcceptance === 'function'
+      ? await lock.releaseDatabaseForAcceptance()
+      : { verdict: 'SIMULATED_DATABASE_LOCK_RELEASE' };
+    emit({ phase: 'databaseLockTransition', verdict: 'PASS', result: databaseLockTransition });
+    const assertAcceptanceInvariants = async (state) => {
+      if (typeof lock.assertEnvironmentOwned === 'function') await lock.assertEnvironmentOwned();
+      else await lock.assertOwned();
+      return driver.verifyAcceptanceInvariants({ context, state, binding });
+    };
+    acceptance = await waitForAcceptance({
+      stateFile: context.acceptanceState,
+      decisionFile: context.acceptanceDecision,
+      binding,
+      timeoutMs: context.acceptanceTimeoutMs,
+      pollMs: context.acceptancePollMs,
+      assertInvariants: assertAcceptanceInvariants,
+      simulation: context.acceptanceSimulation,
+      onWaiting: (state) => emit({ phase: 'physicalAcceptance', verdict: 'PENDING', result: {
+        status: state.status, cutoverId: state.cutoverId, challenge: state.challenge,
+        expiresAt: state.expiresAt, checklistVersion: state.checklistVersion,
+        environment: 'CONTROLLED', technicalCutover: 'PASS',
+      } }),
+    });
+    if (acceptance.decision.action !== 'ACCEPT') {
+      const error = new Error(acceptance.decision.action === 'REJECT'
+        ? 'Product Owner rejected physical beta acceptance'
+        : 'Product Owner physical acceptance timed out');
+      error.acceptanceDecision = acceptance.decision.action;
+      throw error;
+    }
+    await assertAcceptanceInvariants(acceptance.state);
+    const acceptanceReceipt = createAcceptanceReceipt({
+      output: context.acceptanceReceipt,
+      state: acceptance.state,
+      decision: acceptance.decision,
+      decisionSha256: acceptance.decisionSha256,
+      authorizationReference: context.authorizationReference,
+      authoritativeSha: context.candidateSha,
+      health: driver.state?.health,
+      smoke: driver.state?.authenticatedSmoke,
+      tagTargets: {
+        previous: { name: context.tags.previous, sha: context.preCutoverSha },
+        release: { name: context.tags.release, sha: context.candidateSha },
+      },
+    });
+    context.acceptanceReceiptEvidence = acceptanceReceipt;
+    emit({ phase: 'physicalAcceptance', verdict: 'PASS', result: {
+      acceptedAt: acceptance.decision.decidedAt,
+      cutoverId: acceptance.state.cutoverId,
+      acceptanceReceiptSha256: acceptanceReceipt.sha256,
+    } });
+
+    for (const phase of PHASES.slice(physicalAcceptanceIndex + 1)) {
+      if (typeof lock.assertEnvironmentOwned === 'function') await lock.assertEnvironmentOwned();
+      else await lock.assertOwned();
+      if (MUTATING_PHASES.has(phase)) mutationOccurred = true;
+      const result = await driver.runPhase(phase, { mode, context, emit, lock });
+      emit({ phase, verdict: 'PASS', result });
+      if (typeof lock.assertEnvironmentOwned === 'function') await lock.assertEnvironmentOwned();
+      else await lock.assertOwned();
+      if (injectFailureAfter === phase) throw new Error(`Injected failure after ${phase}`);
+    }
     emit({ phase: 'cutover', verdict: 'PASS' });
     return { verdict: 'PASS', mode, liveMutations: context.environment === 'beta' ? 'ALLOWLIST_ONLY' : 0, events };
   } catch (error) {
     emit({ phase: 'failure', verdict: 'FAIL', error: error.message });
     if (mode === 'execute' && mutationOccurred) {
       assert(lock, 'Rollback required but lock was never acquired');
+      if (typeof lock.assertEnvironmentOwned === 'function') await lock.assertEnvironmentOwned();
+      if (typeof lock.reacquireDatabaseForRollback === 'function') {
+        const reacquired = await lock.reacquireDatabaseForRollback();
+        emit({ phase: 'databaseLockReacquire', verdict: 'PASS', result: reacquired });
+      }
       await lock.assertOwned();
       rollback = await driver.rollback({ context, emit, lock, cause: error });
       emit({ phase: 'rollback', verdict: 'PASS', result: rollback });
       await lock.assertOwned();
     }
-    error.cutoverEvidence = { events, rollback, mutationOccurred };
+    error.cutoverEvidence = { events, rollback, mutationOccurred,
+      acceptance: acceptance ? {
+        cutoverId: acceptance.state.cutoverId,
+        status: acceptance.state.status,
+        expiresAt: acceptance.state.expiresAt,
+        decision: acceptance.decision.action,
+        decisionSha256: acceptance.decisionSha256,
+      } : null };
     throw error;
   } finally {
     if (lock) {

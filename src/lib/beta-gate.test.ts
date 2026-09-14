@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { middleware } from "../../middleware";
+import { middleware } from "../middleware";
 import { POST } from "@/app/api/beta-gate/route";
 import {
   createBetaGateToken,
@@ -14,6 +14,7 @@ const BETA_ENV_KEYS = [
   "BETA_GATE_PASSWORD",
   "BETA_GATE_COOKIE_NAME",
   "BETA_GATE_COOKIE_MAX_AGE_DAYS",
+  "RELIANCE_ACCEPTANCE_READ_ONLY",
 ] as const;
 
 function resetBetaEnv() {
@@ -242,6 +243,30 @@ describe("private beta gate", () => {
 
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("x-robots-tag")).toBeNull();
+  });
+
+  it("allows read-only physical inspection while acceptance mode is active", async () => {
+    process.env.RELIANCE_ACCEPTANCE_READ_ONLY = "YES";
+    const config = getBetaGateConfig();
+    const token = await createBetaGateToken(config);
+
+    const response = await middleware(betaRequest("/vendor/employees", `${config.cookieName}=${token}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("blocks business mutations while acceptance mode is active", async () => {
+    process.env.RELIANCE_ACCEPTANCE_READ_ONLY = "YES";
+    const request = new NextRequest("https://beta.relianceonline.org/api/bookings/example", {
+      method: "PATCH",
+    });
+
+    const response = await middleware(request);
+
+    expect(response.status).toBe(423);
+    await expect(response.json()).resolves.toMatchObject({ code: "ACCEPTANCE_READ_ONLY" });
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("sanitizes unsafe return paths", () => {

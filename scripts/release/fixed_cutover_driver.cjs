@@ -90,6 +90,14 @@ class FixedCutoverDriver {
     } finally { await pool.close(); }
   }
 
+  authoritativeHead(context) {
+    if (context.environment === 'disposable' && context.rehearsal?.authoritativeHead) {
+      return context.rehearsal.authoritativeHead();
+    }
+    return git(context.root, ['ls-remote', 'origin',
+      `refs/heads/${context.authoritativeBranch}`]).split(/\s/)[0];
+  }
+
   async assertSecondActorBlocked(context) {
     const resource = `RelianceRelease:${crypto.createHash('sha256').update(context.resourceId).digest('hex')}`;
     const pool = await connect(context.databaseUrl);
@@ -194,7 +202,7 @@ class FixedCutoverDriver {
       operatorCidr: this.context.operatorCidr, environment: this.context.environment });
   }
 
-  async runPhase(phase, { mode, context, lock }) {
+  async runPhase(phase, { mode, context, lock, emit }) {
     if (phase === 'authorizationValidation') return { writeEnabled: mode === 'execute' };
     if (phase === 'sourceValidation') return this.sourceValidation();
     if (phase === 'artifactValidation') return this.artifactValidation();
@@ -309,9 +317,15 @@ class FixedCutoverDriver {
       return result;
     }
     if (phase === 'health') {
-      if (context.environment === 'disposable' && context.rehearsal?.health) return context.rehearsal.health();
+      if (context.environment === 'disposable' && context.rehearsal?.health) {
+        this.state.health = await context.rehearsal.health();
+        this.state.health.completedAt = new Date().toISOString();
+        return this.state.health;
+      }
       this.quiescence().restrictedRestart();
-      return this.waitForHealth(context.healthUrl);
+      this.state.health = await this.waitForHealth(context.healthUrl);
+      this.state.health.completedAt = new Date().toISOString();
+      return this.state.health;
     }
     if (phase === 'authenticatedSmoke') {
       const baseline = readJson(context.smokeBaseline);
@@ -323,21 +337,32 @@ class FixedCutoverDriver {
         assert.equal(baseline.employeeAccountless.protectedRegression, 'PASS');
       }
       for (const role of ['customer', 'vendor', 'admin']) assert.equal(baseline[role].result, 'PASS', `${role} baseline is incomplete`);
-      if (context.environment === 'disposable') return { verdict: 'PASS', boundary: 'DISPOSABLE_HEALTH_AND_AUTHORIZATION_TESTS' };
-      assert(context.postSmokeReceipt && fs.existsSync(context.postSmokeReceipt), 'Post-cutover authenticated smoke receipt missing');
+      if (context.environment === 'disposable') {
+        this.state.authenticatedSmoke = { verdict: 'PASS', boundary: 'DISPOSABLE_HEALTH_AND_AUTHORIZATION_TESTS' };
+        return this.state.authenticatedSmoke;
+      }
+      assert(context.postSmokeReceipt, 'Post-cutover authenticated smoke receipt output is missing');
+      const smokeDeadline = Date.now() + context.postSmokeTimeoutMs;
+      emit?.({ phase: 'authenticatedSmoke', verdict: 'PENDING', result: {
+        receiptOutput: context.postSmokeReceipt, expiresAt: new Date(smokeDeadline).toISOString(),
+      } });
+      while (!fs.existsSync(context.postSmokeReceipt) && Date.now() <= smokeDeadline) {
+        await lock.assertOwned();
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+      assert(fs.existsSync(context.postSmokeReceipt), 'Post-cutover authenticated smoke timed out');
       const post = readJson(context.postSmokeReceipt);
+      assert.equal(post.candidateSha, context.candidateSha, 'Post-cutover smoke candidate differs');
+      assert.equal(post.environment, context.environment, 'Post-cutover smoke environment differs');
+      assert.equal(post.readOnlyAcceptanceMode, true, 'Post-cutover smoke did not run in read-only mode');
+      assert(new Date(post.capturedAt).getTime() >= new Date(this.state.health.completedAt).getTime(),
+        'Post-cutover smoke predates successful health verification');
       for (const role of ['customer', 'vendor', 'admin']) assert.equal(post[role].result, 'PASS', `${role} post-cutover smoke failed`);
       assert.equal(post.employee.result, 'NOT_APPLICABLE_ACCOUNTLESS_WORK_ORDER_ONLY');
       assert(['PASS', 'UNPROVEN_NO_CURRENT_VALID_TOKEN'].includes(post.employeeAccountless.result));
-      return { verdict: 'PASS', roles: ['customer', 'vendor', 'admin'], employeeAccess: post.employeeAccountless.result };
-    }
-    if (phase === 'physicalAcceptance') {
-      if (context.environment === 'disposable') return { verdict: 'PASS', simulated: true };
-      assert(context.physicalAcceptance && fs.existsSync(context.physicalAcceptance), 'Physical acceptance receipt missing');
-      const acceptance = readJson(context.physicalAcceptance);
-      assert.equal(acceptance.candidateSha, context.candidateSha);
-      assert.equal(acceptance.accepted, true);
-      return { verdict: 'PASS', acceptedAt: acceptance.acceptedAt };
+      this.state.authenticatedSmoke = { verdict: 'PASS', roles: ['customer', 'vendor', 'admin'],
+        employeeAccess: post.employeeAccountless.result, receiptSha256: sha256(fs.readFileSync(context.postSmokeReceipt)) };
+      return this.state.authenticatedSmoke;
     }
     if (phase === 'acceptanceTags') {
       if (context.environment === 'disposable' && context.rehearsal?.tags) return context.rehearsal.tags();
@@ -358,7 +383,8 @@ class FixedCutoverDriver {
     }
     if (phase === 'finalReceipt') {
       const receipt = { receiptVersion: 1, candidateSha: context.candidateSha, completedAt: new Date().toISOString(),
-        recoveryPoint: this.state.recoveryPoint, phases: this.state.mutationPhases, accepted: true };
+        recoveryPoint: this.state.recoveryPoint, phases: this.state.mutationPhases, accepted: true,
+        acceptanceReceiptSha256: context.acceptanceReceiptEvidence?.sha256 };
       if (context.finalReceiptOutput) fs.writeFileSync(context.finalReceiptOutput, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx' });
       return receipt;
     }
@@ -394,6 +420,62 @@ class FixedCutoverDriver {
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
     throw new Error(`Health did not pass: ${last?.message}`);
+  }
+
+  async prepareAcceptance({ context }) {
+    assert.equal(this.state.health?.verdict, 'PASS', 'Health must pass before physical acceptance');
+    assert.equal(this.state.authenticatedSmoke?.verdict, 'PASS', 'Authenticated smoke must pass before physical acceptance');
+    const evidence = await this.databaseEvidence();
+    assertProtectedReliance(evidence.application);
+    assert.deepEqual(evidence.contract.successfulMigrationNames, [BASELINE, RECONCILIATION]);
+    const authoritativeSha = this.authoritativeHead(context);
+    assert.equal(authoritativeSha, context.candidateSha, 'Authoritative Git SHA changed before acceptance');
+    const database = az(['sql', 'db', 'show', '--subscription', context.azure.subscription,
+      '-g', context.azure.resourceGroup, '-s', context.azure.sqlServer, '-n', context.azure.database]);
+    assert.equal(database.id.toLowerCase(), context.resourceId.toLowerCase(), 'Database target changed before acceptance');
+    const control = this.quiescence().verifyAcceptanceMode();
+    return {
+      environment: context.environment,
+      targetResourceId: context.resourceId,
+      candidateSha: context.candidateSha,
+      runtimeArtifactSha256: sha256(fs.readFileSync(context.applicationArtifact)),
+      migrationArtifactSha256: sha256(fs.readFileSync(context.migrationArtifact)),
+      releaseReceiptSha256: context.receiptSha256,
+      activeMigrations: evidence.contract.successfulMigrationNames,
+      structuralSha256: evidence.contract.structuralSha256,
+      ledgerSha256: evidence.contract.ledgerSha256,
+      protectedDataSha256: evidence.application.protectedEvidenceSha256,
+      deploymentControlSha256: control.deploymentControlSha256,
+      technicalCutoverCompletedAt: new Date().toISOString(),
+    };
+  }
+
+  async verifyAcceptanceInvariants({ context, binding }) {
+    const authoritativeSha = this.authoritativeHead(context);
+    assert.equal(authoritativeSha, binding.candidateSha, 'Authoritative Git SHA changed during acceptance');
+    assertSha256ControlMatch(sha256(fs.readFileSync(context.applicationArtifact)), binding.runtimeArtifactSha256,
+      'Runtime artifact changed during acceptance');
+    const evidence = await this.databaseEvidence();
+    assertSha256ControlMatch(evidence.contract.structuralSha256, binding.structuralSha256,
+      'Database structure changed during acceptance');
+    assertSha256ControlMatch(evidence.contract.ledgerSha256, binding.ledgerSha256,
+      'Migration ledger changed during acceptance');
+    assertSha256ControlMatch(evidence.application.protectedEvidenceSha256, binding.protectedDataSha256,
+      'Protected data changed during acceptance');
+    assert.deepEqual(evidence.contract.successfulMigrationNames, binding.activeMigrations,
+      'Active migration state changed during acceptance');
+    assertProtectedReliance(evidence.application);
+    const database = az(['sql', 'db', 'show', '--subscription', context.azure.subscription,
+      '-g', context.azure.resourceGroup, '-s', context.azure.sqlServer, '-n', context.azure.database]);
+    assert.equal(database.id.toLowerCase(), binding.targetResourceId.toLowerCase(),
+      'Database target changed during acceptance');
+    const control = this.quiescence().verifyAcceptanceMode();
+    assertSha256ControlMatch(control.deploymentControlSha256, binding.deploymentControlSha256,
+      'App deployment control changed during acceptance');
+    const health = await this.waitForHealth(context.healthUrl);
+    return { verdict: 'PASS', authoritativeSha, environmentControl: control.verdict,
+      structuralSha256: evidence.contract.structuralSha256, ledgerSha256: evidence.contract.ledgerSha256,
+      protectedDataSha256: evidence.application.protectedEvidenceSha256, health: health.verdict };
   }
 
   async runDryRun({ context }) {
@@ -434,7 +516,10 @@ class FixedCutoverDriver {
       return { writeDisabled: true, targetIdentity: evidence.contract.identity, stages: ['baseline', 'reconciliation'],
         structuralSha256: evidence.contract.structuralSha256, ledgerSha256: evidence.contract.ledgerSha256,
         protectedSha256: evidence.application.protectedEvidenceSha256, lockAvailable: true, pitrAvailable: true,
-        authenticatedBaseline: 'PASS', artifactExistence: true };
+        authenticatedBaseline: 'PASS', artifactExistence: true,
+        acceptanceControlAvailable: true, acceptanceTimeoutMinutes: context.acceptanceTimeoutMs / 60000,
+        physicalAcceptanceModel: 'POST_CUTOVER_EXPLICIT_ACCEPT_OR_REJECT',
+        preExistingAcceptanceReceiptRequired: false, readOnlyAcceptanceModeAvailable: true };
     } finally { for (const stage of stages) destroyStage(stage); }
   }
 

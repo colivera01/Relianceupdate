@@ -2,11 +2,13 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const { runAzure } = require('./azure_cli.cjs');
 
 const ALLOW_RULE = 'reliance-cutover-operator';
 const DENY_RULE = 'reliance-cutover-deny-all';
+const ACCEPTANCE_READ_ONLY_SETTING = 'RELIANCE_ACCEPTANCE_READ_ONLY';
 
 function defaultRunner(args) {
   return runAzure(args, { label: 'Azure quiescence operation' });
@@ -33,7 +35,12 @@ class AppQuiescence {
     const source = this.az(['webapp', 'deployment', 'source', 'show']);
     const deployments = this.az(['webapp', 'log', 'deployment', 'list']);
     const restrictions = this.az(['webapp', 'config', 'access-restriction', 'show']);
-    return { appState: app.state, appId: app.id, source, deployments, restrictions };
+    const acceptanceSettings = this.az(['webapp', 'config', 'appsettings', 'list', '--query',
+      `[?name=='${ACCEPTANCE_READ_ONLY_SETTING}']`]);
+    const acceptanceReadOnly = acceptanceSettings?.length
+      ? { present: true, value: acceptanceSettings[0].value }
+      : { present: false, value: null };
+    return { appState: app.state, appId: app.id, source, deployments, restrictions, acceptanceReadOnly };
   }
 
   validateExecution() {
@@ -82,14 +89,42 @@ class AppQuiescence {
     this.validateExecution();
     assert(fs.existsSync(this.snapshotFile), 'Quiescence snapshot is missing');
     assert(/^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(this.operatorCidr || ''), 'Exact operator CIDR is required');
-    this.az(['webapp', 'config', 'access-restriction', 'add', '--rule-name', ALLOW_RULE, '--action', 'Allow', '--ip-address', this.operatorCidr, '--priority', '100'], false);
-    this.az(['webapp', 'config', 'access-restriction', 'add', '--rule-name', DENY_RULE, '--action', 'Deny', '--ip-address', '0.0.0.0/0', '--priority', '65000'], false);
+    const before = this.readState();
+    if (before.acceptanceReadOnly.value !== 'YES') {
+      this.az(['webapp', 'config', 'appsettings', 'set', '--settings', `${ACCEPTANCE_READ_ONLY_SETTING}=YES`], false);
+    }
+    const names = (before.restrictions.ipSecurityRestrictions || []).map((rule) => rule.name);
+    if (!names.includes(ALLOW_RULE)) {
+      this.az(['webapp', 'config', 'access-restriction', 'add', '--rule-name', ALLOW_RULE, '--action', 'Allow', '--ip-address', this.operatorCidr, '--priority', '100'], false);
+    }
+    if (!names.includes(DENY_RULE)) {
+      this.az(['webapp', 'config', 'access-restriction', 'add', '--rule-name', DENY_RULE, '--action', 'Deny', '--ip-address', '0.0.0.0/0', '--priority', '65000'], false);
+    }
     this.az(['webapp', 'start'], false);
     const state = this.readState();
     const rules = state.restrictions.ipSecurityRestrictions || [];
     assert(rules.some((rule) => rule.name === ALLOW_RULE && rule.action === 'Allow'));
     assert(rules.some((rule) => rule.name === DENY_RULE && rule.action === 'Deny'));
-    return { verdict: 'PASS', appState: state.appState, restrictedToOperator: true };
+    assert.equal(state.acceptanceReadOnly.value, 'YES', 'Acceptance read-only mode was not enabled');
+    return { verdict: 'PASS', appState: state.appState, restrictedToOperator: true, readOnlyMode: true };
+  }
+
+  verifyAcceptanceMode() {
+    const state = this.readState();
+    const rules = state.restrictions.ipSecurityRestrictions || [];
+    assert.equal(String(state.appState).toLowerCase(), 'running', 'App is not running for acceptance');
+    assert(rules.some((rule) => rule.name === ALLOW_RULE && rule.action === 'Allow'), 'Operator access rule is missing');
+    assert(rules.some((rule) => rule.name === DENY_RULE && rule.action === 'Deny'), 'Deny-all access rule is missing');
+    assert.equal(state.acceptanceReadOnly.value, 'YES', 'Acceptance read-only mode is not active');
+    assert((state.deployments || []).every((item) => item.complete === true && Number(item.status) === 4),
+      'A competing deployment is active or failed');
+    const deploymentControlSha256 = crypto.createHash('sha256').update(JSON.stringify({
+      appId: state.appId,
+      source: state.source,
+      deployments: state.deployments,
+    })).digest('hex');
+    return { verdict: 'PASS', restrictedToOperator: true, readOnlyMode: true,
+      deploymentsComplete: true, deploymentControlSha256 };
   }
 
   restore() {
@@ -99,16 +134,24 @@ class AppQuiescence {
     const names = (current.restrictions.ipSecurityRestrictions || []).map((rule) => rule.name);
     if (names.includes(ALLOW_RULE)) this.az(['webapp', 'config', 'access-restriction', 'remove', '--rule-name', ALLOW_RULE, '--action', 'Allow'], false);
     if (names.includes(DENY_RULE)) this.az(['webapp', 'config', 'access-restriction', 'remove', '--rule-name', DENY_RULE, '--action', 'Deny'], false);
+    if (before.acceptanceReadOnly.present) {
+      this.az(['webapp', 'config', 'appsettings', 'set', '--settings',
+        `${ACCEPTANCE_READ_ONLY_SETTING}=${before.acceptanceReadOnly.value}`], false);
+    } else if (current.acceptanceReadOnly.present) {
+      this.az(['webapp', 'config', 'appsettings', 'delete', '--setting-names', ACCEPTANCE_READ_ONLY_SETTING], false);
+    }
     if (String(before.appState).toLowerCase() === 'running') this.az(['webapp', 'start'], false);
     else this.az(['webapp', 'stop'], false);
     const restored = this.readState();
     assert.deepEqual(restored.restrictions, before.restrictions, 'Access restrictions were not restored exactly');
+    assert.deepEqual(restored.acceptanceReadOnly, before.acceptanceReadOnly,
+      'Acceptance read-only setting was not restored exactly');
     fs.rmSync(this.snapshotFile, { force: true });
     return { verdict: 'PASS', appState: restored.appState, restrictionsRestored: true };
   }
 }
 
-module.exports = { ALLOW_RULE, AppQuiescence, DENY_RULE };
+module.exports = { ACCEPTANCE_READ_ONLY_SETTING, ALLOW_RULE, AppQuiescence, DENY_RULE };
 
 if (require.main === module) {
   const args = process.argv.slice(2);

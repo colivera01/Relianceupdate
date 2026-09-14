@@ -107,6 +107,8 @@ async function attach(context) {
     operatorCidr: context.operatorCidr, environment: 'disposable' });
 
   context.rehearsal = {
+    authoritativeHead: () => git(context.root,
+      ['--git-dir', gitRemote, 'rev-parse', 'refs/heads/authoritative']),
     gitPromote: () => {
       git(context.root, ['push', '--porcelain', '--atomic', gitRemote, `${context.candidateSha}:refs/heads/authoritative`]);
       const observed = git(context.root, ['--git-dir', gitRemote, 'rev-parse', 'refs/heads/authoritative']);

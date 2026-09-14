@@ -19,6 +19,7 @@
     "release:test-migration-lock": "node scripts/release/test_migration_lock.cjs",
     "release:test-migration-staging": "node scripts/release/test_migration_staging.cjs",
     "release:test-cutover-orchestrator": "node scripts/release/test_cutover_orchestrator.cjs",
+    "release:test-cutover-acceptance": "node scripts/release/test_cutover_acceptance.cjs",
     "release:test-app-quiescence": "node scripts/release/test_app_quiescence.cjs",
     "release:test-azure-cli": "node scripts/release/test_azure_cli.cjs",
     "release:test-cutover-authorization": "node scripts/release/test_cutover_authorization.cjs",
