@@ -177,6 +177,53 @@ async function activateRuntime({
   return { verdict: 'PASS', activation: 'PACKAGE_POINTER', remotePackage: remote, running };
 }
 
+async function setRuntimePointer({
+  runtime,
+  verifyPackage = verifyRemotePackage,
+  applySettings,
+  readSettings,
+}) {
+  const remote = await verifyPackage({
+    reference: runtime.reference,
+    expectedSha256: runtime.sha256,
+    expectedSize: runtime.size,
+    requiredThrough: runtime.requiredThrough,
+  });
+  const before = await readSettings();
+  if (runtimeMatches(before, runtime)) {
+    return {
+      verdict: 'PASS',
+      activation: 'NO-OP_POINTER_ALREADY_SET',
+      configured: selectedSettings(before),
+      remotePackage: remote,
+    };
+  }
+  await applySettings(runtime);
+  const configured = await readSettings();
+  assert(runtimeMatches(configured, runtime), 'Package pointer verification failed after update');
+  return {
+    verdict: 'PASS',
+    activation: 'PACKAGE_POINTER_SET_WHILE_APP_FROZEN',
+    configured: selectedSettings(configured),
+    remotePackage: remote,
+  };
+}
+
+async function rollbackRuntimePointer(options) {
+  const result = await setRuntimePointer({
+    runtime: options.recoveryRuntime,
+    verifyPackage: options.verifyPackage,
+    applySettings: options.applySettings,
+    readSettings: options.readSettings,
+  });
+  return {
+    ...result,
+    runtimeRollback: result.activation === 'NO-OP_POINTER_ALREADY_SET'
+      ? 'NO-OP'
+      : 'PACKAGE_POINTER_RESTORED_WHILE_APP_FROZEN',
+  };
+}
+
 async function rollbackRuntime({
   recoveryRuntime,
   verifyPackage = verifyRemotePackage,
@@ -222,7 +269,9 @@ module.exports = {
   parsePackageReference,
   runChild,
   rollbackRuntime,
+  rollbackRuntimePointer,
   runtimeMatches,
+  setRuntimePointer,
   selectedSettings,
   verifyRemotePackage,
   verifyRunningRuntime,

@@ -6,14 +6,17 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { activateRuntime, rollbackRuntime, runChild, verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
-const { DurableFreezeController } = require('./durable_freeze.cjs');
+const { activateRuntime, rollbackRuntime, runChild, setRuntimePointer,
+  verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
+const { DurableFreezeController, validateJournal } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
 const { compareParity, REQUIRED_PROPERTIES } = require('./parity_manifest.cjs');
 const { scanFiles, verifyV2ExecutionPaths } = require('./prohibited_path_guard.cjs');
-const { CutoverV2Controller } = require('./cutover_v2_controller.cjs');
-const { AppQuiescence } = require('./app_quiescence.cjs');
-const { databaseUrlFor, validateAuthorization } = require('./orchestrator.cjs');
+const { CutoverV2Controller, controllerLoss, durableRecoveryDatabase } = require('./cutover_v2_controller.cjs');
+const { AppQuiescence, snapshotIdentity } = require('./app_quiescence.cjs');
+const { assertRecoveryDatabaseName, databaseUrlFor, requiredPackageThrough,
+  validateAuthorization } = require('./orchestrator.cjs');
+const { parseSqlServerUrl } = require('./sql_application_lock.cjs');
 
 const results = [];
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -69,12 +72,69 @@ function runtimeHarness(initial = recovery, options = {}) {
 
 class MemoryFreezeStore {
   constructor() { this.document = { version: 1, state: 'OPEN', generation: 0 }; this.lease = null; }
-  async read({ leaseId } = {}) { if (leaseId && leaseId !== this.lease) throw new Error('lease lost'); return { ...this.document }; }
-  async write(value, { leaseId }) { if (leaseId !== this.lease) throw new Error('lease lost'); this.document = { ...value }; }
+  async read({ leaseId } = {}) { if (leaseId && leaseId !== this.lease) throw new Error('lease lost'); return structuredClone(this.document); }
+  async write(value, { leaseId }) { if (leaseId !== this.lease) throw new Error('lease lost'); this.document = structuredClone(value); }
   async acquireLease() { if (this.lease) throw new Error('lease already held'); this.lease = crypto.randomUUID(); return { id: this.lease }; }
   async renewLease(id) { if (id !== this.lease) throw new Error('lease lost'); }
   async releaseLease(id) { if (id !== this.lease) throw new Error('lease lost'); this.lease = null; }
   loseLease() { this.lease = null; }
+}
+
+function freezeContext(overrides = {}) {
+  return {
+    cutoverId: 'v2-test',
+    expectedOpenGeneration: 0,
+    targetAppServiceResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/app',
+    targetSqlServerResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/sql',
+    targetDatabaseResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/sql/databases/source',
+    candidateSha: 'a'.repeat(40),
+    candidatePackageSha256: packageHash,
+    migrationArtifactSha256: 'c'.repeat(64),
+    releaseReceiptSha256: 'd'.repeat(64),
+    authorizationSha256: 'e'.repeat(64),
+    recoveryPackageSha256: packageHash,
+    currentDatabase: {
+      role: 'SOURCE',
+      resourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/sql/databases/source',
+      database: 'source',
+      structuralSha256: '1'.repeat(64),
+      ledgerSha256: '2'.repeat(64),
+      protectedDataSha256: '3'.repeat(64),
+      applicationRowCountsSha256: '4'.repeat(64),
+      materialTableFingerprintsSha256: '5'.repeat(64),
+    },
+    packageState: {
+      preCutover: { commit: recovery.commit, packageName: recovery.packageName, sha256: recovery.sha256,
+        size: recovery.size, requiredThrough: recovery.requiredThrough, referenceSha256: sha256(recovery.reference) },
+      candidate: { commit: candidate.commit, packageName: candidate.packageName, sha256: candidate.sha256,
+        size: candidate.size, requiredThrough: candidate.requiredThrough, referenceSha256: sha256(candidate.reference) },
+      recovery: { commit: recovery.commit, packageName: recovery.packageName, sha256: recovery.sha256,
+        size: recovery.size, requiredThrough: recovery.requiredThrough, referenceSha256: sha256(recovery.reference) },
+      expectedActive: 'RECOVERY',
+      observedActive: 'RECOVERY_ACTIVE',
+    },
+    ...overrides,
+  };
+}
+
+function adoptionFor(document, overrides = {}) {
+  return {
+    expectedGeneration: document.generation,
+    expectedPhase: document.phase,
+    previousControllerStatus: 'EXPLICITLY_RELINQUISHED',
+    cutoverId: document.cutoverId,
+    targetAppServiceResourceId: document.targetAppServiceResourceId,
+    targetSqlServerResourceId: document.targetSqlServerResourceId,
+    targetDatabaseResourceId: document.targetDatabaseResourceId,
+    candidateSha: document.candidateSha,
+    candidatePackageSha256: document.candidatePackageSha256,
+    migrationArtifactSha256: document.migrationArtifactSha256,
+    releaseReceiptSha256: document.releaseReceiptSha256,
+    authorizationSha256: document.authorizationSha256,
+    recoveryPackageSha256: document.recoveryPackageSha256,
+    quiescenceSnapshot: document.quiescenceSnapshot,
+    ...overrides,
+  };
 }
 
 function fakeLock({ failAcquire = false } = {}) {
@@ -99,16 +159,13 @@ function parityFixture() {
 }
 
 function controllerHarness(options = {}) {
-  const runtimeState = runtimeHarness(recovery, { rejectPointer: options.rejectPointer,
+  const runtimeState = runtimeHarness(options.initialRuntime || recovery, { rejectPointer: options.rejectPointer,
     restartFailure: options.restartFailure, healthFailure: options.healthFailure });
-  let frozen = false;
-  const durableFreeze = {
-    async freeze() { frozen = true; return { verdict: 'FROZEN' }; },
-    async assertFrozen() { assert(frozen, 'not frozen'); return { verdict: 'FROZEN' }; },
-    async reopen() { frozen = false; return { verdict: 'OPEN' }; },
-    async inspect() { return { verdict: frozen ? 'FAIL_CLOSED' : 'OPEN' }; },
-    isFrozen: () => frozen,
-  };
+  const store = options.store || new MemoryFreezeStore();
+  const durableFreeze = options.durableFreeze || new DurableFreezeController({
+    store,
+    owner: options.controllerId || 'controller-one',
+  });
   const lockHandoff = {
     async acquireForMutation() { return { verdict: 'PASS' }; },
     async assertMutationOwnership() { return { verdict: 'PASS' }; },
@@ -116,7 +173,25 @@ function controllerHarness(options = {}) {
     async acquireRecovery() { if (options.recoveryLockFails) throw new Error('recovery lock unavailable'); return { verdict: 'PASS' }; },
     async assertCanSwitchConnection() { return { verdict: 'PASS' }; },
   };
-  const calls = { restore: 0, forwardRecovery: 0, cleanup: 0 };
+  const calls = { restore: 0, forwardRecovery: 0, cleanup: 0, migration: 0,
+    switchConnection: 0, restrictedRestart: 0 };
+  const contextValue = freezeContext();
+  let snapshot = options.initialSnapshot || null;
+  let candidateVerified = false;
+  const runtimeDependencies = {
+    ...runtimeState.dependencies,
+    inspect: async () => {
+      const settings = runtimeState.current();
+      if (settings.DEPLOYED_COMMIT === candidate.commit) return { verdict: 'PASS', state: 'CANDIDATE_ACTIVE' };
+      if (settings.DEPLOYED_COMMIT === recovery.commit) return { verdict: 'PASS', state: 'RECOVERY_ACTIVE' };
+      return { verdict: 'FAIL_CLOSED', state: 'UNKNOWN' };
+    },
+    verifyCandidate: async () => {
+      candidateVerified = true;
+      return { verdict: 'PASS', candidateSha: candidate.commit };
+    },
+    verifyRecovery: async () => ({ verdict: 'PASS', recoverySha: recovery.commit }),
+  };
   const dependencies = {
     verifySource: async () => ({ verdict: 'PASS' }),
     verifyParity: async () => ({ verdict: 'PASS', liveAndDisposableDeploymentImplementationPath: 'MATCH' }),
@@ -125,27 +200,80 @@ function controllerHarness(options = {}) {
     durableFreeze,
     lockHandoff,
     app: {
-      freeze: async () => ({ verdict: 'PASS' }), restrictedRestart: async () => {}, restore: async () => {},
+      freeze: async ({ binding, expectedSnapshot: expected }) => {
+        if (snapshot) {
+          assert.deepEqual(expected, snapshot);
+          assert.deepEqual(binding, snapshot.binding,
+            'Resume must preserve the original immutable snapshot binding');
+        }
+        else snapshot = { snapshotId: 'snapshot-one', snapshotSha256: '6'.repeat(64), binding };
+        return { verdict: 'PASS', snapshotId: snapshot.snapshotId, snapshotSha256: snapshot.snapshotSha256,
+          snapshotBinding: snapshot.binding, originalSnapshotPreserved: true };
+      },
+      restrictedRestart: async ({ expectedSnapshot: expected }) => {
+        calls.restrictedRestart += 1;
+        assert.deepEqual(expected, snapshot);
+      },
+      verifyAcceptanceMode: async () => ({ verdict: 'PASS' }),
+      restore: async ({ expectedSnapshot: expected }) => { assert.deepEqual(expected, snapshot); return { verdict: 'PASS' }; },
     },
     database: {
-      captureRecoveryPoint: async () => '2026-09-14T00:00:00Z',
-      migrate: async () => { if (options.migrationFails) throw new Error('migration failed'); return { verdict: 'PASS' }; },
+      captureRecoveryPoint: async () => ({
+        recoveryTimestamp: '2026-09-14T00:00:00Z',
+        sourceDatabaseResourceId: contextValue.targetDatabaseResourceId,
+        structuralSha256: '1'.repeat(64), ledgerSha256: '2'.repeat(64),
+        protectedDataSha256: '3'.repeat(64), applicationRowCountsSha256: '4'.repeat(64),
+        materialTableFingerprintsSha256: '5'.repeat(64),
+      }),
+      continueMigration: async ({ journal, checkpoint, resume }) => {
+        calls.migration += 1;
+        if (resume && ['LEDGER_ROTATION_STARTED', 'BASELINE_RECOGNITION_STARTED', 'RECONCILIATION_STARTED'].includes(journal.phase)) {
+          throw new Error('ambiguous interrupted migration phase');
+        }
+        let current = journal;
+        for (const [from, started, complete] of [
+          ['DB_MUTATION_STARTED', 'LEDGER_ROTATION_STARTED', 'LEDGER_ROTATED'],
+          ['LEDGER_ROTATED', 'BASELINE_RECOGNITION_STARTED', 'BASELINE_RECOGNIZED'],
+          ['BASELINE_RECOGNIZED', 'RECONCILIATION_STARTED', 'RECONCILIATION_APPLIED'],
+        ]) {
+          if (current.phase === from) current = await checkpoint(started, { evidence: { verdict: 'READY' } });
+          if (current.phase === started) {
+            if (options.migrationFails) throw new Error('migration failed');
+            const patch = complete === 'RECONCILIATION_APPLIED'
+              ? { currentDatabase: { ...contextValue.currentDatabase } } : {};
+            current = await checkpoint(complete, { evidence: { verdict: 'PASS' }, patch });
+          }
+        }
+        return current;
+      },
+      planRecovery: async () => ({ resourceId: '/subscriptions/test/recovery',
+        database: 'recovery-db', providerRequestId: '7'.repeat(64) }),
+      resolveRecovery: async (value) => ({ ...value, databaseUrl: 'recovery' }),
       restore: async () => { calls.restore += 1; if (options.longPitr) await new Promise((resolve) => setTimeout(resolve, 20));
-        return { databaseUrl: 'recovery', resourceId: '/recovery', database: 'recovery-db' }; },
-      verifyRecovery: async () => ({ verdict: 'PASS' }), switchConnection: async () => ({ verdict: 'PASS' }),
+        if (options.lossDuringPitr) throw controllerLoss('controller lost during PITR');
+        return { databaseUrl: 'recovery', resourceId: '/subscriptions/test/recovery', database: 'recovery-db' }; },
+      verifyRecovery: async () => ({ verdict: 'PASS' }),
+      switchConnection: async () => { calls.switchConnection += 1; return { verdict: 'PASS' }; },
     },
-    runtime: runtimeState.dependencies,
-    git: { promoteCandidate: async () => {}, forwardOnlyRecovery: async () => { calls.forwardRecovery += 1; } },
+    runtime: runtimeDependencies,
+    git: { forwardOnlyRecovery: async () => { calls.forwardRecovery += 1; return { verdict: 'PASS' }; } },
     verifyTechnical: async () => ({ verdict: 'PASS' }), verifyRecovered: async () => ({ verdict: 'PASS' }),
+    verifyResumeState: async () => ({ verdict: 'PASS' }),
     acceptance: {
+      prepare: async () => ({ createdAt: '2026-09-14T00:00:00Z', expiresAt: '2030-01-01T00:00:00Z',
+        challenge: '8'.repeat(64) }),
       wait: async () => ({ action: options.acceptance || 'ACCEPT' }),
       createReceipt: async () => ({ sha256: 'd'.repeat(64) }),
+      resumeReceipt: async () => ({ sha256: 'd'.repeat(64) }),
     },
     createRecoveryReceipt: async () => ({ sha256: 'e'.repeat(64) }),
     cleanup: async () => { calls.cleanup += 1; if (options.cleanupFails) throw new Error('cleanup failed'); return { verdict: 'PASS' }; },
+    afterCheckpoint: options.afterCheckpoint,
   };
-  const context = { operationId: 'v2-test', targetResourceId: '/target', candidateRuntime: candidate, recoveryRuntime: recovery };
-  return { controller: new CutoverV2Controller({ dependencies, context }), durableFreeze, runtimeState, calls };
+  const context = { operationId: 'v2-test', targetResourceId: contextValue.targetAppServiceResourceId,
+    candidateRuntime: candidate, recoveryRuntime: recovery, journalContext: contextValue };
+  return { controller: new CutoverV2Controller({ dependencies, context }), durableFreeze, runtimeState, calls,
+    store, context, dependencies, snapshot: () => snapshot, candidateVerified: () => candidateVerified };
 }
 
 async function main() {
@@ -178,11 +306,13 @@ async function main() {
   await test('07 runtime pointer failure after database migration', async () => {
     const harness = controllerHarness({ rejectPointer: true });
     const result = await harness.controller.execute(); assert.equal(result.verdict, 'RECOVERED');
-    assert.equal(result.events.at(-1).result.runtimeRecovery.runtimeRollback, 'NO-OP');
+    assert.equal(harness.runtimeState.calls.apply, 1);
   });
   await test('08 Product Owner reject', async () => {
     const harness = controllerHarness({ acceptance: 'REJECT' });
     const result = await harness.controller.execute(); assert.equal(result.reason, 'REJECT');
+    assert.equal(harness.calls.restrictedRestart, 2,
+      'Candidate acceptance and recovered runtime must each use the restricted restart path');
   });
   await test('09 acceptance timeout', async () => {
     const harness = controllerHarness({ acceptance: 'TIMEOUT' });
@@ -194,7 +324,7 @@ async function main() {
   });
   await test('11 original DB SQL-session loss during PITR', async () => {
     const store = new MemoryFreezeStore(); const freeze = new DurableFreezeController({ store, owner: 'one' });
-    await freeze.freeze({ operationId: 'op', targetResourceId: '/db' });
+    await freeze.freeze(freezeContext({ cutoverId: 'op' }));
     const original = fakeLock(); const handoff = new RecoveryLockHandoff({ durableFreeze: freeze,
       environmentSqlLock: fakeLock(), originalDatabaseLock: original, recoveryLockFactory: () => fakeLock() });
     await handoff.acquireForMutation(); original.lose(); await handoff.abandonOriginalForPitr();
@@ -203,7 +333,7 @@ async function main() {
   });
   await test('12 environment SQL-session loss remains fail closed', async () => {
     const store = new MemoryFreezeStore(); const freeze = new DurableFreezeController({ store, owner: 'one' });
-    await freeze.freeze({ operationId: 'op', targetResourceId: '/db' });
+    await freeze.freeze(freezeContext({ cutoverId: 'op' }));
     const environment = fakeLock(); const handoff = new RecoveryLockHandoff({ durableFreeze: freeze,
       environmentSqlLock: environment, originalDatabaseLock: fakeLock(), recoveryLockFactory: () => fakeLock() });
     await handoff.acquireForMutation(); environment.lose();
@@ -212,7 +342,7 @@ async function main() {
   });
   await test('13 recovery DB lock acquisition failure', async () => {
     const store = new MemoryFreezeStore(); const freeze = new DurableFreezeController({ store, owner: 'one' });
-    await freeze.freeze({ operationId: 'op', targetResourceId: '/db' });
+    await freeze.freeze(freezeContext({ cutoverId: 'op' }));
     const handoff = new RecoveryLockHandoff({ durableFreeze: freeze, environmentSqlLock: fakeLock(),
       originalDatabaseLock: fakeLock(), recoveryLockFactory: () => fakeLock({ failAcquire: true }) });
     await handoff.acquireForMutation(); await handoff.abandonOriginalForPitr();
@@ -240,13 +370,13 @@ async function main() {
   await test('18 temporary firewall access cleanup failure stays frozen', async () => {
     const harness = controllerHarness({ cleanupFails: true });
     await assert.rejects(harness.controller.execute(), /cleanup failed/);
-    assert.equal(harness.durableFreeze.isFrozen(), true);
+    assert.equal((await harness.durableFreeze.inspect()).verdict, 'FAIL_CLOSED');
   });
   await test('19 second cutover actor blocked by lease', async () => {
     const store = new MemoryFreezeStore(); const one = new DurableFreezeController({ store, owner: 'one' });
     const two = new DurableFreezeController({ store, owner: 'two' });
-    await one.freeze({ operationId: 'one', targetResourceId: '/db' });
-    await assert.rejects(two.freeze({ operationId: 'two', targetResourceId: '/db' }), /lease already held/);
+    await one.freeze(freezeContext({ cutoverId: 'one' }));
+    await assert.rejects(two.freeze(freezeContext({ cutoverId: 'two' })), /lease already held/);
   });
   await test('20 SAS-shaped value remains a single opaque reference', async () => {
     const parsed = new URL(reference); assert.equal(parsed.searchParams.get('sig'), 'A+B=%');
@@ -321,42 +451,49 @@ async function main() {
   await test('26 abandoned controller can resume exact frozen operation without reopening', async () => {
     const store = new MemoryFreezeStore();
     const first = new DurableFreezeController({ store, owner: 'first' });
-    await first.freeze({ operationId: 'op', targetResourceId: '/environment' });
+    await first.freeze(freezeContext({ cutoverId: 'op' }));
     await first.abandonController();
     assert.equal((await first.inspect()).verdict, 'FAIL_CLOSED');
     const resumed = new DurableFreezeController({ store, owner: 'recovery' });
-    const result = await resumed.resumeFrozen({
-      operationId: 'op',
-      targetResourceId: '/environment',
-      recoveryAuthorizationSha256: '9'.repeat(64),
-    });
-    assert.equal(result.verdict, 'FROZEN_RESUMED');
+    const state = (await first.inspect()).document;
+    const result = await resumed.resumeFrozen(adoptionFor(state));
+    assert.equal(result.verdict, 'FROZEN_ADOPTED');
     assert.equal((await resumed.inspect()).verdict, 'FAIL_CLOSED');
-    await resumed.reopen({ acceptanceReceiptSha256: '8'.repeat(64) });
-    assert.equal((await resumed.inspect()).verdict, 'OPEN');
+    assert.equal(result.document.phase, 'FROZEN');
   });
   await test('27 idempotent rollback freeze preserves original quiescence snapshot', async () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-quiescence-'));
     const snapshot = path.join(temporary, 'snapshot.json');
-    fs.writeFileSync(snapshot, JSON.stringify({ snapshotVersion: 1, appState: 'Running' }));
     const calls = [];
+    const context = freezeContext();
+    const binding = { cutoverId: context.cutoverId, controlGeneration: 1,
+      targetAppServiceResourceId: context.targetAppServiceResourceId, candidateSha: context.candidateSha,
+      authorizationSha256: context.authorizationSha256, cutoverCreatedAt: '2026-09-14T00:00:00Z',
+      controllerId: 'controller-one', leaseGeneration: 1 };
     const runner = async (args) => {
       calls.push(args.join(' '));
       const command = args.join(' ');
-      if (command.startsWith('webapp show ')) return JSON.stringify({ state: 'Stopped', id: '/app' });
+      if (command.startsWith('webapp show ')) return JSON.stringify({ state: 'Stopped', id: context.targetAppServiceResourceId });
       if (command.startsWith('webapp deployment source show ')) return JSON.stringify({ repoUrl: null, isGitHubAction: false });
       if (command.startsWith('webapp log deployment list ')) return JSON.stringify([]);
       if (command.startsWith('webapp config access-restriction show ')) return JSON.stringify({ ipSecurityRestrictions: [] });
       if (command.startsWith('webapp config appsettings list ')) return JSON.stringify([]);
+      if (command.startsWith('webapp stop ')) return '';
       throw new Error(`Unexpected Azure fixture command: ${command}`);
     };
     try {
       process.env.RELIANCE_REHEARSAL_AUTHORIZATION = 'DISPOSABLE_ONLY';
       const quiescence = new AppQuiescence({ subscription: 'test', resourceGroup: 'test', appService: 'test',
-        snapshotFile: snapshot, operatorCidr: '127.0.0.1/32', environment: 'disposable', runner });
-      const result = await quiescence.freeze();
+        snapshotFile: snapshot, operatorCidr: '127.0.0.1/32', environment: 'disposable', runner,
+        now: () => new Date('2026-09-14T00:01:00Z'), randomUUID: () => 'snapshot-one' });
+      const created = await quiescence.freeze({ binding });
+      const original = fs.readFileSync(snapshot);
+      calls.length = 0;
+      const result = await quiescence.freeze({ binding, expectedSnapshot: {
+        snapshotId: created.snapshotId, snapshotSha256: created.snapshotSha256, binding,
+      } });
       assert.equal(result.alreadyQuiesced, true);
-      assert.equal(JSON.parse(fs.readFileSync(snapshot, 'utf8')).appState, 'Running');
+      assert.deepEqual(fs.readFileSync(snapshot), original);
       assert(!calls.some((value) => value.startsWith('webapp stop ')));
     } finally {
       delete process.env.RELIANCE_REHEARSAL_AUTHORIZATION;
@@ -373,19 +510,24 @@ async function main() {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-authorization-'));
     const file = path.join(temporary, 'authorization.json');
     const binding = {
-      candidateSha: 'a'.repeat(40), candidateArtifactSha256: 'b'.repeat(64), migrationArtifactSha256: 'c'.repeat(64),
+      candidateSha: 'a'.repeat(40), candidateArtifactSha256: 'b'.repeat(64),
+      recoveryArtifactSha256: '9'.repeat(64), migrationArtifactSha256: 'c'.repeat(64),
       releaseReceiptSha256: 'd'.repeat(64), appServiceResourceId: '/subscriptions/app',
       sqlServerResourceId: '/subscriptions/sql', databaseResourceId: '/subscriptions/db',
       expectedRemoteHead: 'e'.repeat(40), preStructuralSha256: 'f'.repeat(64),
       preLedgerSha256: '1'.repeat(64), preProtectedDataSha256: '2'.repeat(64),
+      operationId: 'cutover-v2-test',
       candidateRuntime: { requiredThrough: '2030-01-01T00:00:00.000Z' },
+      recoveryRuntime: { requiredThrough: '2030-01-01T00:00:00.000Z' },
     };
     const authorization = { authorizationVersion: 2, approval: 'PRODUCT_OWNER_AUTHORIZED_CUTOVER_V2',
       environment: 'live', bindingSha256: '3'.repeat(64), expiresAt: '2030-01-01T00:00:00.000Z',
-      nonce: '12345678-1234-1234', operator: 'Product Owner', packageValidThrough: binding.candidateRuntime.requiredThrough };
-    for (const field of ['candidateSha', 'candidateArtifactSha256', 'migrationArtifactSha256', 'releaseReceiptSha256',
+      nonce: '12345678-1234-1234', operator: 'Product Owner', packageValidThrough: binding.candidateRuntime.requiredThrough,
+      recoveryPackageValidThrough: binding.recoveryRuntime.requiredThrough };
+    for (const field of ['candidateSha', 'candidateArtifactSha256', 'recoveryArtifactSha256',
+      'migrationArtifactSha256', 'releaseReceiptSha256',
       'appServiceResourceId', 'sqlServerResourceId', 'databaseResourceId', 'expectedRemoteHead',
-      'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256']) authorization[field] = binding[field];
+      'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256', 'operationId']) authorization[field] = binding[field];
     try {
       fs.writeFileSync(file, JSON.stringify(authorization));
       process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256 = sha256(fs.readFileSync(file));
@@ -398,6 +540,298 @@ async function main() {
       delete process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256;
       fs.rmSync(temporary, { recursive: true, force: true });
     }
+  });
+
+  const snapshotCases = [
+    ['30 snapshot from another cutover fails closed', (document) => { document.binding.cutoverId = 'other-cutover'; }],
+    ['31 snapshot from another App Service fails closed', (document) => {
+      document.binding.targetAppServiceResourceId = '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/other';
+    }],
+    ['32 same filename with modified content fails closed', (document) => { document.preCutoverState.appState = 'Tampered'; }, true],
+    ['33 snapshot with wrong generation fails closed', (document) => { document.binding.controlGeneration += 1; }],
+    ['34 snapshot with wrong candidate fails closed', (document) => { document.binding.candidateSha = 'b'.repeat(40); }],
+    ['35 stale snapshot predating cutover fails closed', (document) => { document.createdAt = '2026-09-13T23:59:59Z'; }],
+  ];
+  for (const [name, mutate, expectOriginalHash = false] of snapshotCases) {
+    await test(name, async () => {
+      const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-snapshot-negative-'));
+      const file = path.join(temporary, 'snapshot.json');
+      const context = freezeContext();
+      const binding = { cutoverId: context.cutoverId, controlGeneration: 1,
+        targetAppServiceResourceId: context.targetAppServiceResourceId, candidateSha: context.candidateSha,
+        authorizationSha256: context.authorizationSha256, cutoverCreatedAt: '2026-09-14T00:00:00Z',
+        controllerId: 'controller-one', leaseGeneration: 1 };
+      const document = { snapshotVersion: 2, snapshotId: 'snapshot-one', createdAt: '2026-09-14T00:01:00Z',
+        binding: structuredClone(binding), preCutoverState: { appId: context.targetAppServiceResourceId,
+          appState: 'Running', source: {}, deployments: [], restrictions: { ipSecurityRestrictions: [] },
+          acceptanceReadOnly: { present: false, value: null } } };
+      const original = snapshotIdentity(document);
+      mutate(document);
+      const modified = snapshotIdentity(document);
+      fs.writeFileSync(file, modified.bytes);
+      const quiescence = new AppQuiescence({ subscription: 'test', resourceGroup: 'test', appService: 'test',
+        snapshotFile: file, operatorCidr: '127.0.0.1/32', environment: 'disposable',
+        runner: async () => { throw new Error('Azure must not be reached for an invalid snapshot'); },
+        now: () => new Date('2026-09-14T00:02:00Z') });
+      try {
+        assert.throws(() => quiescence.readAndVerifySnapshot({ expected: {
+          snapshotId: original.snapshotId,
+          snapshotSha256: expectOriginalHash ? original.snapshotSha256 : modified.snapshotSha256,
+          binding,
+        } }));
+      } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+    });
+  }
+  await test('36 duplicate snapshot creation without exact journal identity fails closed', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-snapshot-duplicate-'));
+    const file = path.join(temporary, 'snapshot.json');
+    const context = freezeContext();
+    const binding = { cutoverId: context.cutoverId, controlGeneration: 1,
+      targetAppServiceResourceId: context.targetAppServiceResourceId, candidateSha: context.candidateSha,
+      authorizationSha256: context.authorizationSha256, cutoverCreatedAt: '2026-09-14T00:00:00Z',
+      controllerId: 'controller-one', leaseGeneration: 1 };
+    fs.writeFileSync(file, '{}');
+    process.env.RELIANCE_REHEARSAL_AUTHORIZATION = 'DISPOSABLE_ONLY';
+    const quiescence = new AppQuiescence({ subscription: 'test', resourceGroup: 'test', appService: 'test',
+      snapshotFile: file, operatorCidr: '127.0.0.1/32', environment: 'disposable',
+      runner: async () => { throw new Error('Azure must not be reached for an unbound duplicate'); } });
+    try {
+      await assert.rejects(quiescence.freeze({ binding }), /binding differs|identity is required/);
+    } finally {
+      delete process.env.RELIANCE_REHEARSAL_AUTHORIZATION;
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
+  });
+  await test('37 missing bound snapshot fails closed', async () => {
+    const file = path.join(os.tmpdir(), `missing-${crypto.randomUUID()}.json`);
+    const quiescence = new AppQuiescence({ subscription: 'test', resourceGroup: 'test', appService: 'test',
+      snapshotFile: file, operatorCidr: '127.0.0.1/32', environment: 'disposable' });
+    assert.throws(() => quiescence.readAndVerifySnapshot({ expected: {
+      snapshotId: 'missing', snapshotSha256: '6'.repeat(64), binding: {},
+    } }), /missing/);
+  });
+  await test('38 snapshot modified after creation fails closed', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-snapshot-tamper-'));
+    const file = path.join(temporary, 'snapshot.json');
+    fs.writeFileSync(file, '{"tampered":true}\n');
+    const quiescence = new AppQuiescence({ subscription: 'test', resourceGroup: 'test', appService: 'test',
+      snapshotFile: file, operatorCidr: '127.0.0.1/32', environment: 'disposable' });
+    try {
+      assert.throws(() => quiescence.readAndVerifySnapshot({ expected: {
+        snapshotId: 'snapshot-one', snapshotSha256: '6'.repeat(64), binding: {},
+      } }), /hash differs/);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  const adoptionMismatches = [
+    ['39 wrong cutover adoption denied', { cutoverId: 'wrong' }],
+    ['40 wrong candidate adoption denied', { candidateSha: 'b'.repeat(40) }],
+    ['41 wrong authorization adoption denied', { authorizationSha256: '9'.repeat(64) }],
+    ['42 wrong App Service adoption denied', {
+      targetAppServiceResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/wrong',
+    }],
+    ['43 wrong database adoption denied', {
+      targetDatabaseResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/sql/databases/wrong',
+    }],
+    ['44 wrong generation adoption denied', { expectedGeneration: 999 }],
+    ['45 wrong snapshot adoption denied', {
+      quiescenceSnapshot: { snapshotId: 'wrong', snapshotSha256: '9'.repeat(64), binding: {} },
+    }],
+    ['46 wrong artifact hash adoption denied', { migrationArtifactSha256: '9'.repeat(64) }],
+  ];
+  for (const [name, mismatch] of adoptionMismatches) {
+    await test(name, async () => {
+      const store = new MemoryFreezeStore();
+      const original = new DurableFreezeController({ store, owner: 'original' });
+      await original.freeze(freezeContext());
+      const snapshot = { snapshotId: 'snapshot-one', snapshotSha256: '6'.repeat(64),
+        binding: { cutoverId: 'v2-test' } };
+      await original.checkpoint('QUIESCED', { evidence: { verdict: 'PASS' },
+        patch: { quiescenceSnapshot: snapshot } });
+      await original.abandonController();
+      const document = (await original.inspect()).document;
+      const adopter = new DurableFreezeController({ store, owner: 'adopter' });
+      await assert.rejects(adopter.resumeFrozen(adoptionFor(document, mismatch)));
+      assert.equal((await adopter.inspect()).verdict, 'FAIL_CLOSED');
+      assert.equal((await adopter.inspect()).document.controller.id, 'original');
+    });
+  }
+  await test('47 competing active controller adoption is denied', async () => {
+    const store = new MemoryFreezeStore();
+    const original = new DurableFreezeController({ store, owner: 'original' });
+    const document = (await original.freeze(freezeContext())).document;
+    const adopter = new DurableFreezeController({ store, owner: 'adopter' });
+    await assert.rejects(adopter.resumeFrozen(adoptionFor(document, {
+      previousControllerStatus: 'LEASE_EXPIRED',
+    })), /lease already held/);
+    assert.equal((await original.inspect()).verdict, 'FAIL_CLOSED');
+  });
+
+  async function resumeAfterLoss(first, options = {}) {
+    await first.durableFreeze.abandonController();
+    const frozen = (await first.durableFreeze.inspect()).document;
+    const adopter = new DurableFreezeController({ store: first.store, owner: 'replacement' });
+    await adopter.resumeFrozen(adoptionFor(frozen));
+    const second = controllerHarness({ store: first.store, durableFreeze: adopter,
+      initialSnapshot: frozen.quiescenceSnapshot,
+      initialRuntime: options.initialRuntime || (frozen.packageState.expectedActive === 'CANDIDATE' ? candidate : recovery),
+      acceptance: options.acceptance,
+    });
+    return { frozen, second, result: await second.controller.resume() };
+  }
+
+  await test('48 controller-loss A resumes exact frozen pre-mutation operation', async () => {
+    const first = controllerHarness({ afterCheckpoint: async (phase) => {
+      if (phase === 'FROZEN') throw controllerLoss('loss A');
+    } });
+    await assert.rejects(first.controller.execute(), /loss A/);
+    const frozenBeforeAdoption = (await first.durableFreeze.inspect()).document;
+    assert(first.snapshot(), 'Application must be quiesced before the durable FROZEN checkpoint is observable');
+    assert.deepEqual(frozenBeforeAdoption.quiescenceSnapshot, first.snapshot(),
+      'Durable FROZEN journal must bind the already-applied application quiescence snapshot');
+    const resumed = await resumeAfterLoss(first);
+    assert.equal(resumed.result.verdict, 'ACCEPTED');
+    assert.equal(resumed.result.journal.cutoverId, 'v2-test');
+  });
+  await test('49 controller-loss B skips completed database mutation', async () => {
+    const first = controllerHarness({ afterCheckpoint: async (phase) => {
+      if (phase === 'RECONCILIATION_APPLIED') throw controllerLoss('loss B');
+    } });
+    await assert.rejects(first.controller.execute(), /loss B/);
+    const resumed = await resumeAfterLoss(first);
+    assert.equal(resumed.result.verdict, 'ACCEPTED');
+    assert.equal(resumed.second.calls.migration, 0);
+  });
+  await test('50 controller-loss C resumes existing PITR without a second cutover', async () => {
+    const first = controllerHarness({ acceptance: 'REJECT', lossDuringPitr: true });
+    await assert.rejects(first.controller.execute(), /during PITR/);
+    const resumed = await resumeAfterLoss(first, { initialRuntime: candidate, acceptance: 'REJECT' });
+    assert.equal(resumed.frozen.phase, 'PITR_IN_PROGRESS');
+    assert.equal(resumed.result.verdict, 'RECOVERED');
+    assert.equal(resumed.second.calls.restore, 1);
+  });
+  await test('51 controller-loss D preserves original acceptance challenge and deadline', async () => {
+    const first = controllerHarness({ afterCheckpoint: async (phase) => {
+      if (phase === 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE') throw controllerLoss('loss D');
+    } });
+    await assert.rejects(first.controller.execute(), /loss D/);
+    await first.durableFreeze.abandonController();
+    const frozen = (await first.durableFreeze.inspect()).document;
+    const acceptance = structuredClone(frozen.acceptance);
+    assert.equal(first.calls.restrictedRestart, 1,
+      'Candidate must already be in restricted read-only acceptance mode before controller loss');
+    const adopter = new DurableFreezeController({ store: first.store, owner: 'replacement' });
+    await adopter.resumeFrozen(adoptionFor(frozen));
+    const second = controllerHarness({ store: first.store, durableFreeze: adopter,
+      initialSnapshot: frozen.quiescenceSnapshot, initialRuntime: candidate, acceptance: 'REJECT' });
+    const result = await second.controller.resume();
+    assert.equal(result.verdict, 'RECOVERED');
+    const waitingEvent = result.journal.events.find((event) => event.phase === 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE');
+    assert.equal(waitingEvent.evidence.challengeSha256, acceptance.challenge);
+    assert.equal(waitingEvent.evidence.expiresAt, acceptance.expiresAt);
+  });
+  await test('52 durable lease loss never changes FROZEN to OPEN', async () => {
+    const store = new MemoryFreezeStore();
+    const controller = new DurableFreezeController({ store, owner: 'original' });
+    await controller.freeze(freezeContext());
+    store.loseLease();
+    await controller.renew();
+    const inspected = await controller.inspect();
+    assert.equal(inspected.verdict, 'FAIL_CLOSED');
+    assert.equal(inspected.document.state, 'FROZEN');
+    assert.equal(inspected.document.phase, 'FROZEN');
+  });
+  await test('53 impossible phase transition remains fail closed', async () => {
+    const store = new MemoryFreezeStore();
+    const controller = new DurableFreezeController({ store, owner: 'original' });
+    await controller.freeze(freezeContext());
+    await assert.rejects(controller.checkpoint('CANDIDATE_STARTED', {
+      evidence: { verdict: 'PASS' },
+    }), /Impossible durable transition/);
+    assert.equal((await controller.inspect()).document.phase, 'FROZEN');
+  });
+  await test('54 missing checkpoint evidence remains fail closed', async () => {
+    const store = new MemoryFreezeStore();
+    const controller = new DurableFreezeController({ store, owner: 'original' });
+    await controller.freeze(freezeContext());
+    await assert.rejects(controller.checkpoint('QUIESCED'), /evidence is required/);
+    assert.equal((await controller.inspect()).document.phase, 'FROZEN');
+  });
+  await test('55 wrong SQL server adoption is denied', async () => {
+    const store = new MemoryFreezeStore();
+    const original = new DurableFreezeController({ store, owner: 'original' });
+    await original.freeze(freezeContext());
+    await original.abandonController();
+    const document = (await original.inspect()).document;
+    const adopter = new DurableFreezeController({ store, owner: 'adopter' });
+    await assert.rejects(adopter.resumeFrozen(adoptionFor(document, {
+      targetSqlServerResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/wrong',
+    })), /targetSqlServerResourceId differs/);
+  });
+  await test('56 wrong recovery package adoption is denied', async () => {
+    const store = new MemoryFreezeStore();
+    const original = new DurableFreezeController({ store, owner: 'original' });
+    await original.freeze(freezeContext());
+    await original.abandonController();
+    const document = (await original.inspect()).document;
+    const adopter = new DurableFreezeController({ store, owner: 'adopter' });
+    await assert.rejects(adopter.resumeFrozen(adoptionFor(document, {
+      recoveryPackageSha256: '9'.repeat(64),
+    })), /recoveryPackageSha256 differs/);
+  });
+  await test('57 executable orchestrator exposes dry-run execute and resume adoption modes', async () => {
+    const source = fs.readFileSync(path.join(__dirname, 'orchestrator.cjs'), 'utf8');
+    assert.match(source, /args\.includes\('--dry-run'\)/);
+    assert.match(source, /args\.includes\('--execute'\)/);
+    assert.match(source, /args\.includes\('--resume'\).*--adopt/s);
+    assert.match(source, /resumeFrozen/);
+  });
+  await test('58 package requirement includes acceptance and worst-case recovery windows', async () => {
+    const value = requiredPackageThrough({
+      plannedCutoverEndsAt: '2026-09-15T00:00:00Z',
+      acceptanceWindowMinutes: 30,
+      worstCaseRecoveryMinutes: 240,
+    });
+    assert.equal(value.toISOString(), '2026-09-15T04:30:00.000Z');
+  });
+  await test('59 SQL application lock pool uses a driver-valid idle timeout', async () => {
+    const parsed = parseSqlServerUrl('sqlserver://example.database.windows.net:1433;database=reliance-disposable;user=test;password=test;encrypt=true');
+    assert.equal(parsed.pool.idleTimeoutMillis, 30000);
+    assert(parsed.pool.idleTimeoutMillis > 0);
+  });
+  await test('60 frozen runtime pointer update does not restart or call health', async () => {
+    const harness = runtimeHarness(recovery, { healthFailure: true, restartFailure: true });
+    const result = await setRuntimePointer({ runtime: candidate, ...harness.dependencies });
+    assert.equal(result.activation, 'PACKAGE_POINTER_SET_WHILE_APP_FROZEN');
+    assert.equal(harness.calls.apply, 1);
+    assert.equal(harness.calls.restart, 0);
+  });
+  await test('61 recovery database names must be unambiguously marked', async () => {
+    assert.equal(assertRecoveryDatabaseName('reliance-v2-recovery-op1'), 'reliance-v2-recovery-op1');
+    await assert.rejects(async () => assertRecoveryDatabaseName('reliance-v2-op1'),
+      /unambiguously marked/);
+  });
+  await test('62 resumed PITR checks Azure provider history before any duplicate restore', async () => {
+    const source = fs.readFileSync(path.join(__dirname, 'orchestrator.cjs'), 'utf8');
+    assert.match(source, /monitor', 'activity-log', 'list'/);
+    assert.match(source, /no accepted Azure PITR operation exists; duplicate restore is forbidden/);
+    assert.match(source, /binding\.worstCaseRecoveryMinutes \* 60_000/);
+  });
+  await test('63 controller exit stops lease renewal and closes local SQL connections', async () => {
+    const source = fs.readFileSync(path.join(__dirname, 'cutover_v2_controller.cjs'), 'utf8');
+    assert.match(source, /closeLocalConnectionsForControllerExit/);
+    assert.match(source, /stopControllerHeartbeat/);
+  });
+  await test('64 durable recovery database excludes connection values', async () => {
+    const durable = durableRecoveryDatabase({ database: 'reliance-recovery',
+      resourceId: '/subscriptions/test/recovery', providerRequestId: '7'.repeat(64),
+      databaseUrl: 'sqlserver://secret' }, 'VERIFIED');
+    assert.equal(Object.hasOwn(durable, 'databaseUrl'), false);
+    const store = new MemoryFreezeStore();
+    const controller = new DurableFreezeController({ store, owner: 'controller' });
+    const document = (await controller.freeze(freezeContext())).document;
+    document.recoveryDatabase = { ...durable, databaseUrl: 'sqlserver://secret' };
+    assert.throws(() => validateJournal(document), /must not persist a connection value/);
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

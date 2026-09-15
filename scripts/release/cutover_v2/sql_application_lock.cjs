@@ -25,7 +25,7 @@ function parseSqlServerUrl(value) {
       encrypt: values.encrypt !== 'false',
       trustServerCertificate: values.trustservercertificate === 'true',
     },
-    pool: { max: 1, min: 1, idleTimeoutMillis: 0 },
+    pool: { max: 1, min: 1, idleTimeoutMillis: 30000 },
     requestTimeout: 60000,
     connectionTimeout: 30000,
   };

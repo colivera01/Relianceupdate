@@ -77,6 +77,14 @@ class RecoveryLockHandoff {
     await this.environmentSqlLock.release().catch(() => {});
     return { verdict: 'SQL_LOCKS_RELEASED_AFTER_EXPLICIT_REOPEN' };
   }
+
+  async closeLocalConnectionsForControllerExit() {
+    if (this.recoveryDatabaseLock) await this.recoveryDatabaseLock.release().catch(() => {});
+    await this.originalDatabaseLock.release().catch(() => {});
+    await this.environmentSqlLock.release().catch(() => {});
+    this.recoveryDatabaseLock = null;
+    return { verdict: 'LOCAL_SQL_CONNECTIONS_CLOSED_ENVIRONMENT_REMAINS_FROZEN' };
+  }
 }
 
 module.exports = { RecoveryLockHandoff };
