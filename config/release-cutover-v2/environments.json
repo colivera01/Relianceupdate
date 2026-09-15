@@ -1,0 +1,22 @@
+{
+  "live": {
+    "subscription": "f50140d7-274d-4eec-b309-b109c6763615",
+    "resourceGroup": "rg-reliance-beta-eastus",
+    "appService": "app-reliance-beta-wcus",
+    "sqlServer": "sql-reliance-beta-wcus",
+    "database": "reliance-beta-recovery-a8ae548",
+    "storageAccount": "streliancebetawcus",
+    "storageContainer": "deployments",
+    "operatorFirewallRequired": true
+  },
+  "disposable": {
+    "subscription": "f50140d7-274d-4eec-b309-b109c6763615",
+    "resourceGroup": "rg-reliance-checkpoint3-closure-20260911",
+    "appService": "app-rel-cp3-0911a7",
+    "sqlServer": "sql-rel-cp3-0911a7",
+    "database": "reliance-checkpoint3-e0a2-happy-restore4",
+    "storageAccount": "strelcp30911a7",
+    "storageContainer": "runtime",
+    "operatorFirewallRequired": true
+  }
+}

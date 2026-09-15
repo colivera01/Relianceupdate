@@ -1,0 +1,1086 @@
+{
+  "archiveVersion": 3,
+  "sourceCommit": "9332627314ea6f8786625cc0891f58b9582736e5",
+  "generatedAt": "2026-09-14T23:51:30.039Z",
+  "currentCanonicalDatabase": "reliance-beta-recovery-a8ae548",
+  "migrationDirectoryCount": 57,
+  "archivedSqlFileCount": 61,
+  "sourceGitBlobPreservation": true,
+  "aggregateArchivedPathAndBytesSha256": "481557e8371f646e87cb4648955141028746fd08d8df510f966b8164315b6fc2",
+  "entries": [
+    {
+      "migrationName": "20250101000000_add_unique_active_assignment",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20250101000000_add_unique_active_assignment",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20250101000000_add_unique_active_assignment/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20250101000000_add_unique_active_assignment/migration.sql",
+          "sourceGitBlobSha": "e7862bdedb99934ee87f23a5b3f5d26654d9a5bb",
+          "archivedGitBlobSha": "e7862bdedb99934ee87f23a5b3f5d26654d9a5bb",
+          "sourceGitSha256": "3894f940660db9060bc371976a841d54206efc6712331dc7744b935074b2a06f",
+          "archivedRawSha256": "3894f940660db9060bc371976a841d54206efc6712331dc7744b935074b2a06f",
+          "bytes": 444,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20250816033121_init",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20250816033121_init",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20250816033121_init/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20250816033121_init/migration.sql",
+          "sourceGitBlobSha": "324a8dda97f33b649c12aca7fcfc7ca87d3ceaa2",
+          "archivedGitBlobSha": "324a8dda97f33b649c12aca7fcfc7ca87d3ceaa2",
+          "sourceGitSha256": "6ac282cbda57c7be32d6edb1b327235832e6322c458de632ac6dfaa058849479",
+          "archivedRawSha256": "6ac282cbda57c7be32d6edb1b327235832e6322c458de632ac6dfaa058849479",
+          "bytes": 3053,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260408173000_add_publish_controls",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260408173000_add_publish_controls",
+          "fileName": "migration.nogo.sql",
+          "sourcePath": "prisma/migrations/20260408173000_add_publish_controls/migration.nogo.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260408173000_add_publish_controls/migration.nogo.sql",
+          "sourceGitBlobSha": "7bd50c9a0bbb0257c96729150801891ea817ef08",
+          "archivedGitBlobSha": "7bd50c9a0bbb0257c96729150801891ea817ef08",
+          "sourceGitSha256": "a3ea44d63deb9e29d7f87d114a51e3c3c0299bf2e1986135c32f3fdb0f0f4b56",
+          "archivedRawSha256": "a3ea44d63deb9e29d7f87d114a51e3c3c0299bf2e1986135c32f3fdb0f0f4b56",
+          "bytes": 734,
+          "match": true
+        },
+        {
+          "migrationName": "20260408173000_add_publish_controls",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260408173000_add_publish_controls/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260408173000_add_publish_controls/migration.sql",
+          "sourceGitBlobSha": "edd8682b55c453222af3f6a0e86720dd35ddd9ba",
+          "archivedGitBlobSha": "edd8682b55c453222af3f6a0e86720dd35ddd9ba",
+          "sourceGitSha256": "3ff6ed9b9b3c31b3eba9255bf0f58c7dcd6f246e50d8f2d0d22b9079274a86c6",
+          "archivedRawSha256": "3ff6ed9b9b3c31b3eba9255bf0f58c7dcd6f246e50d8f2d0d22b9079274a86c6",
+          "bytes": 780,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260408190000_add_admin_audit_logs",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260408190000_add_admin_audit_logs",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260408190000_add_admin_audit_logs/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260408190000_add_admin_audit_logs/migration.sql",
+          "sourceGitBlobSha": "047c5fe2d84c9526200bd8728daaf57007e8d869",
+          "archivedGitBlobSha": "047c5fe2d84c9526200bd8728daaf57007e8d869",
+          "sourceGitSha256": "47651f0d586419d3c10fc7f0fbb125bca14a2fcef10caa72fd244a09e2ec301f",
+          "archivedRawSha256": "47651f0d586419d3c10fc7f0fbb125bca14a2fcef10caa72fd244a09e2ec301f",
+          "bytes": 1308,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260408201500_add_review_governance_foundation",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260408201500_add_review_governance_foundation",
+          "fileName": "migration.nogo.sql",
+          "sourcePath": "prisma/migrations/20260408201500_add_review_governance_foundation/migration.nogo.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260408201500_add_review_governance_foundation/migration.nogo.sql",
+          "sourceGitBlobSha": "ab9f91c006ddfe5d1fc9f19d9fde093a44b32186",
+          "archivedGitBlobSha": "ab9f91c006ddfe5d1fc9f19d9fde093a44b32186",
+          "sourceGitSha256": "17fe848d77c94f41fb7447e0bbc0d6866b03f360beada5d18e96a48594f96ea5",
+          "archivedRawSha256": "17fe848d77c94f41fb7447e0bbc0d6866b03f360beada5d18e96a48594f96ea5",
+          "bytes": 897,
+          "match": true
+        },
+        {
+          "migrationName": "20260408201500_add_review_governance_foundation",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260408201500_add_review_governance_foundation/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260408201500_add_review_governance_foundation/migration.sql",
+          "sourceGitBlobSha": "342d76897eb0b99d4631f810c295c9a9220a710b",
+          "archivedGitBlobSha": "342d76897eb0b99d4631f810c295c9a9220a710b",
+          "sourceGitSha256": "70463e24d63db7219a6b7bb7a5822ee1e996ec527188b947ca3f6468783b784c",
+          "archivedRawSha256": "70463e24d63db7219a6b7bb7a5822ee1e996ec527188b947ca3f6468783b784c",
+          "bytes": 1103,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260409102000_add_favorites_foundation",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260409102000_add_favorites_foundation",
+          "fileName": "migration.nogo.sql",
+          "sourcePath": "prisma/migrations/20260409102000_add_favorites_foundation/migration.nogo.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260409102000_add_favorites_foundation/migration.nogo.sql",
+          "sourceGitBlobSha": "f2e3f93d5425d7a45127a00f6a9dd99f3a17379e",
+          "archivedGitBlobSha": "f2e3f93d5425d7a45127a00f6a9dd99f3a17379e",
+          "sourceGitSha256": "c0659b06ac2f487be735227596984dce69ebfa521ee68a6c43df1980264764e5",
+          "archivedRawSha256": "c0659b06ac2f487be735227596984dce69ebfa521ee68a6c43df1980264764e5",
+          "bytes": 1121,
+          "match": true
+        },
+        {
+          "migrationName": "20260409102000_add_favorites_foundation",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260409102000_add_favorites_foundation/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260409102000_add_favorites_foundation/migration.sql",
+          "sourceGitBlobSha": "8366a80635d4f7c0c21d776df88e71d93679525c",
+          "archivedGitBlobSha": "8366a80635d4f7c0c21d776df88e71d93679525c",
+          "sourceGitSha256": "baafa05958d79f81082d62a64ab4b39da6f619bd07d566ba67003f5fa45b47a8",
+          "archivedRawSha256": "baafa05958d79f81082d62a64ab4b39da6f619bd07d566ba67003f5fa45b47a8",
+          "bytes": 1127,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260409103000_mediaasset_moderation_foundation",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260409103000_mediaasset_moderation_foundation",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260409103000_mediaasset_moderation_foundation/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260409103000_mediaasset_moderation_foundation/migration.sql",
+          "sourceGitBlobSha": "3aa3cdc951bc81135db6550d6682f069b5f66187",
+          "archivedGitBlobSha": "3aa3cdc951bc81135db6550d6682f069b5f66187",
+          "sourceGitSha256": "eaa4d05d73f491db1219c4ff480f1009c72740cb9d43394607588b4b01924f5c",
+          "archivedRawSha256": "eaa4d05d73f491db1219c4ff480f1009c72740cb9d43394607588b4b01924f5c",
+          "bytes": 658,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260410113000_add_smart_review_capture_foundation",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260410113000_add_smart_review_capture_foundation",
+          "fileName": "migration.nogo.sql",
+          "sourcePath": "prisma/migrations/20260410113000_add_smart_review_capture_foundation/migration.nogo.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260410113000_add_smart_review_capture_foundation/migration.nogo.sql",
+          "sourceGitBlobSha": "aeb18e8f396393ff688b50cba1317d2a3b17f134",
+          "archivedGitBlobSha": "aeb18e8f396393ff688b50cba1317d2a3b17f134",
+          "sourceGitSha256": "b79344b6b060c9051d2687abe80266e6297bfd76b116e9f4588c909f94771138",
+          "archivedRawSha256": "b79344b6b060c9051d2687abe80266e6297bfd76b116e9f4588c909f94771138",
+          "bytes": 3273,
+          "match": true
+        },
+        {
+          "migrationName": "20260410113000_add_smart_review_capture_foundation",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260410113000_add_smart_review_capture_foundation/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260410113000_add_smart_review_capture_foundation/migration.sql",
+          "sourceGitBlobSha": "6afa4e8e5ad2cbb3c0fc7bce0d222ef9a56c72b4",
+          "archivedGitBlobSha": "6afa4e8e5ad2cbb3c0fc7bce0d222ef9a56c72b4",
+          "sourceGitSha256": "2be089a3c81c72b691e1b40385474049dd482f1b0e3e92490a92011351a3b0ba",
+          "archivedRawSha256": "2be089a3c81c72b691e1b40385474049dd482f1b0e3e92490a92011351a3b0ba",
+          "bytes": 5498,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260412120000_booking_customer_metadata",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260412120000_booking_customer_metadata",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260412120000_booking_customer_metadata/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260412120000_booking_customer_metadata/migration.sql",
+          "sourceGitBlobSha": "178aea9217b95cacb9a6c63038c04337d3bcd561",
+          "archivedGitBlobSha": "178aea9217b95cacb9a6c63038c04337d3bcd561",
+          "sourceGitSha256": "3cf74826ba1afcfd39b24d7cfd02bef6cdfaf79d9ba8c5a06b9e9844394a104a",
+          "archivedRawSha256": "3cf74826ba1afcfd39b24d7cfd02bef6cdfaf79d9ba8c5a06b9e9844394a104a",
+          "bytes": 210,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260422130000_media_session_vendor_job_video_stage",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260422130000_media_session_vendor_job_video_stage",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260422130000_media_session_vendor_job_video_stage/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260422130000_media_session_vendor_job_video_stage/migration.sql",
+          "sourceGitBlobSha": "7a5737aaed94fd03dcc1baf69d800bb07c59d753",
+          "archivedGitBlobSha": "7a5737aaed94fd03dcc1baf69d800bb07c59d753",
+          "sourceGitSha256": "de5e1a65110aeb9ad0486eb630381de7e9c22d853f98f272de5497f30a575656",
+          "archivedRawSha256": "de5e1a65110aeb9ad0486eb630381de7e9c22d853f98f272de5497f30a575656",
+          "bytes": 263,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260427094000_review_attribution_and_unique_booking_review",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260427094000_review_attribution_and_unique_booking_review",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260427094000_review_attribution_and_unique_booking_review/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260427094000_review_attribution_and_unique_booking_review/migration.sql",
+          "sourceGitBlobSha": "181e30a911fa6d6af84f965096d5eb8e8a28f032",
+          "archivedGitBlobSha": "181e30a911fa6d6af84f965096d5eb8e8a28f032",
+          "sourceGitSha256": "d2562b522644e1328b4d241e81ca1c6cfb7c484db53c6aac7b6fc1407bc81c58",
+          "archivedRawSha256": "d2562b522644e1328b4d241e81ca1c6cfb7c484db53c6aac7b6fc1407bc81c58",
+          "bytes": 981,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260427100000_add_booking_rejection_fields",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260427100000_add_booking_rejection_fields",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260427100000_add_booking_rejection_fields/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260427100000_add_booking_rejection_fields/migration.sql",
+          "sourceGitBlobSha": "530e3e746ebed2fbf57968f1421d558447d0e1b9",
+          "archivedGitBlobSha": "530e3e746ebed2fbf57968f1421d558447d0e1b9",
+          "sourceGitSha256": "d544ec0260c9792b67c7a930eb3d7236ac3093c0ad927af78c4e1f672ac7c7d3",
+          "archivedRawSha256": "d544ec0260c9792b67c7a930eb3d7236ac3093c0ad927af78c4e1f672ac7c7d3",
+          "bytes": 390,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260427143000_add_deviceuid_column_backfill_legacy_employeeid",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260427143000_add_deviceuid_column_backfill_legacy_employeeid",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260427143000_add_deviceuid_column_backfill_legacy_employeeid/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260427143000_add_deviceuid_column_backfill_legacy_employeeid/migration.sql",
+          "sourceGitBlobSha": "02ae19668b88e71c99d6cb41512477fe7c84c0b8",
+          "archivedGitBlobSha": "02ae19668b88e71c99d6cb41512477fe7c84c0b8",
+          "sourceGitSha256": "53fb4df766fe9d0665bc334c8ecd89351b4eb470c858ba9b08d44ac6bfa9b246",
+          "archivedRawSha256": "53fb4df766fe9d0665bc334c8ecd89351b4eb470c858ba9b08d44ac6bfa9b246",
+          "bytes": 1092,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260522041000_add_user_location_foundation",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260522041000_add_user_location_foundation",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260522041000_add_user_location_foundation/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260522041000_add_user_location_foundation/migration.sql",
+          "sourceGitBlobSha": "f2f1cfaacb8acae3806e7e98f4b29538a2b1d74c",
+          "archivedGitBlobSha": "f2f1cfaacb8acae3806e7e98f4b29538a2b1d74c",
+          "sourceGitSha256": "2500a4c80760071891cd51858cccb351b3cd45406602bf018304393c6008258e",
+          "archivedRawSha256": "2500a4c80760071891cd51858cccb351b3cd45406602bf018304393c6008258e",
+          "bytes": 1393,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260526010000_account_status_content_reports",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260526010000_account_status_content_reports",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260526010000_account_status_content_reports/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260526010000_account_status_content_reports/migration.sql",
+          "sourceGitBlobSha": "5f884219100ce768893b690be85ced0792214739",
+          "archivedGitBlobSha": "5f884219100ce768893b690be85ced0792214739",
+          "sourceGitSha256": "aac6604b3a87163acdae064b3fa78bf901af24b30246bf3601ad8033cafe7a44",
+          "archivedRawSha256": "aac6604b3a87163acdae064b3fa78bf901af24b30246bf3601ad8033cafe7a44",
+          "bytes": 3790,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260527003000_promoted_listings_phase1",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260527003000_promoted_listings_phase1",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260527003000_promoted_listings_phase1/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260527003000_promoted_listings_phase1/migration.sql",
+          "sourceGitBlobSha": "4e0246b25c8142052d3138d832e4ccd0f903df58",
+          "archivedGitBlobSha": "4e0246b25c8142052d3138d832e4ccd0f903df58",
+          "sourceGitSha256": "d7e807fe2c73a2eec190a0df356b3334c37c0a5cecb689b12fd9a5d22d800924",
+          "archivedRawSha256": "d7e807fe2c73a2eec190a0df356b3334c37c0a5cecb689b12fd9a5d22d800924",
+          "bytes": 2608,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260527010700_promoted_listings_phase2a",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260527010700_promoted_listings_phase2a",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260527010700_promoted_listings_phase2a/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260527010700_promoted_listings_phase2a/migration.sql",
+          "sourceGitBlobSha": "3fb54dd7494ac8e2c23445fa421698d1a39ef889",
+          "archivedGitBlobSha": "3fb54dd7494ac8e2c23445fa421698d1a39ef889",
+          "sourceGitSha256": "65bfe60424c0d277f4e1107ec5c7804959f243c92c94ba1789e5978a1ffb4f49",
+          "archivedRawSha256": "65bfe60424c0d277f4e1107ec5c7804959f243c92c94ba1789e5978a1ffb4f49",
+          "bytes": 1348,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260527114000_promoted_listings_phase2b",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260527114000_promoted_listings_phase2b",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260527114000_promoted_listings_phase2b/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260527114000_promoted_listings_phase2b/migration.sql",
+          "sourceGitBlobSha": "602e03c265829d6dba442eadac5d5cffc818f6cb",
+          "archivedGitBlobSha": "602e03c265829d6dba442eadac5d5cffc818f6cb",
+          "sourceGitSha256": "5d551e0ca6e238db0b71a50f5dd9f9668537d888bc80119a727a23bb7763878c",
+          "archivedRawSha256": "5d551e0ca6e238db0b71a50f5dd9f9668537d888bc80119a727a23bb7763878c",
+          "bytes": 1690,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260527165000_promoted_listings_phase2b5",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260527165000_promoted_listings_phase2b5",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260527165000_promoted_listings_phase2b5/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260527165000_promoted_listings_phase2b5/migration.sql",
+          "sourceGitBlobSha": "6c6f2bc5c37f3729b59d44d36fe918923949971c",
+          "archivedGitBlobSha": "6c6f2bc5c37f3729b59d44d36fe918923949971c",
+          "sourceGitSha256": "f9240e014c3b8777a7c9b6e467efeea0a6ea566a5dc0da543f3d36acb728c87e",
+          "archivedRawSha256": "f9240e014c3b8777a7c9b6e467efeea0a6ea566a5dc0da543f3d36acb728c87e",
+          "bytes": 7496,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260528210000_trust_score_outcome_foundation",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260528210000_trust_score_outcome_foundation",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260528210000_trust_score_outcome_foundation/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260528210000_trust_score_outcome_foundation/migration.sql",
+          "sourceGitBlobSha": "3b8b4bef207f4f95b1e9f316815c9f2ca1775bfd",
+          "archivedGitBlobSha": "3b8b4bef207f4f95b1e9f316815c9f2ca1775bfd",
+          "sourceGitSha256": "b0d40bb7c54be7ca20eee8a5636657eb9331766209fde3c71779679443b60867",
+          "archivedRawSha256": "b0d40bb7c54be7ca20eee8a5636657eb9331766209fde3c71779679443b60867",
+          "bytes": 4629,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260528220000_trust_score_snapshot",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260528220000_trust_score_snapshot",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260528220000_trust_score_snapshot/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260528220000_trust_score_snapshot/migration.sql",
+          "sourceGitBlobSha": "aed835ed195e137bab0e0038c4352f1fd0832e0e",
+          "archivedGitBlobSha": "aed835ed195e137bab0e0038c4352f1fd0832e0e",
+          "sourceGitSha256": "f972f783915b751c9c7e96c184e11facd55d5397e128b76db5b442059fbe7a5f",
+          "archivedRawSha256": "f972f783915b751c9c7e96c184e11facd55d5397e128b76db5b442059fbe7a5f",
+          "bytes": 3097,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260531201000_add_auth_credentials",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260531201000_add_auth_credentials",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260531201000_add_auth_credentials/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260531201000_add_auth_credentials/migration.sql",
+          "sourceGitBlobSha": "975a7435b92c9ecb92c082448e0f9ab126deca72",
+          "archivedGitBlobSha": "975a7435b92c9ecb92c082448e0f9ab126deca72",
+          "sourceGitSha256": "8886f7631c1fb71f665f4bacba4ae957514d864b0d52514d27ad2d7c178b3752",
+          "archivedRawSha256": "8886f7631c1fb71f665f4bacba4ae957514d864b0d52514d27ad2d7c178b3752",
+          "bytes": 1256,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260531214000_add_auth_mfa_challenges",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260531214000_add_auth_mfa_challenges",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260531214000_add_auth_mfa_challenges/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260531214000_add_auth_mfa_challenges/migration.sql",
+          "sourceGitBlobSha": "9a429070315f5a8119da244227ab0a06e57673c0",
+          "archivedGitBlobSha": "9a429070315f5a8119da244227ab0a06e57673c0",
+          "sourceGitSha256": "de912f98beef0abfe29427c52882eff30b7a367e412528005eb2db5d3c589e27",
+          "archivedRawSha256": "de912f98beef0abfe29427c52882eff30b7a367e412528005eb2db5d3c589e27",
+          "bytes": 1560,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260531220000_add_auth_trusted_devices",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260531220000_add_auth_trusted_devices",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260531220000_add_auth_trusted_devices/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260531220000_add_auth_trusted_devices/migration.sql",
+          "sourceGitBlobSha": "541553dc2bd9c2eda29464a6834c604b1a44b5f5",
+          "archivedGitBlobSha": "541553dc2bd9c2eda29464a6834c604b1a44b5f5",
+          "sourceGitSha256": "75060d793b3ad0034ec1526d1e2a281c38230f55a1b7edc76e852ea3edcfc45e",
+          "archivedRawSha256": "75060d793b3ad0034ec1526d1e2a281c38230f55a1b7edc76e852ea3edcfc45e",
+          "bytes": 1851,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260531221500_add_email_verification_tokens",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260531221500_add_email_verification_tokens",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260531221500_add_email_verification_tokens/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260531221500_add_email_verification_tokens/migration.sql",
+          "sourceGitBlobSha": "c8b973103f1b0e3e418d66825d0bc78a0146674d",
+          "archivedGitBlobSha": "c8b973103f1b0e3e418d66825d0bc78a0146674d",
+          "sourceGitSha256": "ce518a6833dffcadcf04d6f3b0e1641273ceb4a881d5786ffd437c5e880dfb6d",
+          "archivedRawSha256": "ce518a6833dffcadcf04d6f3b0e1641273ceb4a881d5786ffd437c5e880dfb6d",
+          "bytes": 1850,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260531232000_add_auth_passkeys",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260531232000_add_auth_passkeys",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260531232000_add_auth_passkeys/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260531232000_add_auth_passkeys/migration.sql",
+          "sourceGitBlobSha": "266dc4b4bb959607c01b95d4c6df32b3fcf38e97",
+          "archivedGitBlobSha": "266dc4b4bb959607c01b95d4c6df32b3fcf38e97",
+          "sourceGitSha256": "93f09d203bcb988dabd1abc8fe66bdf2e716e94bf327745f6c851c076f917670",
+          "archivedRawSha256": "93f09d203bcb988dabd1abc8fe66bdf2e716e94bf327745f6c851c076f917670",
+          "bytes": 2910,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260609173000_add_user_profile_photo",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260609173000_add_user_profile_photo",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260609173000_add_user_profile_photo/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260609173000_add_user_profile_photo/migration.sql",
+          "sourceGitBlobSha": "989956ff7bcef8006a4acaf401167cbc64911878",
+          "archivedGitBlobSha": "989956ff7bcef8006a4acaf401167cbc64911878",
+          "sourceGitSha256": "d2b314015ca290baa0221d499d10a54f69415be4d89535c728465c41a5037fea",
+          "archivedRawSha256": "d2b314015ca290baa0221d499d10a54f69415be4d89535c728465c41a5037fea",
+          "bytes": 142,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260628001000_add_vendor_business_hours",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260628001000_add_vendor_business_hours",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260628001000_add_vendor_business_hours/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260628001000_add_vendor_business_hours/migration.sql",
+          "sourceGitBlobSha": "fe2b7e9f5a1cac73aebba05bfa7ed40b5ab5d6d0",
+          "archivedGitBlobSha": "fe2b7e9f5a1cac73aebba05bfa7ed40b5ab5d6d0",
+          "sourceGitSha256": "dde9ec8eaa36bc813935c79c25302e7d9cd62ec2a6fed88ad5c18f69efb92e88",
+          "archivedRawSha256": "dde9ec8eaa36bc813935c79c25302e7d9cd62ec2a6fed88ad5c18f69efb92e88",
+          "bytes": 143,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260707012500_add_vendor_invite_recipient_fields",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260707012500_add_vendor_invite_recipient_fields",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260707012500_add_vendor_invite_recipient_fields/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260707012500_add_vendor_invite_recipient_fields/migration.sql",
+          "sourceGitBlobSha": "51ff04ccd6d2928efe8e9fd12e0333c7b6abeaa4",
+          "archivedGitBlobSha": "51ff04ccd6d2928efe8e9fd12e0333c7b6abeaa4",
+          "sourceGitSha256": "b1cdb20eb5d4358d2c76df4132061053e63a8dc2fb3e6202f5d4ed262655a9c3",
+          "archivedRawSha256": "b1cdb20eb5d4358d2c76df4132061053e63a8dc2fb3e6202f5d4ed262655a9c3",
+          "bytes": 591,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260726023000_fix_booking_consent_location",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260726023000_fix_booking_consent_location",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260726023000_fix_booking_consent_location/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260726023000_fix_booking_consent_location/migration.sql",
+          "sourceGitBlobSha": "9c7003f08af9931b2b7db05a8250cfbb4e2a9fa1",
+          "archivedGitBlobSha": "9c7003f08af9931b2b7db05a8250cfbb4e2a9fa1",
+          "sourceGitSha256": "f7879fb06db270a8e69a9f1ac01d4d2c685f2e36564beda8d69ed99280692e2d",
+          "archivedRawSha256": "f7879fb06db270a8e69a9f1ac01d4d2c685f2e36564beda8d69ed99280692e2d",
+          "bytes": 1840,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260726234500_booking_creation_reliability",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260726234500_booking_creation_reliability",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260726234500_booking_creation_reliability/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260726234500_booking_creation_reliability/migration.sql",
+          "sourceGitBlobSha": "aac46df3eae8b324a337ed1551592014250fe4ee",
+          "archivedGitBlobSha": "aac46df3eae8b324a337ed1551592014250fe4ee",
+          "sourceGitSha256": "b8cc87abfd8689c74fceaad99cb518d77c532a748b91054e40d2bc74424ef0c1",
+          "archivedRawSha256": "b8cc87abfd8689c74fceaad99cb518d77c532a748b91054e40d2bc74424ef0c1",
+          "bytes": 1472,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260731201500_add_verified_permission_infrastructure",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260731201500_add_verified_permission_infrastructure",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260731201500_add_verified_permission_infrastructure/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260731201500_add_verified_permission_infrastructure/migration.sql",
+          "sourceGitBlobSha": "6246ef4034a906503552c4d21b6134941c6b6255",
+          "archivedGitBlobSha": "6246ef4034a906503552c4d21b6134941c6b6255",
+          "sourceGitSha256": "6afd964087a4a0886a3de3058034239ef6202492a39914a32592e55afe1784e0",
+          "archivedRawSha256": "6afd964087a4a0886a3de3058034239ef6202492a39914a32592e55afe1784e0",
+          "bytes": 11299,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260731203000_normalize_legacy_permission_secrets",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260731203000_normalize_legacy_permission_secrets",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260731203000_normalize_legacy_permission_secrets/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260731203000_normalize_legacy_permission_secrets/migration.sql",
+          "sourceGitBlobSha": "c02ade51a95c594807a5ed907a8adb6eabad15fd",
+          "archivedGitBlobSha": "c02ade51a95c594807a5ed907a8adb6eabad15fd",
+          "sourceGitSha256": "30c0f3e7ecc686e1de32fae21cc2bd170f2842045a278ea60b1a5322f6221caf",
+          "archivedRawSha256": "30c0f3e7ecc686e1de32fae21cc2bd170f2842045a278ea60b1a5322f6221caf",
+          "bytes": 2995,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260802193000_add_platform_role_grants",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260802193000_add_platform_role_grants",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260802193000_add_platform_role_grants/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260802193000_add_platform_role_grants/migration.sql",
+          "sourceGitBlobSha": "cbafe2a7db9157c7d7efeeb25086f8ba87c1b774",
+          "archivedGitBlobSha": "cbafe2a7db9157c7d7efeeb25086f8ba87c1b774",
+          "sourceGitSha256": "28d32fa8bfe2de77d893b8c192544c2a32768a39f4a33db91fb546c46ceeae77",
+          "archivedRawSha256": "28d32fa8bfe2de77d893b8c192544c2a32768a39f4a33db91fb546c46ceeae77",
+          "bytes": 2397,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260803200000_correct_beta_admin_platform_role_grant",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260803200000_correct_beta_admin_platform_role_grant",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260803200000_correct_beta_admin_platform_role_grant/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260803200000_correct_beta_admin_platform_role_grant/migration.sql",
+          "sourceGitBlobSha": "3a18d8795fc46ea727eba259c623bedd17e82ae7",
+          "archivedGitBlobSha": "3a18d8795fc46ea727eba259c623bedd17e82ae7",
+          "sourceGitSha256": "fc597b8894fde0edce9e11107faa35a14ee806f969d93813aae553989e2182e6",
+          "archivedRawSha256": "fc597b8894fde0edce9e11107faa35a14ee806f969d93813aae553989e2182e6",
+          "bytes": 841,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260804230000_add_customer_registration_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260804230000_add_customer_registration_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260804230000_add_customer_registration_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260804230000_add_customer_registration_evidence/migration.sql",
+          "sourceGitBlobSha": "b8747b4b729d199d4cb9c12ca693cacc206e8b34",
+          "archivedGitBlobSha": "b8747b4b729d199d4cb9c12ca693cacc206e8b34",
+          "sourceGitSha256": "c2881b28b995f76866bb86c4610a45e4420f2988d967c1ac3612170f04bd67aa",
+          "archivedRawSha256": "c2881b28b995f76866bb86c4610a45e4420f2988d967c1ac3612170f04bd67aa",
+          "bytes": 3135,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260804231500_add_recording_scope_authority",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260804231500_add_recording_scope_authority",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260804231500_add_recording_scope_authority/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260804231500_add_recording_scope_authority/migration.sql",
+          "sourceGitBlobSha": "b49d14ff15c7697488da438b43ea4d6ce054c067",
+          "archivedGitBlobSha": "b49d14ff15c7697488da438b43ea4d6ce054c067",
+          "sourceGitSha256": "7330d9452feb406f1ba660e9a361ff9ee8fcf2d01c956ee820b431e373ca4f2d",
+          "archivedRawSha256": "7330d9452feb406f1ba660e9a361ff9ee8fcf2d01c956ee820b431e373ca4f2d",
+          "bytes": 4001,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260804233000_add_recording_gate_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260804233000_add_recording_gate_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260804233000_add_recording_gate_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260804233000_add_recording_gate_evidence/migration.sql",
+          "sourceGitBlobSha": "5cfa8692fe8024296ba9d52d13f6b9abf69256fe",
+          "archivedGitBlobSha": "5cfa8692fe8024296ba9d52d13f6b9abf69256fe",
+          "sourceGitSha256": "aa30de780b5ca3e1cc087434a878f4f27151edc60a98c04a1d1f110a760903c3",
+          "archivedRawSha256": "aa30de780b5ca3e1cc087434a878f4f27151edc60a98c04a1d1f110a760903c3",
+          "bytes": 6443,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260805193000_add_private_service_video_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260805193000_add_private_service_video_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260805193000_add_private_service_video_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260805193000_add_private_service_video_evidence/migration.sql",
+          "sourceGitBlobSha": "095768e1f8ace1e1ee3a16fb06a3ceda1a2a2564",
+          "archivedGitBlobSha": "095768e1f8ace1e1ee3a16fb06a3ceda1a2a2564",
+          "sourceGitSha256": "0c302c708143497e3aff4786e8ac7a4c9459fb65230d66e506bdc5031e3cc19e",
+          "archivedRawSha256": "0c302c708143497e3aff4786e8ac7a4c9459fb65230d66e506bdc5031e3cc19e",
+          "bytes": 11140,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260805213000_add_exact_media_publication_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260805213000_add_exact_media_publication_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260805213000_add_exact_media_publication_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260805213000_add_exact_media_publication_evidence/migration.sql",
+          "sourceGitBlobSha": "045b3c8211435421e9de4d0be50d4c37df7c7d9e",
+          "archivedGitBlobSha": "045b3c8211435421e9de4d0be50d4c37df7c7d9e",
+          "sourceGitSha256": "3a59edf2cc875003653ca6a3a83f2729135b4fb600c1c0e5573a0562ea8506a6",
+          "archivedRawSha256": "3a59edf2cc875003653ca6a3a83f2729135b4fb600c1c0e5573a0562ea8506a6",
+          "bytes": 14038,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260805233000_add_media_lifecycle_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260805233000_add_media_lifecycle_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260805233000_add_media_lifecycle_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260805233000_add_media_lifecycle_evidence/migration.sql",
+          "sourceGitBlobSha": "0771b4df41f169145459e170213164018d008600",
+          "archivedGitBlobSha": "0771b4df41f169145459e170213164018d008600",
+          "sourceGitSha256": "304b2a696d858c5313a57ead724a3c9a701fcc4b8b13c1861a83371775c7ad97",
+          "archivedRawSha256": "304b2a696d858c5313a57ead724a3c9a701fcc4b8b13c1861a83371775c7ad97",
+          "bytes": 13344,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260824213000_add_core_service_video_admin_audit_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260824213000_add_core_service_video_admin_audit_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260824213000_add_core_service_video_admin_audit_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260824213000_add_core_service_video_admin_audit_evidence/migration.sql",
+          "sourceGitBlobSha": "60ed1efc940a7086a175f97444a8e008771abbac",
+          "archivedGitBlobSha": "60ed1efc940a7086a175f97444a8e008771abbac",
+          "sourceGitSha256": "6f0c2ab2e3877d0f5cd230df27c295e69d3b79e761e3e278ca40d6e596778ad5",
+          "archivedRawSha256": "6f0c2ab2e3877d0f5cd230df27c295e69d3b79e761e3e278ca40d6e596778ad5",
+          "bytes": 3280,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260825190000_add_package_visibility_decisions",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260825190000_add_package_visibility_decisions",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260825190000_add_package_visibility_decisions/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260825190000_add_package_visibility_decisions/migration.sql",
+          "sourceGitBlobSha": "6ee37a7e7f994d62705524ca20187ab095777439",
+          "archivedGitBlobSha": "6ee37a7e7f994d62705524ca20187ab095777439",
+          "sourceGitSha256": "6b06f2709fbad129639e7588368d1867bceaeebf105091e8358b94798fe739de",
+          "archivedRawSha256": "6b06f2709fbad129639e7588368d1867bceaeebf105091e8358b94798fe739de",
+          "bytes": 3607,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260825213000_add_service_video_audio_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260825213000_add_service_video_audio_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260825213000_add_service_video_audio_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260825213000_add_service_video_audio_evidence/migration.sql",
+          "sourceGitBlobSha": "7048a449947c3d5aa41d493445635f2bed6969bf",
+          "archivedGitBlobSha": "7048a449947c3d5aa41d493445635f2bed6969bf",
+          "sourceGitSha256": "74f9be9adddb679cd55a3cf293937791c956f27a3f7a0812e402c17929da15fa",
+          "archivedRawSha256": "74f9be9adddb679cd55a3cf293937791c956f27a3f7a0812e402c17929da15fa",
+          "bytes": 2426,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260827143000_add_recording_assessment_contract_version",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260827143000_add_recording_assessment_contract_version",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260827143000_add_recording_assessment_contract_version/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260827143000_add_recording_assessment_contract_version/migration.sql",
+          "sourceGitBlobSha": "154db17d80432e053120330841f9cbe341ecb8b5",
+          "archivedGitBlobSha": "154db17d80432e053120330841f9cbe341ecb8b5",
+          "sourceGitSha256": "dd925e8ec9f6857223fd577f46be7aed58b8f3892d9c41a020662427ef6e0e1a",
+          "archivedRawSha256": "dd925e8ec9f6857223fd577f46be7aed58b8f3892d9c41a020662427ef6e0e1a",
+          "bytes": 216,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260827230000_add_employee_recording_safety_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260827230000_add_employee_recording_safety_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260827230000_add_employee_recording_safety_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260827230000_add_employee_recording_safety_evidence/migration.sql",
+          "sourceGitBlobSha": "e383508d84e28912d48e9a7e65b5c7c3f6fcf17e",
+          "archivedGitBlobSha": "e383508d84e28912d48e9a7e65b5c7c3f6fcf17e",
+          "sourceGitSha256": "0ce537e6266c6793949c20c2afdeec2ff92166bbbb9965d87e7f0c576370b2fb",
+          "archivedRawSha256": "0ce537e6266c6793949c20c2afdeec2ff92166bbbb9965d87e7f0c576370b2fb",
+          "bytes": 3018,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260827234500_harden_v2_recording_evidence_identity",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260827234500_harden_v2_recording_evidence_identity",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260827234500_harden_v2_recording_evidence_identity/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260827234500_harden_v2_recording_evidence_identity/migration.sql",
+          "sourceGitBlobSha": "a9ec32a5d6b01bac66cf34f0cc3d7cc133da3d4d",
+          "archivedGitBlobSha": "a9ec32a5d6b01bac66cf34f0cc3d7cc133da3d4d",
+          "sourceGitSha256": "2632996783bedcabcc8d50e74982e63454ee317df5bbd5fb393c4dbad6217a94",
+          "archivedRawSha256": "2632996783bedcabcc8d50e74982e63454ee317df5bbd5fb393c4dbad6217a94",
+          "bytes": 1980,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260902150000_add_employee_customer_rating_evidence",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260902150000_add_employee_customer_rating_evidence",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260902150000_add_employee_customer_rating_evidence/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260902150000_add_employee_customer_rating_evidence/migration.sql",
+          "sourceGitBlobSha": "ffd92d506111084f245ab6ba1f20356b955ddd6d",
+          "archivedGitBlobSha": "ffd92d506111084f245ab6ba1f20356b955ddd6d",
+          "sourceGitSha256": "c7f6827d89e3ae479219c039ba17325674947e87cf468b02a0ec42e5f386a001",
+          "archivedRawSha256": "c7f6827d89e3ae479219c039ba17325674947e87cf468b02a0ec42e5f386a001",
+          "bytes": 1882,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260902210000_add_admin_public_display_eligibility",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260902210000_add_admin_public_display_eligibility",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260902210000_add_admin_public_display_eligibility/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260902210000_add_admin_public_display_eligibility/migration.sql",
+          "sourceGitBlobSha": "a8042f366b71bfa1d40b225d305b656f80905a04",
+          "archivedGitBlobSha": "a8042f366b71bfa1d40b225d305b656f80905a04",
+          "sourceGitSha256": "e0863f4e24847d2c2dffeef0228745aa45cf0898cb44989b326e74044589d14b",
+          "archivedRawSha256": "e0863f4e24847d2c2dffeef0228745aa45cf0898cb44989b326e74044589d14b",
+          "bytes": 647,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260902233000_add_service_video_report_cases",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260902233000_add_service_video_report_cases",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260902233000_add_service_video_report_cases/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260902233000_add_service_video_report_cases/migration.sql",
+          "sourceGitBlobSha": "ccf87d8e72e471591a2c59e4ada68a4fb1a85ae3",
+          "archivedGitBlobSha": "ccf87d8e72e471591a2c59e4ada68a4fb1a85ae3",
+          "sourceGitSha256": "9e4d70f1edf1e879af4f0a77f6e4e90a28467ebe63b917396fdfb570c0bfbf3c",
+          "archivedRawSha256": "9e4d70f1edf1e879af4f0a77f6e4e90a28467ebe63b917396fdfb570c0bfbf3c",
+          "bytes": 4195,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260902235900_add_customer_service_record_organization_events",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260902235900_add_customer_service_record_organization_events",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260902235900_add_customer_service_record_organization_events/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260902235900_add_customer_service_record_organization_events/migration.sql",
+          "sourceGitBlobSha": "1f8f9a113dbf9f1da8659845a740d870ca0dd2c3",
+          "archivedGitBlobSha": "1f8f9a113dbf9f1da8659845a740d870ca0dd2c3",
+          "sourceGitSha256": "c3cce0e6e094137c9aa057da53f37f4db2033d6385b1d63eb45bf49b9347c1f0",
+          "archivedRawSha256": "c3cce0e6e094137c9aa057da53f37f4db2033d6385b1d63eb45bf49b9347c1f0",
+          "bytes": 2217,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260903003000_add_verified_review_and_vendor_favorites",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260903003000_add_verified_review_and_vendor_favorites",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260903003000_add_verified_review_and_vendor_favorites/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260903003000_add_verified_review_and_vendor_favorites/migration.sql",
+          "sourceGitBlobSha": "fc0e7b2624ee99160f45202169ef85c108841c46",
+          "archivedGitBlobSha": "fc0e7b2624ee99160f45202169ef85c108841c46",
+          "sourceGitSha256": "673a3ca9a7b10de6997c1131d1ec469260e86d15be373647860d96e240b7fae9",
+          "archivedRawSha256": "673a3ca9a7b10de6997c1131d1ec469260e86d15be373647860d96e240b7fae9",
+          "bytes": 1971,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260906130000_add_vendor_manager_notification_state",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260906130000_add_vendor_manager_notification_state",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260906130000_add_vendor_manager_notification_state/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260906130000_add_vendor_manager_notification_state/migration.sql",
+          "sourceGitBlobSha": "56c4c81ceb7d60833c21e1b3bb7e6b449f7cc1ba",
+          "archivedGitBlobSha": "56c4c81ceb7d60833c21e1b3bb7e6b449f7cc1ba",
+          "sourceGitSha256": "99f96aebf64892726624914532b004681e1b98133791701bbb5fb5c37ec48ad2",
+          "archivedRawSha256": "99f96aebf64892726624914532b004681e1b98133791701bbb5fb5c37ec48ad2",
+          "bytes": 2152,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260906183000_fix_review_window_nullable_unique",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260906183000_fix_review_window_nullable_unique",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260906183000_fix_review_window_nullable_unique/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260906183000_fix_review_window_nullable_unique/migration.sql",
+          "sourceGitBlobSha": "e5902ebdd609da4bed8567fabc8623c86e1007a9",
+          "archivedGitBlobSha": "e5902ebdd609da4bed8567fabc8623c86e1007a9",
+          "sourceGitSha256": "eb4feb604c95fc8a00ae6602d00d5ab8d88ac6050e34fc249899feffcfcb9c6e",
+          "archivedRawSha256": "eb4feb604c95fc8a00ae6602d00d5ab8d88ac6050e34fc249899feffcfcb9c6e",
+          "bytes": 1144,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260907210000_restore_reviews_booking_unique_not_null",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260907210000_restore_reviews_booking_unique_not_null",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260907210000_restore_reviews_booking_unique_not_null/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260907210000_restore_reviews_booking_unique_not_null/migration.sql",
+          "sourceGitBlobSha": "68233bc33b6e05a1782917743ba33a9d5e998603",
+          "archivedGitBlobSha": "68233bc33b6e05a1782917743ba33a9d5e998603",
+          "sourceGitSha256": "9c9402908f9f69e189226ba3b7dda12f38bad3ef570b1f6d73c0367c69473939",
+          "archivedRawSha256": "9c9402908f9f69e189226ba3b7dda12f38bad3ef570b1f6d73c0367c69473939",
+          "bytes": 1775,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "20260910014500_add_employee_public_media_consent",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "20260910014500_add_employee_public_media_consent",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/20260910014500_add_employee_public_media_consent/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/20260910014500_add_employee_public_media_consent/migration.sql",
+          "sourceGitBlobSha": "9640bf19b256c7273c6b5e0f0241ba1e80197718",
+          "archivedGitBlobSha": "9640bf19b256c7273c6b5e0f0241ba1e80197718",
+          "sourceGitSha256": "859fa358a511b8391439ae74a78af11ea609a4a96ea7212bf6b7c5e73e0c486f",
+          "archivedRawSha256": "859fa358a511b8391439ae74a78af11ea609a4a96ea7212bf6b7c5e73e0c486f",
+          "bytes": 3488,
+          "match": true
+        }
+      ]
+    },
+    {
+      "migrationName": "add_unique_active_assignment",
+      "driftClassification": "PRESERVED_FROM_933262_SOURCE",
+      "archivedFiles": [
+        {
+          "migrationName": "add_unique_active_assignment",
+          "fileName": "migration.sql",
+          "sourcePath": "prisma/migrations/add_unique_active_assignment/migration.sql",
+          "destinationPath": "docs/database/migration-history-legacy/2026-09-14-v2/add_unique_active_assignment/migration.sql",
+          "sourceGitBlobSha": "d2893022a5432278fb3d73f3b776b934d772970d",
+          "archivedGitBlobSha": "d2893022a5432278fb3d73f3b776b934d772970d",
+          "sourceGitSha256": "9af716fea74d3d112a071d5eb226da6d6569f9ab8e6b151fdce72e4f60f25eb0",
+          "archivedRawSha256": "9af716fea74d3d112a071d5eb226da6d6569f9ab8e6b151fdce72e4f60f25eb0",
+          "bytes": 271,
+          "match": true
+        }
+      ]
+    }
+  ]
+}

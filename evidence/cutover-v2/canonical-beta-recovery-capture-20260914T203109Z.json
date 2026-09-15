@@ -1,0 +1,1421 @@
+{
+  "evidenceVersion": 1,
+  "capturedAt": "2026-09-14T20:31:09.457Z",
+  "database": {
+    "databaseName": "reliance-beta-recovery-a8ae548",
+    "serverName": "sql-reliance-beta-wcus"
+  },
+  "structuralSha256": "a2332a6a984076439d3797f00addb667ad4107ae195897837577df90f7b788c0",
+  "ledgerSha256": "4f578c8b23b08b1499c97d03d4ba49e2426bb58ad9edefa6bec1801d3cfac6bd",
+  "ledgerRows": 64,
+  "successfulDistinctMigrations": 57,
+  "successfulMigrationNames": [
+    "20250101000000_add_unique_active_assignment",
+    "20250816033121_init",
+    "20260408173000_add_publish_controls",
+    "20260408190000_add_admin_audit_logs",
+    "20260408201500_add_review_governance_foundation",
+    "20260409102000_add_favorites_foundation",
+    "20260409103000_mediaasset_moderation_foundation",
+    "20260410113000_add_smart_review_capture_foundation",
+    "20260412120000_booking_customer_metadata",
+    "20260422130000_media_session_vendor_job_video_stage",
+    "20260427094000_review_attribution_and_unique_booking_review",
+    "20260427100000_add_booking_rejection_fields",
+    "20260427143000_add_deviceuid_column_backfill_legacy_employeeid",
+    "20260522041000_add_user_location_foundation",
+    "20260526010000_account_status_content_reports",
+    "20260527003000_promoted_listings_phase1",
+    "20260527010700_promoted_listings_phase2a",
+    "20260527114000_promoted_listings_phase2b",
+    "20260527165000_promoted_listings_phase2b5",
+    "20260528210000_trust_score_outcome_foundation",
+    "20260528220000_trust_score_snapshot",
+    "20260531201000_add_auth_credentials",
+    "20260531214000_add_auth_mfa_challenges",
+    "20260531220000_add_auth_trusted_devices",
+    "20260531221500_add_email_verification_tokens",
+    "20260531232000_add_auth_passkeys",
+    "20260609173000_add_user_profile_photo",
+    "20260628001000_add_vendor_business_hours",
+    "20260707012500_add_vendor_invite_recipient_fields",
+    "20260726023000_fix_booking_consent_location",
+    "20260726234500_booking_creation_reliability",
+    "20260731201500_add_verified_permission_infrastructure",
+    "20260731203000_normalize_legacy_permission_secrets",
+    "20260802193000_add_platform_role_grants",
+    "20260803200000_correct_beta_admin_platform_role_grant",
+    "20260804230000_add_customer_registration_evidence",
+    "20260804231500_add_recording_scope_authority",
+    "20260804233000_add_recording_gate_evidence",
+    "20260805193000_add_private_service_video_evidence",
+    "20260805213000_add_exact_media_publication_evidence",
+    "20260805233000_add_media_lifecycle_evidence",
+    "20260824213000_add_core_service_video_admin_audit_evidence",
+    "20260825190000_add_package_visibility_decisions",
+    "20260825213000_add_service_video_audio_evidence",
+    "20260827143000_add_recording_assessment_contract_version",
+    "20260827230000_add_employee_recording_safety_evidence",
+    "20260827234500_harden_v2_recording_evidence_identity",
+    "20260902150000_add_employee_customer_rating_evidence",
+    "20260902210000_add_admin_public_display_eligibility",
+    "20260902233000_add_service_video_report_cases",
+    "20260902235900_add_customer_service_record_organization_events",
+    "20260903003000_add_verified_review_and_vendor_favorites",
+    "20260906130000_add_vendor_manager_notification_state",
+    "20260906183000_fix_review_window_nullable_unique",
+    "20260907210000_restore_reviews_booking_unique_not_null",
+    "20260910014500_add_employee_public_media_consent",
+    "add_unique_active_assignment"
+  ],
+  "applicationRowCounts": [
+    {
+      "schemaName": "dbo",
+      "tableName": "admin_audit_logs",
+      "rowCount": 589
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "admin_notifications",
+      "rowCount": 12
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_credentials",
+      "rowCount": 12
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_mfa_challenges",
+      "rowCount": 109
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_passkey_challenges",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_passkeys",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_trusted_devices",
+      "rowCount": 79
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "booking_notification_attempts",
+      "rowCount": 25
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "booking_notifications",
+      "rowCount": 29
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "booking_service_issues",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "bookings",
+      "rowCount": 18
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_content_versions",
+      "rowCount": 4
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_decision_evidence",
+      "rowCount": 6
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_decision_sessions",
+      "rowCount": 6
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_events",
+      "rowCount": 41
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_records",
+      "rowCount": 12
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_request_links",
+      "rowCount": 9
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_verification_challenges",
+      "rowCount": 7
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "content_report_case_events",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "content_report_requests",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "content_reports",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "customer_registration_evidence",
+      "rowCount": 4
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "customer_service_record_organization_events",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "device_assignments",
+      "rowCount": 3
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "device_events",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "device_pairing_codes",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "devices",
+      "rowCount": 3
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "email_verification_tokens",
+      "rowCount": 11
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_customer_rating_evidence",
+      "rowCount": 1
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_public_media_consent_decisions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_public_media_notifications",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_recording_certifications",
+      "rowCount": 7
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_recording_safety_evidence",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employees",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "favorites",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "legacy_public_restriction_evidence",
+      "rowCount": 3
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_assets",
+      "rowCount": 50
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_deletion_attempts",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_deletion_jobs",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_deletion_requests",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_evidence_holds",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_appeals",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_audit_events",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_cases",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_restrictions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_retention_schedules",
+      "rowCount": 12
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_sessions",
+      "rowCount": 68
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_upload_attempts",
+      "rowCount": 18
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_withdrawal_evidence",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "platform_role_grants",
+      "rowCount": 1
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "policy_document_versions",
+      "rowCount": 3
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "private_proof_access_events",
+      "rowCount": 48
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "private_proof_access_grants",
+      "rowCount": 3
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "promotion_campaigns",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "promotion_packages",
+      "rowCount": 3
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "public_service_video_eligibility",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_authority_requirements",
+      "rowCount": 18
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_gate_decision_evidence",
+      "rowCount": 18
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_gate_metrics",
+      "rowCount": 663
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_location_attempts",
+      "rowCount": 31
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_location_exceptions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_scope_assessments",
+      "rowCount": 7
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "review_prompt_events",
+      "rowCount": 1
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "review_sentiments",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "review_windows",
+      "rowCount": 2
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "reviews",
+      "rowCount": 2
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_admin_audit_decision_evidence",
+      "rowCount": 2
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_manager_decision_evidence",
+      "rowCount": 5
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_package_evidence",
+      "rowCount": 6
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_package_visibility_decisions",
+      "rowCount": 5
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_admin_decisions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_audit_events",
+      "rowCount": 5
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_customer_decisions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_participant_decisions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_proposals",
+      "rowCount": 4
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_stages",
+      "rowCount": 12
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_vendor_decisions",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_stage_evidence",
+      "rowCount": 18
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "services",
+      "rowCount": 11
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "users",
+      "rowCount": 20
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_favorites",
+      "rowCount": 1
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_invites",
+      "rowCount": 5
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_manager_notifications",
+      "rowCount": 1
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_memberships",
+      "rowCount": 9
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_operational_outcomes",
+      "rowCount": 16
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_storage_alerts",
+      "rowCount": 0
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_trust_score_snapshots",
+      "rowCount": 13
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendors",
+      "rowCount": 6
+    }
+  ],
+  "applicationRowCountsSha256": "1bcdb4cca4105718d138af8437ce5db597af7a6efdd77fba4474f8aba94d3352",
+  "materialTableFingerprints": [
+    {
+      "schemaName": "dbo",
+      "tableName": "admin_audit_logs",
+      "rowCount": 589,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "12f6b9ccbb34278f2744d7557b1ed14b2a9740bf37d4d71c874b1379cf75cd42",
+      "materialEvidenceSha256": "95163ff865f02c7bfccf18465b5fd5996bf71fcf7fa8fc202897bb4c0b0c71b3"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "admin_notifications",
+      "rowCount": 12,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "3a134ecfa5cb042cc471af075026c3d574ec7f8b5be08c2fe4e866adf8d3dbc0",
+      "materialEvidenceSha256": "99a6768c58faeb83af04f6f5a4e8255ed00e30224a9e934c7511437e95564a70"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_credentials",
+      "rowCount": 12,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "b201ecbdfb03acebbd2ed1dbc7e0c780e1782c6370d45e4af7775ff9bdd6cd59",
+      "materialEvidenceSha256": "1cec8b41c8207224fadfec61d30a33f1cc4e57bb5d65ac5fa1566c59dc06e357"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_mfa_challenges",
+      "rowCount": 109,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "3734e220d19b52ac259442f07b919b1991c5be741eb463fd7544f2e78d07ff05",
+      "materialEvidenceSha256": "5c5bdd906e6bf30336711155b9d7e3ee2905327733710be9b7f443788817644f"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_passkey_challenges",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_passkeys",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "auth_trusted_devices",
+      "rowCount": 79,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "c22dd15164e52f27697d7753833c2e0cc60e5f3de1dee0ca4647ff20912ad53f",
+      "materialEvidenceSha256": "a48ea0a6b4ad4b9f5360eb6e272a99ac5af439192e43b6376058b90bac7f5401"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "booking_notification_attempts",
+      "rowCount": 25,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "669fc3aa08142cd01beb8f84bfcc8d6bd593a859a675c4e8d59404077992339b",
+      "materialEvidenceSha256": "3c7c1a27a3ad2f8d7daf650a41484d34670c81292cafd2870dde0bcd0fabaa3e"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "booking_notifications",
+      "rowCount": 29,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "e9adb39282d0b5c75839873b62a979df4e5efa190880f3267e84beff52fb3392",
+      "materialEvidenceSha256": "23c7d5405bb6b830ba147976e23c361d8860d352dee8e5775dcd9b164139ed66"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "booking_service_issues",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "bookings",
+      "rowCount": 18,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37ab144f55ec3ece4acd8892745083e58d24a8b3d9cd9b39ca7442e12804c629",
+      "materialEvidenceSha256": "f725b8386f241b5b857380a632813a40fc8d57547690905bf9159e49dcd0d351"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_content_versions",
+      "rowCount": 4,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "cf54a5c8a97514635394da6165fd26604c3359135ba8eea2184e352d0ba2ccf4",
+      "materialEvidenceSha256": "fb4e4bd19e5c5135357369151b672eb38f3f20169668d1098864a95b92fc1854"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_decision_evidence",
+      "rowCount": 6,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "6d11fa8d3cf0052ab59272d83cc7b7049a59d458571f00fee927e3ac1dd94fff",
+      "materialEvidenceSha256": "44102408bef7cf2e2357702ac64281dee1bfbdb2ce2e5e401fac7d23bd1da51f"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_decision_sessions",
+      "rowCount": 6,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "4620be21f9bfadfe723b27b8b560323c74a802d066b54562d61be9c0d0582134",
+      "materialEvidenceSha256": "b129c72fb473e8eae762486a1d490377905ad9db9b5452fd961e882440594db6"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_events",
+      "rowCount": 41,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "800be63ec9ec58e0def1c95e4e6e8c5b25ffcfcc101e783b357f5b7ed6b44ee3",
+      "materialEvidenceSha256": "b0aeaf73ef64f9799317b08c8d7fc160ef7d28151b9930fcef8e1c9287625d44"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_records",
+      "rowCount": 12,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "2e4ccdaf3417b914dd7e9899afb09313d5e6d46032332838bd19b7e2c7e09d17",
+      "materialEvidenceSha256": "6ffb7aa409394c2828d6332e57c966b0f06812237e7825dadfc4d5675cbec133"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_request_links",
+      "rowCount": 9,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "42e9a27d6af4571ba4c59fb80bc9b7a02ed89e7002b11f5837ae18df9ece1cf0",
+      "materialEvidenceSha256": "4245ed035a2ae501f5caa5cd3fb68c66715cc7d4faa920a3ede4b7a3b08ddaa7"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "consent_verification_challenges",
+      "rowCount": 7,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "4aba16f3846ef1dd9764c7c0107115bcce8c5ece41bbafbc81562568607318ff",
+      "materialEvidenceSha256": "88e84d3fe55d9adcb68cd7aef11f618e007a74254100debc54b2874c5864aa70"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "content_report_case_events",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "content_report_requests",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "content_reports",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "customer_registration_evidence",
+      "rowCount": 4,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "5ee50ad1151589494650fcde57756a7012a39149435f593e3c4cb790341d6135",
+      "materialEvidenceSha256": "fc800238f84154ea7371e5794a3497e89312663f9922b00d3b988b5d190e456d"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "customer_service_record_organization_events",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "device_assignments",
+      "rowCount": 3,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "ea4bec5af02570afc5bb00d9c4eada2dc8b4d9b0d45065e796bd89d2e7ac8ad1",
+      "materialEvidenceSha256": "58711821848dd8c6ed3b0dfdae4e8ae101d410abac43ccab8efe45a6e9e3adc8"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "device_events",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "device_pairing_codes",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "devices",
+      "rowCount": 3,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "0daec46551d8491787c5142e500c33d88a32c5be0c53bfa2203f92302fc6d37d",
+      "materialEvidenceSha256": "ee3bb613d618b6d5e0dc520841a51efb2a4ae005fa7d35b52c1749463182d255"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "email_verification_tokens",
+      "rowCount": 11,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "8475b7dcda4296112ecc28f7f94be98ab378b5be90785e42375addf9ed9d0c7c",
+      "materialEvidenceSha256": "21c71516af4626c017f99d3dc73586d66f37baaf39c9fa5d3de857400e2e3755"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_customer_rating_evidence",
+      "rowCount": 1,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "65d0996fcef69ff309681c7d21ea85382a865ecad9f990b3ecf75754f2d51554",
+      "materialEvidenceSha256": "0e86ae77c878f0390bc3079aeb009343186b3ba53257b871a0ed9df07c66a4ac"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_public_media_consent_decisions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_public_media_notifications",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_recording_certifications",
+      "rowCount": 7,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "a7e26a8f607b34ca64a31d17f46bd48e84fd1f6230035db52f11e78ba6caff7c",
+      "materialEvidenceSha256": "2f63a8da58ccd8cde74d8c804bb9a76c73d57fce0ec7bac06abc69e427a9304d"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employee_recording_safety_evidence",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "employees",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "favorites",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "legacy_public_restriction_evidence",
+      "rowCount": 3,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "ff648e1320b4d31ec1fa690d6f1d80dcaf8dc7d828a8233904777124a8125765",
+      "materialEvidenceSha256": "c88d7107b0804fe4c868ee04ca9b6f419b0c35cfa44fc586bd87d74e3f7c3864"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_assets",
+      "rowCount": 50,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "dbf7410151bbed432f1c549c07ae6e99745997ba335578eeb9460bdfbfd440fd",
+      "materialEvidenceSha256": "5dc106187fd2797ae1c631cacdcb4e21ec9992765fdc0f445024136f59ac073a"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_deletion_attempts",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_deletion_jobs",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_deletion_requests",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_evidence_holds",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_appeals",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_audit_events",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_cases",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_lifecycle_restrictions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_retention_schedules",
+      "rowCount": 12,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "18dbf2725fade272d5bb9b535354e95129a51729114d7dd2c88d239fc73630b0",
+      "materialEvidenceSha256": "f756c34c3e2c3f39b545dc7c2498da4f3d5f13722eaa7f945960198d86a2d52c"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_sessions",
+      "rowCount": 68,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "b8caf8cf76555c654c46f48b73e23fb4bedf1942b11e6c37788e071f4524f09d",
+      "materialEvidenceSha256": "180df7ed3a66df6576a821dead58b9818529c8ce9f2ffaa023431ad57be8247f"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_upload_attempts",
+      "rowCount": 18,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "303845d3cfc73b43dce0860ed1d5e4ad4866cc4aec9a880347236072ec4c7f42",
+      "materialEvidenceSha256": "d554dae0fd97d5aaa7095bb0ed5b9dc4282e008d80331b651b9c2a8644e295e9"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "media_withdrawal_evidence",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "platform_role_grants",
+      "rowCount": 1,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "91b8a79aa84da52a67acd138e08fc8b05cc3fbe0337eef07009c992c506bef48",
+      "materialEvidenceSha256": "11bcc771c1ea709239547c1ac23ca37c871e6bfa75d000ecdb56c4c1a1d3a728"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "policy_document_versions",
+      "rowCount": 3,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "c58949d7c8afaba8a536bf48d8d60ea209311d8999619927e3cd9485c006e733",
+      "materialEvidenceSha256": "e7f44c3e914ab05cb0853f044bfa903aa1b26bffcbead064d689600370bf52d6"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "private_proof_access_events",
+      "rowCount": 48,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "5f6b8ffb8b5798cdf8b86171e72c973704d5202455d427df13abe00415e2165d",
+      "materialEvidenceSha256": "9608ef4c72df0ed7e8c2ef8f6abb694d9e1ecba669b77ba9f5ba98da210edaaf"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "private_proof_access_grants",
+      "rowCount": 3,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "110579b15171e1418b86f1365863c65afba048b2082f7db38882ad25df2e4a0d",
+      "materialEvidenceSha256": "50c2b721a413b9f049b4bacebf26f09d1eb956f28ed59be1b4ec04dd6f233406"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "promotion_campaigns",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "promotion_packages",
+      "rowCount": 3,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "2fc8ac840bb4f5ad0ed5844c8f3abd3dd63f8f9744dc3ee84ffecaa93ed6133a",
+      "materialEvidenceSha256": "ba710eb5515e3d2ffa6b97d3bd791cbd502f037b9554193164f7acf32ffa56c5"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "public_service_video_eligibility",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_authority_requirements",
+      "rowCount": 18,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "8cb94887953b869676669045853ea8bfd991f39d0a975776159f62390615ac63",
+      "materialEvidenceSha256": "e88a026bd642f1f64339ec024f74dfce0144f7a573c4cbada714609f7e4a69f4"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_gate_decision_evidence",
+      "rowCount": 18,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "d9f3c8d9e529c9617b8cf4e6033dae0870962ab39b4ea25473995f8a16595fd9",
+      "materialEvidenceSha256": "e90a79a34b649ab9f714054629a5d005e388b1366d2424c103b2b086af342441"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_gate_metrics",
+      "rowCount": 663,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "d4faefa7dbc6d5da191983089004c734ad5e6bae3ad2566fd7e342c724aa8f00",
+      "materialEvidenceSha256": "3d04adee70567a1b24ea42ef201766ba2e61c895744126569e7c2a83d76c8449"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_location_attempts",
+      "rowCount": 31,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "455989154ca42d2909126f11965fbcacbcbca5fada76233be18ba12cea1ece24",
+      "materialEvidenceSha256": "afd9c2e8c3ec8225ab0902c8be6c6d2edf7a6b71a3e8d1f4ad128a272ce1f32e"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_location_exceptions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "recording_scope_assessments",
+      "rowCount": 7,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "c719534cfaa591b1d0068ff7076831f54642ebc255de1fddafaf26fe93a2b92d",
+      "materialEvidenceSha256": "a17810cd2e64e778856e24af3b693be91b5fc693a47f93dc91e8265665380e95"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "review_prompt_events",
+      "rowCount": 1,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "9ac770b0eba781d2e1f901e2f247431dd53850e2bdbeff1261bec3d2fc16d290",
+      "materialEvidenceSha256": "5b9e218ac731803aea80468601b85d637acf1ac14ab3b8188660f298e556c8f9"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "review_sentiments",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "review_windows",
+      "rowCount": 2,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "08905b4401002d26cad30799e6845cb16d5206aa5c0d5bcb31af56fc40aaaaf6",
+      "materialEvidenceSha256": "1aaa27a19fd7dfe1cea714eebeca0b73d07ed6ecc3e6520e266d69b2deac88e8"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "reviews",
+      "rowCount": 2,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "325cc90f671b4bbdedc9bd541e83c65c22c03e81e1022103784d8f9eec6a470c",
+      "materialEvidenceSha256": "4ceb2d331129c86e38ddc5523ccbdec806af47d6b36da1d9ed74333e7dc6ce6a"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_admin_audit_decision_evidence",
+      "rowCount": 2,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "24ab6fce93e502a6fbdef70b5998f50e1931ec116b93794e6862117ae188054e",
+      "materialEvidenceSha256": "8000323d834a4e0a5f5fd067de9a2404f676dd023b70777f5a12ea2c351cbc2b"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_manager_decision_evidence",
+      "rowCount": 5,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "678aa489f44fc93f2b2b76264cf2fea26f32fff44bec92f1cdc970a0be19baa3",
+      "materialEvidenceSha256": "3b520339dfca839077887fef0b2d0e4ca3b54ec30254838aaadc7e959e330f18"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_package_evidence",
+      "rowCount": 6,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "c5847d740c7e7409a012ac95e19b59a3adf6f2391891c786215cdc194384bd95",
+      "materialEvidenceSha256": "022ad9dc950428c937887d5ea8279861b25efaba261e457602cfbe429da9ec4c"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_package_visibility_decisions",
+      "rowCount": 5,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "10814da6bc58b7ba8870affc4f3e477e374ad32658f9d871534b427d6127e68c",
+      "materialEvidenceSha256": "8a9c035fa9765f29366a01ba489f3a2417b094d3e003914c1a0e85b44e15c778"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_admin_decisions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_audit_events",
+      "rowCount": 5,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "a8b34fa32c90bd30a57dc8a833869e973c7f17571c5ef1d0524bf9844b800fc3",
+      "materialEvidenceSha256": "c2445db57414c31b3116979ba83db5f01c8b0870aabe1d43cdc136625528ae9b"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_customer_decisions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_participant_decisions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_proposals",
+      "rowCount": 4,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "5d62be8c332d56d9941671f18070af504614c011906645f3332253e4d7026e90",
+      "materialEvidenceSha256": "69059c5e1905d927140ac4f2906320a19ce83a920db02623eb7bf15c98ce63c1"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_stages",
+      "rowCount": 12,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "24005f5ac7ba19fee6ce9391974a675f75c1bc94fe58f2ef708ca0489c94a019",
+      "materialEvidenceSha256": "ff768688f5e8713ea59c7065ab905ca45e164a97e945b2e6e9e72767174849fc"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_publication_vendor_decisions",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "service_video_stage_evidence",
+      "rowCount": 18,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "67f599c10efcbc37d7fa0da378872e6fdbefe160ca6346e1fdf67b59f07b2eb4",
+      "materialEvidenceSha256": "37885896799e95b32f900bf6de22eb7cb2666f607d76ab691ffd8d7f0b0f077d"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "services",
+      "rowCount": 11,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "1386e01956e2d971801c4f9c9905b5f7f06737d5a30942fe170d75090eb6107d",
+      "materialEvidenceSha256": "516f31ccb1fc3e83aae2c0d66f23c04d55c1d88d6f8fc6abe4cc8e9c306d277a"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "users",
+      "rowCount": 20,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "d3f2204853957e7444c6fd6c584b532fd5f615c7d05894e4a1ceef6127a1b672",
+      "materialEvidenceSha256": "fb0c848c250301d56c8c961da404028f72357ddb6aa93acca0fbfc745d4d30b0"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_favorites",
+      "rowCount": 1,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "6cae15ab31310dedd8e72e9b17d26d9ecd2b007fe1d6b189bcd42bdf4d5681ae",
+      "materialEvidenceSha256": "8b64dcbd47d7961dc4eabde71e141b5b8141e1f402a99ca36ab3552cc579454b"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_invites",
+      "rowCount": 5,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "2e1c191a954bddaf8110a0581cdde82dba550ae9a27cd6def8135186daf508de",
+      "materialEvidenceSha256": "4753ab99d0bcaae6b499747d33e944188ba699b01b15e9071682c58007955788"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_manager_notifications",
+      "rowCount": 1,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "dd0660a89b008474e17e2ed732ca85427b8d031cad3fa0eb165561a792668d19",
+      "materialEvidenceSha256": "8e17327098348537424a8783d80423fe3c0f9a73887ca268be157cf76bee7b8c"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_memberships",
+      "rowCount": 9,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "068eaaaa36d34c6b255dcc1cd3957a1269da86494777b588e56685d3a7feb992",
+      "materialEvidenceSha256": "2c00f6f8be85db432ea2c1564fa9bc72d20f0c78f0006f4632225ef953914411"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_operational_outcomes",
+      "rowCount": 16,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "0d49ececd56813e91841b2f107181dd1b5c6652682e77626cf7aa227b0a9654d",
+      "materialEvidenceSha256": "0fb8cfd00ed38af7df66c41d997fc20cb588473befbcad96a2aac53fae237489"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_storage_alerts",
+      "rowCount": 0,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "materialEvidenceSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendor_trust_score_snapshots",
+      "rowCount": 13,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "4f2070c9a526bbb9528b4839f4900a23a4b927386eb620896b7a805fa253a7ef",
+      "materialEvidenceSha256": "bba9c675c7aea792d0408e392245d4a106a4c82aa86aa009f09e361e72a6ee70"
+    },
+    {
+      "schemaName": "dbo",
+      "tableName": "vendors",
+      "rowCount": 6,
+      "primaryKeyColumns": [
+        "id"
+      ],
+      "primaryKeySetSha256": "582d12c710a37e96d7b48f629f47596d28f4451ccf1a685e73aa8dafde7d46ac",
+      "materialEvidenceSha256": "9011e66189b0fcf6bf1e5ee32fbb3be3198055d615042067afbd2d781cda0dc6"
+    }
+  ],
+  "materialTableFingerprintsSha256": "725f5459522014f7e78bb5c8eb2e70da1375d00d58ea837283a24d5b894fd77f",
+  "protectedEvidenceSha256": "c219e956e35445a383242ce48725449a07096bdede1f9cc5b03d23d73c2df4ef",
+  "protectedStatus": {
+    "verdict": "PASS",
+    "package": "PRIVATE_APPROVED",
+    "customerSharePublicly": "PRESERVED",
+    "bradleyConsent": "NONE"
+  },
+  "preflight": {
+    "assignment": [
+      {
+        "activeRows": "1",
+        "distinctActiveDeviceIds": 1
+      }
+    ],
+    "assignmentDuplicates": [],
+    "reviewReasons": [
+      {
+        "nullCount": 2,
+        "nonNullCount": 0,
+        "maxCharacterLength": null,
+        "countOver1000": 0
+      }
+    ]
+  }
+}

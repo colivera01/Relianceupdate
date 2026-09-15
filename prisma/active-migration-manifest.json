@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 2,
+  "sourceCheckpoint": "9332627314ea6f8786625cc0891f58b9582736e5",
+  "currentCanonicalDatabase": "reliance-beta-recovery-a8ae548",
+  "entries": [
+    {
+      "name": "00000000000000_reliance_forward_baseline_20260914_v2",
+      "sha256": "a3f0fe48867caefdc3103dc6d2e9c95a6f0f8be299b684e09fd04d6b1f81c8f4",
+      "bytes": 156134
+    },
+    {
+      "name": "20260914030000_enforce_one_active_device_assignment_v2",
+      "sha256": "8d87c0c67c87198c713ee6ef63b86c1662a51119fc73728ca8008e69e7957488",
+      "bytes": 742
+    }
+  ],
+  "aggregateSha256": "6183a82c2b2be05f9b79c6515099862a0bbb49c907b6d714a997e9fe6aa1eabd",
+  "legacyArchiveManifest": "docs/database/migration-history-legacy/2026-09-14-v2/archive-manifest.json",
+  "legacyArchiveManifestSha256": "1ad98d92b011bfa527125106b680a4dd2bdabd0f887184416bad98cb2814891d"
+}

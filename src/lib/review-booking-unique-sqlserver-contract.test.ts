@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = path.join(
   process.cwd(),
-  "prisma/migrations/20260907210000_restore_reviews_booking_unique_not_null/migration.sql"
+  "docs/database/migration-history-legacy/2026-09-14-v2/20260907210000_restore_reviews_booking_unique_not_null/migration.sql"
 );
 const migration = fs.readFileSync(migrationPath, "utf8");
 

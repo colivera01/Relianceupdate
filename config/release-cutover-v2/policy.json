@@ -1,0 +1,18 @@
+{
+  "policyVersion": 2,
+  "acceptanceTimeoutMinutes": 30,
+  "packageSafetyBufferMinutes": 60,
+  "runtimeActivation": "EXTERNAL_RUN_FROM_PACKAGE_POINTER",
+  "runtimeRollback": "VERIFY_THEN_NO_OP_OR_POINTER_RESTORE",
+  "durableFreeze": {
+    "states": ["OPEN", "FROZEN"],
+    "leaseSeconds": 60,
+    "lossOfLeaseMeansOpen": false,
+    "explicitReceiptRequiredToOpen": true,
+    "liveStorageAccount": "streliancebetawcus",
+    "liveContainer": "deployments",
+    "controlBlob": "cutover-control/environment-v2.json"
+  },
+  "activeDatabase": "reliance-beta-recovery-a8ae548",
+  "incidentDatabase": "reliance-beta-db"
+}

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const migrationPath = path.join(
   process.cwd(),
-  'prisma/migrations/20260906183000_fix_review_window_nullable_unique/migration.sql',
+  'docs/database/migration-history-legacy/2026-09-14-v2/20260906183000_fix_review_window_nullable_unique/migration.sql',
 );
 
 describe('Review Window SQL Server constraint contract', () => {
