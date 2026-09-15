@@ -12,6 +12,7 @@ const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
 const { compareParity, REQUIRED_PROPERTIES } = require('./parity_manifest.cjs');
 const { scanFiles, verifyV2ExecutionPaths } = require('./prohibited_path_guard.cjs');
 const { CutoverV2Controller } = require('./cutover_v2_controller.cjs');
+const { AppQuiescence } = require('./app_quiescence.cjs');
 
 const results = [];
 async function test(name, operation) {
@@ -286,6 +287,28 @@ async function main() {
     });
     clearTimeout(timer);
     assert.equal(result.status, 0);
+    assert.equal(heartbeatObserved, true);
+  });
+  await test('25 Azure quiescence operations keep lease heartbeat event loop available', async () => {
+    let heartbeatObserved = false;
+    const timer = setTimeout(() => { heartbeatObserved = true; }, 20);
+    const runner = async (args) => {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      const command = args.join(' ');
+      if (command.startsWith('webapp show ')) return JSON.stringify({ state: 'Running', id: '/app' });
+      if (command.startsWith('webapp deployment source show ')) return JSON.stringify({ repoUrl: null, isGitHubAction: false });
+      if (command.startsWith('webapp log deployment list ')) return JSON.stringify([]);
+      if (command.startsWith('webapp config access-restriction show ')) return JSON.stringify({ ipSecurityRestrictions: [] });
+      if (command.startsWith('webapp config appsettings list ')) return JSON.stringify([]);
+      throw new Error(`Unexpected Azure fixture command: ${command}`);
+    };
+    const quiescence = new AppQuiescence({
+      subscription: 'test', resourceGroup: 'test', appService: 'test', snapshotFile: 'unused',
+      operatorCidr: '127.0.0.1/32', environment: 'disposable', runner,
+    });
+    const result = await quiescence.dryRun();
+    clearTimeout(timer);
+    assert.equal(result.verdict, 'PASS');
     assert.equal(heartbeatObserved, true);
   });
 
