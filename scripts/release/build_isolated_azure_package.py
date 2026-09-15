@@ -32,7 +32,14 @@ def main():
     env = {key: value for key, value in os.environ.items() if key.upper() in {
         'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'COMSPEC', 'PATHEXT', 'PROCESSOR_ARCHITECTURE',
     }}
-    env.update(NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL='Relianceorg.support@gmail.com', NEXT_TELEMETRY_DISABLED='1', NODE_OPTIONS='--max-old-space-size=6144 --dns-result-order=ipv4first', DATABASE_URL='sqlserver://localhost:1433;database=release_build;user=unused;password=unused;trustServerCertificate=true')
+    env.update(
+        NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL='Relianceorg.support@gmail.com',
+        NEXT_TELEMETRY_DISABLED='1',
+        NODE_OPTIONS='--max-old-space-size=6144 --dns-result-order=ipv4first',
+        DATABASE_URL='sqlserver://localhost:1433;database=release_build;user=unused;password=unused;trustServerCertificate=true',
+        RELIANCE_BUILD_SOURCE_COMMIT=args.commit,
+        RELIANCE_BUILD_PACKAGE_NAME=args.output.name,
+    )
     run(['git', '-c', 'core.autocrlf=false', 'clone', '--no-hardlinks', '--no-checkout', source, build], source, env)
     run(['git', '-c', 'core.autocrlf=false', 'checkout', '--detach', args.commit], build, env)
     npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
