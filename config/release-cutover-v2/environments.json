@@ -14,7 +14,7 @@
     "resourceGroup": "rg-reliance-checkpoint3-closure-20260911",
     "appService": "app-rel-cp3-0911a7",
     "sqlServer": "sql-rel-cp3-0911a7",
-    "database": "reliance-checkpoint3-e0a2-happy-restore4",
+    "database": "reliance-checkpoint3-a8-timeout-restore",
     "storageAccount": "strelcp30911a7",
     "storageContainer": "runtime",
     "operatorFirewallRequired": true
