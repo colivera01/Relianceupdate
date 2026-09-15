@@ -13,8 +13,10 @@ const { compareParity, REQUIRED_PROPERTIES } = require('./parity_manifest.cjs');
 const { scanFiles, verifyV2ExecutionPaths } = require('./prohibited_path_guard.cjs');
 const { CutoverV2Controller } = require('./cutover_v2_controller.cjs');
 const { AppQuiescence } = require('./app_quiescence.cjs');
+const { databaseUrlFor, validateAuthorization } = require('./orchestrator.cjs');
 
 const results = [];
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 async function test(name, operation) {
   try {
     await operation();
@@ -123,8 +125,7 @@ function controllerHarness(options = {}) {
     durableFreeze,
     lockHandoff,
     app: {
-      freeze: async () => ({ verdict: 'PASS' }), enableAcceptanceReadOnly: async () => {},
-      disableAcceptanceReadOnly: async () => {}, restrictedStart: async () => {}, restoreNormalAccess: async () => {},
+      freeze: async () => ({ verdict: 'PASS' }), restrictedRestart: async () => {}, restore: async () => {},
     },
     database: {
       captureRecoveryPoint: async () => '2026-09-14T00:00:00Z',
@@ -263,6 +264,12 @@ async function main() {
       expectedSize: bytes.length, requiredThrough,
       fetchImpl: async () => ({ status: 200, arrayBuffer: async () => bytes }) }), /expires before/);
   });
+  await test('21b package reference requires a full 24-hour rollback safety buffer', async () => {
+    const narrow = reference.replace('2030-01-01T00%3A00%3A00Z', '2029-12-31T23%3A00%3A00Z');
+    await assert.rejects(verifyRemotePackage({ reference: narrow, expectedSha256: packageHash,
+      expectedSize: bytes.length, requiredThrough,
+      fetchImpl: async () => ({ status: 200, arrayBuffer: async () => bytes }) }), /expires before/);
+  });
   await test('22 forward-only Git recovery contract', async () => {
     const harness = controllerHarness({ acceptance: 'REJECT' });
     const result = await harness.controller.execute(); assert.equal(result.verdict, 'RECOVERED');
@@ -310,6 +317,87 @@ async function main() {
     clearTimeout(timer);
     assert.equal(result.verdict, 'PASS');
     assert.equal(heartbeatObserved, true);
+  });
+  await test('26 abandoned controller can resume exact frozen operation without reopening', async () => {
+    const store = new MemoryFreezeStore();
+    const first = new DurableFreezeController({ store, owner: 'first' });
+    await first.freeze({ operationId: 'op', targetResourceId: '/environment' });
+    await first.abandonController();
+    assert.equal((await first.inspect()).verdict, 'FAIL_CLOSED');
+    const resumed = new DurableFreezeController({ store, owner: 'recovery' });
+    const result = await resumed.resumeFrozen({
+      operationId: 'op',
+      targetResourceId: '/environment',
+      recoveryAuthorizationSha256: '9'.repeat(64),
+    });
+    assert.equal(result.verdict, 'FROZEN_RESUMED');
+    assert.equal((await resumed.inspect()).verdict, 'FAIL_CLOSED');
+    await resumed.reopen({ acceptanceReceiptSha256: '8'.repeat(64) });
+    assert.equal((await resumed.inspect()).verdict, 'OPEN');
+  });
+  await test('27 idempotent rollback freeze preserves original quiescence snapshot', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-quiescence-'));
+    const snapshot = path.join(temporary, 'snapshot.json');
+    fs.writeFileSync(snapshot, JSON.stringify({ snapshotVersion: 1, appState: 'Running' }));
+    const calls = [];
+    const runner = async (args) => {
+      calls.push(args.join(' '));
+      const command = args.join(' ');
+      if (command.startsWith('webapp show ')) return JSON.stringify({ state: 'Stopped', id: '/app' });
+      if (command.startsWith('webapp deployment source show ')) return JSON.stringify({ repoUrl: null, isGitHubAction: false });
+      if (command.startsWith('webapp log deployment list ')) return JSON.stringify([]);
+      if (command.startsWith('webapp config access-restriction show ')) return JSON.stringify({ ipSecurityRestrictions: [] });
+      if (command.startsWith('webapp config appsettings list ')) return JSON.stringify([]);
+      throw new Error(`Unexpected Azure fixture command: ${command}`);
+    };
+    try {
+      process.env.RELIANCE_REHEARSAL_AUTHORIZATION = 'DISPOSABLE_ONLY';
+      const quiescence = new AppQuiescence({ subscription: 'test', resourceGroup: 'test', appService: 'test',
+        snapshotFile: snapshot, operatorCidr: '127.0.0.1/32', environment: 'disposable', runner });
+      const result = await quiescence.freeze();
+      assert.equal(result.alreadyQuiesced, true);
+      assert.equal(JSON.parse(fs.readFileSync(snapshot, 'utf8')).appState, 'Running');
+      assert(!calls.some((value) => value.startsWith('webapp stop ')));
+    } finally {
+      delete process.env.RELIANCE_REHEARSAL_AUTHORIZATION;
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
+  });
+  await test('28 structured recovery URL changes only the database option', async () => {
+    const original = 'sqlserver://server:1433;database=original;user=test;password=secret;encrypt=true';
+    const recovered = databaseUrlFor(original, 'recovery-test');
+    assert.match(recovered, /;database=recovery-test;/);
+    assert.match(recovered, /;user=test;password=secret;encrypt=true$/);
+  });
+  await test('29 live authorization must bind the exact reviewed candidate controls', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-authorization-'));
+    const file = path.join(temporary, 'authorization.json');
+    const binding = {
+      candidateSha: 'a'.repeat(40), candidateArtifactSha256: 'b'.repeat(64), migrationArtifactSha256: 'c'.repeat(64),
+      releaseReceiptSha256: 'd'.repeat(64), appServiceResourceId: '/subscriptions/app',
+      sqlServerResourceId: '/subscriptions/sql', databaseResourceId: '/subscriptions/db',
+      expectedRemoteHead: 'e'.repeat(40), preStructuralSha256: 'f'.repeat(64),
+      preLedgerSha256: '1'.repeat(64), preProtectedDataSha256: '2'.repeat(64),
+      candidateRuntime: { requiredThrough: '2030-01-01T00:00:00.000Z' },
+    };
+    const authorization = { authorizationVersion: 2, approval: 'PRODUCT_OWNER_AUTHORIZED_CUTOVER_V2',
+      environment: 'live', bindingSha256: '3'.repeat(64), expiresAt: '2030-01-01T00:00:00.000Z',
+      nonce: '12345678-1234-1234', operator: 'Product Owner', packageValidThrough: binding.candidateRuntime.requiredThrough };
+    for (const field of ['candidateSha', 'candidateArtifactSha256', 'migrationArtifactSha256', 'releaseReceiptSha256',
+      'appServiceResourceId', 'sqlServerResourceId', 'databaseResourceId', 'expectedRemoteHead',
+      'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256']) authorization[field] = binding[field];
+    try {
+      fs.writeFileSync(file, JSON.stringify(authorization));
+      process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256 = sha256(fs.readFileSync(file));
+      assert.equal(validateAuthorization(file, binding, authorization.bindingSha256).verdict, 'PASS');
+      authorization.preLedgerSha256 = '4'.repeat(64);
+      fs.writeFileSync(file, JSON.stringify(authorization));
+      process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256 = sha256(fs.readFileSync(file));
+      assert.throws(() => validateAuthorization(file, binding, authorization.bindingSha256), /preLedgerSha256 differs/);
+    } finally {
+      delete process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256;
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

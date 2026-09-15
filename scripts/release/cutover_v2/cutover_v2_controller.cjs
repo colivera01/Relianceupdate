@@ -64,13 +64,13 @@ class CutoverV2Controller {
   async execute() {
     try {
       await this.preflight();
-      this.record('ACTOR_FREEZE', await this.dependencies.app.freeze());
       const durable = await this.dependencies.durableFreeze.freeze({
         operationId: this.context.operationId,
         targetResourceId: this.context.targetResourceId,
       });
       this.state.durableFrozen = true;
       this.record('DURABLE_ENVIRONMENT_FREEZE', durable);
+      this.record('ACTOR_FREEZE', await this.dependencies.app.freeze());
       this.record('ORIGINAL_DATABASE_LOCK', await this.dependencies.lockHandoff.acquireForMutation());
       this.state.recoveryPoint = await this.dependencies.database.captureRecoveryPoint();
       this.state.gitPromoted = true;
@@ -81,6 +81,7 @@ class CutoverV2Controller {
       this.record('DATABASE_MUTATION', migration);
 
       this.state.runtimeActivationStarted = true;
+      await this.dependencies.app.restrictedRestart();
       const activation = await activateRuntime({
         runtime: this.context.candidateRuntime,
         ...this.dependencies.runtime,
@@ -89,8 +90,6 @@ class CutoverV2Controller {
       this.record('RUNTIME_POINTER_SWITCH', activation);
       this.record('TECHNICAL_VERIFICATION', await this.dependencies.verifyTechnical(this.context));
 
-      await this.dependencies.database.releaseOriginalMutationLock?.();
-      await this.dependencies.app.enableAcceptanceReadOnly();
       this.record('WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE', { timeoutMinutes: 30 });
       const acceptance = await this.dependencies.acceptance.wait(this.context);
       if (acceptance.action !== 'ACCEPT') return this.rollback(acceptance.action);
@@ -98,8 +97,8 @@ class CutoverV2Controller {
       const receipt = await this.dependencies.acceptance.createReceipt(acceptance, this.context);
       this.record('CLEANUP', await this.dependencies.cleanup({ whileFrozen: true }));
       await this.dependencies.durableFreeze.reopen({ acceptanceReceiptSha256: receipt.sha256 });
-      await this.dependencies.app.disableAcceptanceReadOnly();
-      await this.dependencies.app.restoreNormalAccess();
+      await this.dependencies.lockHandoff.releaseAfterExplicitReopen?.();
+      await this.dependencies.app.restore();
       this.record('ACCEPTED', { receiptSha256: receipt.sha256 });
       return { verdict: 'ACCEPTED', state: this.state, events: this.events, receipt };
     } catch (error) {
@@ -128,8 +127,7 @@ class CutoverV2Controller {
       ...this.dependencies.runtime,
     });
     if (this.state.gitPromoted) await this.dependencies.git.forwardOnlyRecovery();
-    await this.dependencies.app.enableAcceptanceReadOnly();
-    await this.dependencies.app.restrictedStart();
+    await this.dependencies.app.restrictedRestart();
     await this.dependencies.verifyRecovered(this.context);
     const receipt = await this.dependencies.createRecoveryReceipt({
       reason,
@@ -139,8 +137,8 @@ class CutoverV2Controller {
     });
     this.record('CLEANUP', await this.dependencies.cleanup({ whileFrozen: true }));
     await this.dependencies.durableFreeze.reopen({ acceptanceReceiptSha256: receipt.sha256 });
-    await this.dependencies.app.disableAcceptanceReadOnly();
-    await this.dependencies.app.restoreNormalAccess();
+    await this.dependencies.lockHandoff.releaseAfterExplicitReopen?.();
+    await this.dependencies.app.restore();
     this.record('RECOVERED', { databaseRecovery, runtimeRecovery, receiptSha256: receipt.sha256 });
     return { verdict: 'RECOVERED', reason, state: this.state, events: this.events, receipt };
   }

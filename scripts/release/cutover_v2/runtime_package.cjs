@@ -11,6 +11,7 @@ const APPROVED_PACKAGE_SETTINGS = Object.freeze([
   'DEPLOYED_PACKAGE',
   'WEBSITE_RUN_FROM_PACKAGE',
 ]);
+const MIN_PACKAGE_SAFETY_BUFFER_MS = 24 * 60 * 60 * 1000;
 
 function assertSha256(value, label) {
   assert.match(value || '', /^[a-f0-9]{64}$/i, `${label} must be a SHA-256 value`);
@@ -49,7 +50,8 @@ async function verifyRemotePackage({
   const requiredUntil = new Date(requiredThrough);
   assert(!Number.isNaN(requiredUntil.getTime()), 'Required package-availability timestamp is invalid');
   assert(identity.expiresAt, 'A bounded signed package reference must expose its expiry');
-  assert(new Date(identity.expiresAt).getTime() >= requiredUntil.getTime(),
+  const safetyBufferMs = new Date(identity.expiresAt).getTime() - requiredUntil.getTime();
+  assert(safetyBufferMs >= MIN_PACKAGE_SAFETY_BUFFER_MS,
     'Package reference expires before the required cutover, acceptance, rollback, and safety window');
   const bytes = await responseBytes(await fetchImpl(reference, { method: 'GET', cache: 'no-store' }));
   const observedSha256 = crypto.createHash('sha256').update(bytes).digest('hex');
@@ -63,6 +65,7 @@ async function verifyRemotePackage({
     size: observedSize,
     sha256: observedSha256,
     validThrough: requiredUntil.toISOString(),
+    safetyBufferHours: safetyBufferMs / (60 * 60 * 1000),
   };
 }
 
@@ -212,6 +215,7 @@ async function rollbackRuntime({
 
 module.exports = {
   APPROVED_PACKAGE_SETTINGS,
+  MIN_PACKAGE_SAFETY_BUFFER_MS,
   activateRuntime,
   assertSha256,
   invokeStructuredUpdater,

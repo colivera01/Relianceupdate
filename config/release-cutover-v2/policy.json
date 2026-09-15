@@ -1,7 +1,7 @@
 {
   "policyVersion": 2,
   "acceptanceTimeoutMinutes": 30,
-  "packageSafetyBufferMinutes": 60,
+  "packageSafetyBufferMinutes": 1440,
   "runtimeActivation": "EXTERNAL_RUN_FROM_PACKAGE_POINTER",
   "runtimeRollback": "VERIFY_THEN_NO_OP_OR_POINTER_RESTORE",
   "durableFreeze": {

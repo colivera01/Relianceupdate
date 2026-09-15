@@ -69,7 +69,22 @@ class AppQuiescence {
 
   async freeze() {
     this.validateExecution();
-    assert(!fs.existsSync(this.snapshotFile), 'Quiescence snapshot already exists');
+    if (fs.existsSync(this.snapshotFile)) {
+      const current = await this.readState();
+      if (String(current.appState).toLowerCase() !== 'stopped') {
+        await this.az(['webapp', 'stop'], false);
+      }
+      const after = await this.az(['webapp', 'show']);
+      assert.equal(String(after.state).toLowerCase(), 'stopped', 'App Service did not remain stopped');
+      return {
+        verdict: 'PASS',
+        appState: after.state,
+        businessWritesQuiesced: true,
+        snapshotFile: this.snapshotFile,
+        originalSnapshotPreserved: true,
+        alreadyQuiesced: true,
+      };
+    }
     const before = await this.readState();
     const sourceFrozen = before.source.isManualIntegration === true
       || (!before.source.repoUrl && before.source.isGitHubAction !== true);

@@ -71,6 +71,37 @@ class DurableFreezeController {
     }
   }
 
+  async resumeFrozen({ operationId, targetResourceId, recoveryAuthorizationSha256 }) {
+    assert(operationId, 'Operation ID is required');
+    assert(targetResourceId, 'Target resource ID is required');
+    assert.match(recoveryAuthorizationSha256 || '', /^[a-f0-9]{64}$/i,
+      'Exact recovery authorization SHA-256 is required');
+    this.lease = await this.store.acquireLease();
+    try {
+      const before = validateState(await this.store.read({ leaseId: this.lease.id }));
+      assert.equal(before.state, STATE_FROZEN, 'Only a frozen environment can be resumed');
+      assert.equal(before.operationId, operationId, 'Frozen operation ID differs');
+      assert.equal(before.targetResourceId, targetResourceId, 'Frozen target differs');
+      const document = {
+        ...before,
+        generation: before.generation + 1,
+        previousOwnerSha256: before.ownerSha256,
+        ownerSha256: this.owner,
+        resumedAt: this.now().toISOString(),
+        recoveryAuthorizationSha256: recoveryAuthorizationSha256.toLowerCase(),
+      };
+      await this.store.write(document, { leaseId: this.lease.id });
+      await this.assertFrozen();
+      this.timer = setInterval(() => void this.renew(), this.heartbeatMs);
+      this.timer.unref?.();
+      return { verdict: 'FROZEN_RESUMED', generation: document.generation, ownerSha256: this.owner };
+    } catch (error) {
+      if (this.lease) await this.store.releaseLease(this.lease.id).catch(() => {});
+      this.lease = null;
+      throw error;
+    }
+  }
+
   async renew() {
     if (!this.lease || this.lostError) return;
     try {
