@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { activateRuntime, rollbackRuntime, verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
+const { activateRuntime, rollbackRuntime, runChild, verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
 const { DurableFreezeController } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
 const { compareParity, REQUIRED_PROPERTIES } = require('./parity_manifest.cjs');
@@ -277,6 +277,16 @@ async function main() {
       fs.writeFileSync(file, "az webapp" + " deploy");
       assert.equal(scanFiles([file]).length, 1);
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+  await test('24 long structured updater keeps lease heartbeat event loop available', async () => {
+    let heartbeatObserved = false;
+    const timer = setTimeout(() => { heartbeatObserved = true; }, 20);
+    const result = await runChild(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 100)'], {
+      cwd: process.cwd(), env: process.env,
+    });
+    clearTimeout(timer);
+    assert.equal(result.status, 0);
+    assert.equal(heartbeatObserved, true);
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

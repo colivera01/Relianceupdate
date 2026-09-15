@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 
 const APPROVED_PACKAGE_SETTINGS = Object.freeze([
   'DEPLOYED_COMMIT',
@@ -89,7 +89,21 @@ function runtimeMatches(settings, runtime) {
     && settings.DEPLOYED_PACKAGE === runtime.packageName;
 }
 
-function invokeStructuredUpdater({ root, resourceGroup, appService, runtime, apply = true, env = process.env }) {
+function runChild(executable, args, options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, { ...options, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+  });
+}
+
+async function invokeStructuredUpdater({ root, resourceGroup, appService, runtime, apply = true, env = process.env }) {
   const script = path.join(root, 'scripts', 'release', 'update_azure_package_settings.py');
   const packageUrlVariable = 'RELIANCE_CUTOVER_PACKAGE_URL';
   const args = [script,
@@ -103,11 +117,9 @@ function invokeStructuredUpdater({ root, resourceGroup, appService, runtime, app
     '--required-through', runtime.requiredThrough,
   ];
   if (apply) args.push('--apply');
-  const result = spawnSync(process.env.PYTHON || 'python', args, {
+  const result = await runChild(process.env.PYTHON || 'python', args, {
     cwd: root,
     env: { ...env, [packageUrlVariable]: runtime.reference },
-    encoding: 'utf8',
-    windowsHide: true,
   });
   assert.equal(result.status, 0, `Structured package-setting updater failed: ${(result.stderr || '').trim()}`);
   const output = JSON.parse(result.stdout);
@@ -204,6 +216,7 @@ module.exports = {
   assertSha256,
   invokeStructuredUpdater,
   parsePackageReference,
+  runChild,
   rollbackRuntime,
   runtimeMatches,
   selectedSettings,
