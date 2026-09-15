@@ -68,7 +68,18 @@ async function verifyRemotePackage({
 
 function selectedSettings(settings) {
   const result = {};
-  for (const name of APPROVED_PACKAGE_SETTINGS) result[name] = settings[name] || '';
+  for (const name of APPROVED_PACKAGE_SETTINGS) {
+    if (name === 'WEBSITE_RUN_FROM_PACKAGE' && settings[name]) {
+      const identity = parsePackageReference(settings[name]);
+      result[name] = {
+        sanitizedReference: identity.sanitizedReference,
+        referenceSha256: identity.referenceSha256,
+        expiresAt: identity.expiresAt,
+      };
+    } else {
+      result[name] = settings[name] || '';
+    }
+  }
   return result;
 }
 

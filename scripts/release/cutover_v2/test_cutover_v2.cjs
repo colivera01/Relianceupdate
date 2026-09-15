@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { activateRuntime, rollbackRuntime, verifyRemotePackage } = require('./runtime_package.cjs');
+const { activateRuntime, rollbackRuntime, verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
 const { DurableFreezeController } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
 const { compareParity, REQUIRED_PROPERTIES } = require('./parity_manifest.cjs');
@@ -251,6 +251,10 @@ async function main() {
     const verified = await verifyRemotePackage({ reference, expectedSha256: packageHash, expectedSize: bytes.length,
       requiredThrough, fetchImpl: async () => ({ status: 200, arrayBuffer: async () => bytes }) });
     assert(!verified.sanitizedReference.includes('?')); assert.match(verified.referenceSha256, /^[a-f0-9]{64}$/);
+    const harness = runtimeHarness(candidate);
+    const running = await verifyRunningRuntime({ runtime: candidate, ...harness.dependencies });
+    assert.equal(typeof running.settings.WEBSITE_RUN_FROM_PACKAGE, 'object');
+    assert(!JSON.stringify(running).includes('sig='));
   });
   await test('21 recovery package validity failure', async () => {
     const expired = reference.replace('2030-01-01', '2020-01-01');
