@@ -33,9 +33,12 @@ const fixed = [
   'docs/database/CUTOVER-V2-RUNBOOK.md',
   'docs/database/MIGRATION-SAFETY-CONTROLS-V2.md',
 ];
-const releaseScripts = fs.readdirSync(path.join(root, 'scripts', 'release'))
-  .filter((name) => /(?:azure_cli|migration|cutover|quiescence|recovery|release_receipt|database_target|prisma_command|sqlserver_contract|guarded_prisma|guarded_sql|release_artifacts)/.test(name))
-  .map((name) => `scripts/release/${name}`);
+const releaseScripts = fs.readdirSync(path.join(root, 'scripts', 'release'), { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /(?:azure_cli|azure_(?:package|database)_setting|migration|cutover|quiescence|recovery|release_receipt|database_target|target_spec|prisma_command|sqlserver_contract|sha256_controls|guarded_prisma|guarded_sql|release_artifacts|forward_git)/.test(entry.name))
+  .map((entry) => `scripts/release/${entry.name}`);
+const v2Scripts = fs.readdirSync(path.join(root, 'scripts', 'release', 'cutover_v2'), { withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith('.cjs'))
+  .map((entry) => `scripts/release/cutover_v2/${entry.name}`);
 const releaseSql = fs.readdirSync(path.join(root, 'scripts', 'release', 'sql'))
   .filter((name) => name.endsWith('.sql'))
   .map((name) => `scripts/release/sql/${name}`);
@@ -45,7 +48,7 @@ const cutoverConfig = fs.readdirSync(path.join(root, 'config', 'release-cutover-
 const activeSql = fs.readdirSync(path.join(root, 'prisma', 'migrations'), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => `prisma/migrations/${entry.name}/migration.sql`);
-const paths = [...new Set([...fixed, ...releaseScripts, ...releaseSql, ...cutoverConfig, ...activeSql])].sort();
+const paths = [...new Set([...fixed, ...releaseScripts, ...v2Scripts, ...releaseSql, ...cutoverConfig, ...activeSql])].sort();
 for (const relative of paths) {
   assert(!relative.startsWith('docs/database/migration-history-legacy/'), 'Legacy archive cannot enter executable migration artifact');
   assert(fs.statSync(path.join(root, relative)).isFile(), `Missing artifact input: ${relative}`);
