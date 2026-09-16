@@ -12,6 +12,13 @@ const APPROVED_PACKAGE_SETTINGS = Object.freeze([
   'WEBSITE_RUN_FROM_PACKAGE',
 ]);
 const MIN_PACKAGE_SAFETY_BUFFER_MS = 24 * 60 * 60 * 1000;
+const RUNTIME_CLASSIFICATIONS = Object.freeze({
+  VERIFIED_CANDIDATE: 'VERIFIED_CANDIDATE',
+  VERIFIED_RECOVERY: 'VERIFIED_RECOVERY',
+  UNKNOWN: 'UNKNOWN',
+  MISMATCHED: 'MISMATCHED',
+  UNAVAILABLE: 'UNAVAILABLE',
+});
 
 function assertSha256(value, label) {
   assert.match(value || '', /^[a-f0-9]{64}$/i, `${label} must be a SHA-256 value`);
@@ -92,6 +99,113 @@ function runtimeMatches(settings, runtime) {
     && settings.DEPLOYED_PACKAGE === runtime.packageName;
 }
 
+function observedPackageName(settings) {
+  try {
+    return path.posix.basename(parsePackageReference(settings.WEBSITE_RUN_FROM_PACKAGE).path);
+  } catch {
+    return null;
+  }
+}
+
+function unavailablePackageError(error) {
+  return /download failed|expires|expiry|availability|http \d+|signed package reference|package reference/i
+    .test(error?.message || '');
+}
+
+async function classifyRuntime({ settings, runtime, role, verifyPackage = verifyRemotePackage }) {
+  if (!['CANDIDATE', 'RECOVERY'].includes(role)) {
+    return { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.MISMATCHED,
+      reason: 'AUTHORIZED_RUNTIME_BINDING_MISSING_OR_DIFFERENT' };
+  }
+  const verifiedState = role === 'CANDIDATE'
+    ? RUNTIME_CLASSIFICATIONS.VERIFIED_CANDIDATE
+    : RUNTIME_CLASSIFICATIONS.VERIFIED_RECOVERY;
+  if (!settings?.WEBSITE_RUN_FROM_PACKAGE || !settings?.DEPLOYED_COMMIT || !settings?.DEPLOYED_PACKAGE) {
+    return { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.UNKNOWN,
+      reason: 'REQUIRED_RUNTIME_SETTINGS_MISSING' };
+  }
+  if (runtime?.manifestBindingVerified !== true || runtime.manifestRole !== role
+    || !runtime.targetAppServiceResourceId) {
+    return { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.MISMATCHED,
+      reason: 'AUTHORIZED_RUNTIME_BINDING_MISSING_OR_DIFFERENT' };
+  }
+  if (settings.DEPLOYED_COMMIT !== runtime.commit) {
+    return { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.MISMATCHED,
+      reason: 'DEPLOYED_SOURCE_IDENTITY_DIFFERS' };
+  }
+  const pointerPackageName = observedPackageName(settings);
+  if (!pointerPackageName) {
+    return { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.UNAVAILABLE,
+      reason: 'OBSERVED_PACKAGE_REFERENCE_INVALID' };
+  }
+  if (pointerPackageName !== settings.DEPLOYED_PACKAGE) {
+    return { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.MISMATCHED,
+      reason: 'OBSERVED_POINTER_AND_PACKAGE_LABEL_DIFFER' };
+  }
+  try {
+    const remotePackage = await verifyPackage({
+      reference: settings.WEBSITE_RUN_FROM_PACKAGE,
+      expectedSha256: runtime.sha256,
+      expectedSize: runtime.size,
+      requiredThrough: runtime.requiredThrough,
+    });
+    assert.equal(remotePackage.sha256, assertSha256(runtime.sha256, 'Runtime binding hash'),
+      'Observed package SHA-256 differs from the authorized runtime binding');
+    assert.equal(Number(remotePackage.size), Number(runtime.size),
+      'Observed package size differs from the authorized runtime binding');
+    return {
+      verdict: 'PASS',
+      state: verifiedState,
+      activeState: role === 'CANDIDATE' ? 'CANDIDATE_ACTIVE' : 'RECOVERY_ACTIVE',
+      role,
+      pointerExact: runtimeMatches(settings, runtime),
+      aliasAccepted: !runtimeMatches(settings, runtime),
+      observedPackageName: pointerPackageName,
+      authorizedPackageName: runtime.packageName,
+      targetAppServiceResourceId: runtime.targetAppServiceResourceId,
+      remotePackage,
+    };
+  } catch (error) {
+    return {
+      verdict: 'FAIL_CLOSED',
+      state: unavailablePackageError(error)
+        ? RUNTIME_CLASSIFICATIONS.UNAVAILABLE
+        : RUNTIME_CLASSIFICATIONS.MISMATCHED,
+      reason: error.message,
+    };
+  }
+}
+
+async function classifyConfiguredRuntime({
+  settings,
+  candidateRuntime,
+  recoveryRuntime,
+  verifyPackage = verifyRemotePackage,
+}) {
+  const runtimes = [candidateRuntime, recoveryRuntime];
+  const matchingCommit = runtimes.filter((runtime) => runtime?.commit === settings?.DEPLOYED_COMMIT);
+  if (!matchingCommit.length) {
+    const observedName = observedPackageName(settings) || settings?.DEPLOYED_PACKAGE || '';
+    const resemblesReviewedPackage = runtimes.some((runtime) =>
+      [runtime?.packageName, observedPackageName({ WEBSITE_RUN_FROM_PACKAGE: runtime?.reference })]
+        .includes(observedName));
+    return { verdict: 'FAIL_CLOSED',
+      state: resemblesReviewedPackage ? RUNTIME_CLASSIFICATIONS.MISMATCHED : RUNTIME_CLASSIFICATIONS.UNKNOWN,
+      reason: resemblesReviewedPackage ? 'REVIEWED_PACKAGE_HAS_WRONG_SOURCE_IDENTITY' : 'ARBITRARY_RUNTIME_NOT_RECOGNIZED' };
+  }
+  const results = [];
+  for (const runtime of matchingCommit) {
+    const role = runtime.manifestRole;
+    results.push(await classifyRuntime({ settings, runtime, role, verifyPackage }));
+  }
+  const verified = results.find((result) => result.verdict === 'PASS');
+  if (verified) return verified;
+  return results.find((result) => result.state === RUNTIME_CLASSIFICATIONS.MISMATCHED)
+    || results.find((result) => result.state === RUNTIME_CLASSIFICATIONS.UNAVAILABLE)
+    || { verdict: 'FAIL_CLOSED', state: RUNTIME_CLASSIFICATIONS.UNKNOWN,
+      reason: 'RUNTIME_NOT_POSITIVELY_IDENTIFIED' };
+}
+
 function runChild(executable, args, options) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { ...options, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -133,13 +247,10 @@ async function invokeStructuredUpdater({ root, resourceGroup, appService, runtim
 
 async function verifyRunningRuntime({ runtime, readSettings, health, verifyPackage = verifyRemotePackage }) {
   const settings = await readSettings();
-  assert(runtimeMatches(settings, runtime), 'Configured runtime does not match expected package settings');
-  const remote = await verifyPackage({
-    reference: runtime.reference,
-    expectedSha256: runtime.sha256,
-    expectedSize: runtime.size,
-    requiredThrough: runtime.requiredThrough,
-  });
+  const classification = await classifyRuntime({ settings, runtime, role: runtime.manifestRole, verifyPackage });
+  assert.equal(classification.verdict, 'PASS',
+    `Configured runtime is not a verified ${runtime.manifestRole || 'reviewed'} package: ${classification.reason || classification.state}`);
+  const remote = classification.remotePackage;
   const observedHealth = await health();
   assert.equal(observedHealth.ok, true, 'Application health check failed');
   if (runtime.requireBuildMetadata !== false) {
@@ -183,21 +294,26 @@ async function setRuntimePointer({
   applySettings,
   readSettings,
 }) {
+  const before = await readSettings();
+  const classification = await classifyRuntime({ settings: before, runtime,
+    role: runtime.manifestRole, verifyPackage });
+  if (classification.verdict === 'PASS') {
+    return {
+      verdict: 'PASS',
+      activation: classification.pointerExact
+        ? 'NO-OP_POINTER_ALREADY_SET'
+        : 'NO-OP_VERIFIED_RUNTIME_ALIAS_ALREADY_ACTIVE',
+      configured: selectedSettings(before),
+      remotePackage: classification.remotePackage,
+      classification,
+    };
+  }
   const remote = await verifyPackage({
     reference: runtime.reference,
     expectedSha256: runtime.sha256,
     expectedSize: runtime.size,
     requiredThrough: runtime.requiredThrough,
   });
-  const before = await readSettings();
-  if (runtimeMatches(before, runtime)) {
-    return {
-      verdict: 'PASS',
-      activation: 'NO-OP_POINTER_ALREADY_SET',
-      configured: selectedSettings(before),
-      remotePackage: remote,
-    };
-  }
   await applySettings(runtime);
   const configured = await readSettings();
   assert(runtimeMatches(configured, runtime), 'Package pointer verification failed after update');
@@ -218,7 +334,8 @@ async function rollbackRuntimePointer(options) {
   });
   return {
     ...result,
-    runtimeRollback: result.activation === 'NO-OP_POINTER_ALREADY_SET'
+    runtimeRollback: ['NO-OP_POINTER_ALREADY_SET', 'NO-OP_VERIFIED_RUNTIME_ALIAS_ALREADY_ACTIVE']
+      .includes(result.activation)
       ? 'NO-OP'
       : 'PACKAGE_POINTER_RESTORED_WHILE_APP_FROZEN',
   };
@@ -233,21 +350,24 @@ async function rollbackRuntime({
   health,
 }) {
   const settings = await readSettings();
+  const classification = await classifyRuntime({ settings, runtime: recoveryRuntime,
+    role: recoveryRuntime.manifestRole, verifyPackage });
+  if (classification.verdict === 'PASS') {
+    return {
+      verdict: 'PASS',
+      runtimeRollback: 'NO-OP',
+      reason: 'CURRENT_RUNTIME_EQUALS_REQUIRED_RECOVERY_RUNTIME',
+      configured: selectedSettings(settings),
+      remotePackage: classification.remotePackage,
+      classification,
+    };
+  }
   const remote = await verifyPackage({
     reference: recoveryRuntime.reference,
     expectedSha256: recoveryRuntime.sha256,
     expectedSize: recoveryRuntime.size,
     requiredThrough: recoveryRuntime.requiredThrough,
   });
-  if (runtimeMatches(settings, recoveryRuntime)) {
-    return {
-      verdict: 'PASS',
-      runtimeRollback: 'NO-OP',
-      reason: 'CURRENT_RUNTIME_EQUALS_REQUIRED_RECOVERY_RUNTIME',
-      configured: selectedSettings(settings),
-      remotePackage: remote,
-    };
-  }
   await applySettings(recoveryRuntime);
   assert(runtimeMatches(await readSettings(), recoveryRuntime), 'Recovery package pointer verification failed');
   await restart();
@@ -263,8 +383,11 @@ async function rollbackRuntime({
 module.exports = {
   APPROVED_PACKAGE_SETTINGS,
   MIN_PACKAGE_SAFETY_BUFFER_MS,
+  RUNTIME_CLASSIFICATIONS,
   activateRuntime,
   assertSha256,
+  classifyConfiguredRuntime,
+  classifyRuntime,
   invokeStructuredUpdater,
   parsePackageReference,
   runChild,

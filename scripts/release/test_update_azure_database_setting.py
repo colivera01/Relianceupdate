@@ -23,14 +23,14 @@ class DatabaseSettingTransportTests(unittest.TestCase):
     def test_dry_run_is_non_mutating_and_does_not_print_secret(self) -> None:
         secret = (
             "sqlserver://server.database.windows.net:1433;"
-            "database=reliance-beta-recovery-a8ae548;user=u;password=super-private-password;encrypt=true"
+            "database=reliance-beta-recovery-v2-c1fe9e5;user=u;password=super-private-password;encrypt=true"
         )
         argv = [
             "update_azure_database_setting.py",
             "--resource-group", "rg",
             "--app", "app",
             "--database-url-env", "TEST_DATABASE_URL",
-            "--expected-database", "reliance-beta-recovery-a8ae548",
+            "--expected-database", "reliance-beta-recovery-v2-c1fe9e5",
         ]
         output = io.StringIO()
         with mock.patch.object(sys, "argv", argv), mock.patch.dict(
@@ -44,7 +44,7 @@ class DatabaseSettingTransportTests(unittest.TestCase):
         apply_mock.assert_not_called()
         rendered = output.getvalue()
         self.assertNotIn("super-private-password", rendered)
-        self.assertEqual(json.loads(rendered)["database"], "reliance-beta-recovery-a8ae548")
+        self.assertEqual(json.loads(rendered)["database"], "reliance-beta-recovery-v2-c1fe9e5")
 
     def test_unexpected_database_is_rejected_before_azure_access(self) -> None:
         argv = [

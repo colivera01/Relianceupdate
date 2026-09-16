@@ -13,7 +13,8 @@ const { createAcceptanceReceipt, createAcceptanceState,
 const { CutoverV2Controller, controllerLoss } = require('./cutover_v2_controller.cjs');
 const { createAzureBlobStore, DurableFreezeController } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
-const { invokeStructuredUpdater, runtimeMatches, verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
+const { classifyConfiguredRuntime, invokeStructuredUpdater,
+  verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
 const { SqlApplicationLock, assertSecondActorBlocked } = require('./sql_application_lock.cjs');
 const { switchDatabaseConnection } = require('./database_connection_switch.cjs');
 const { verifyV2ExecutionPaths } = require('./prohibited_path_guard.cjs');
@@ -59,8 +60,9 @@ function assertRecoveryDatabaseName(value) {
 function validateExpectedDurableControl(binding) {
   assert.equal(binding.expectedDurableState, 'OPEN',
     'Authorized expected durable state must be OPEN');
-  assert.equal(binding.expectedDurableGeneration, 0,
-    'Authorized expected durable generation must be 0');
+  assert(Number.isSafeInteger(binding.expectedDurableGeneration)
+    && binding.expectedDurableGeneration >= 0,
+  'Authorized expected durable generation must be a nonnegative safe integer');
   return { state: binding.expectedDurableState, generation: binding.expectedDurableGeneration };
 }
 
@@ -277,10 +279,15 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
   for (const kind of ['candidate', 'recovery']) {
     const configured = binding[`${kind}Runtime`]; const reference = process.env[configured.referenceEnvironmentVariable];
     assert(reference, `${configured.referenceEnvironmentVariable} is required`);
-    runtimes[kind] = { ...configured, reference };
+    runtimes[kind] = { ...configured, reference, manifestRole: kind.toUpperCase(),
+      manifestBindingVerified: true, targetAppServiceResourceId: binding.appServiceResourceId };
     await verifyRemotePackage({ reference, expectedSha256: configured.sha256, expectedSize: configured.size,
       requiredThrough: configured.requiredThrough });
   }
+  const runtimeClassification = await classifyConfiguredRuntime({ settings,
+    candidateRuntime: runtimes.candidate, recoveryRuntime: runtimes.recovery });
+  assert.equal(runtimeClassification.verdict, 'PASS',
+    `Active runtime package is not positively identified: ${runtimeClassification.reason || runtimeClassification.state}`);
   const evidence = await captureEvidence(resume ? configuredDatabaseUrl : sourceDatabaseUrl);
   if (!resume) {
     assert.equal(evidence.structuralSha256, binding.preStructuralSha256, 'Structural fingerprint differs');
@@ -315,7 +322,10 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
     target: { appId: state.app.id, sqlServerId: state.server.id, databaseId: state.database.id,
       database: descriptor.database, pitrEarliestRestoreDate: state.database.earliestRestoreDate },
     packages: { candidate: { sha256: runtimes.candidate.sha256, requiredThrough: runtimes.candidate.requiredThrough },
-      recovery: { sha256: runtimes.recovery.sha256, requiredThrough: runtimes.recovery.requiredThrough } },
+      recovery: { sha256: runtimes.recovery.sha256, requiredThrough: runtimes.recovery.requiredThrough },
+      activeClassification: runtimeClassification.state,
+      activeRole: runtimeClassification.role,
+      activeAliasAccepted: runtimeClassification.aliasAccepted },
     evidence, durable: durableState, durableAuthorization,
     authorizedDurableState: binding.expectedDurableState,
     authorizedDurableGeneration: binding.expectedDurableGeneration,
@@ -511,9 +521,11 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
   };
   runtimeDeps.inspect = async () => {
     const settings = await runtimeDeps.readSettings();
-    if (runtimeMatches(settings, prepared.runtimes.candidate)) return { verdict: 'PASS', state: 'CANDIDATE_ACTIVE' };
-    if (runtimeMatches(settings, prepared.runtimes.recovery)) return { verdict: 'PASS', state: 'RECOVERY_ACTIVE' };
-    return { verdict: 'FAIL_CLOSED', state: 'UNKNOWN' };
+    const classification = await classifyConfiguredRuntime({ settings,
+      candidateRuntime: prepared.runtimes.candidate, recoveryRuntime: prepared.runtimes.recovery,
+      verifyPackage: runtimeDeps.verifyPackage });
+    return { ...classification, classification: classification.state,
+      state: classification.activeState || classification.state };
   };
   runtimeDeps.verifyCandidate = async () => verifyRunningRuntime({
     runtime: prepared.runtimes.candidate,
@@ -620,7 +632,8 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
       materialTableFingerprintsSha256: prepared.result.evidence.materialTableFingerprintsSha256 },
     packageState: { preCutover: durableRuntime(prepared.runtimes.recovery),
       candidate: durableRuntime(prepared.runtimes.candidate), recovery: durableRuntime(prepared.runtimes.recovery),
-      expectedActive: 'RECOVERY', observedActive: currentRuntime.state },
+      expectedActive: 'RECOVERY', observedActive: currentRuntime.state,
+      observedClassification: currentRuntime.classification },
   };
 
   const acceptance = createAcceptanceAdapter({ root, environment, binding, operationId,

@@ -6,7 +6,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { activateRuntime, rollbackRuntime, runChild, setRuntimePointer,
+const { RUNTIME_CLASSIFICATIONS, activateRuntime, classifyConfiguredRuntime, classifyRuntime,
+  rollbackRuntime, rollbackRuntimePointer, runChild, runtimeMatches, setRuntimePointer,
   verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
 const { DurableFreezeController, validateJournal } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
@@ -20,6 +21,7 @@ const { assertInitialDurableControl, assertRecoveryDatabaseName, databaseUrlFor,
 const { createAcceptanceReceipt, createAcceptanceState, submitDecision, validateDecision,
   waitForRecordedAcceptance } = require('./acceptance_control.cjs');
 const { parseSqlServerUrl } = require('./sql_application_lock.cjs');
+const { acquirePinnedLock, releasePinnedLock } = require('../with_migration_lock.cjs');
 
 const results = [];
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -37,7 +39,10 @@ const packageHash = crypto.createHash('sha256').update(bytes).digest('hex');
 const reference = 'https://storage.example/runtime/candidate.zip?se=2030-01-01T00%3A00%3A00Z&sp=r&sig=A%2BB%3D%25';
 const requiredThrough = '2029-12-31T00:00:00Z';
 const runtime = (name, commit) => ({ reference: reference.replace('candidate.zip', name), packageName: name,
-  commit, size: bytes.length, sha256: packageHash, requiredThrough });
+  commit, size: bytes.length, sha256: packageHash, requiredThrough,
+  manifestRole: name.startsWith('candidate') ? 'CANDIDATE' : 'RECOVERY',
+  manifestBindingVerified: true,
+  targetAppServiceResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/app' });
 const candidate = runtime('candidate.zip', 'a'.repeat(40));
 const recovery = runtime('recovery.zip', 'b'.repeat(40));
 const okPackage = async ({ reference: value }) => ({ verdict: 'PASS', sanitizedReference: value.split('?')[0],
@@ -98,7 +103,7 @@ function runtimeHarness(initial = recovery, options = {}) {
 }
 
 class MemoryFreezeStore {
-  constructor() { this.document = { version: 1, state: 'OPEN', generation: 0 }; this.lease = null; }
+  constructor(generation = 0) { this.document = { version: 1, state: 'OPEN', generation }; this.lease = null; }
   async read({ leaseId } = {}) { if (leaseId && leaseId !== this.lease) throw new Error('lease lost'); return structuredClone(this.document); }
   async write(value, { leaseId }) { if (leaseId !== this.lease) throw new Error('lease lost'); this.document = structuredClone(value); }
   async acquireLease() { if (this.lease) throw new Error('lease already held'); this.lease = crypto.randomUUID(); return { id: this.lease }; }
@@ -188,7 +193,7 @@ function parityFixture() {
 function controllerHarness(options = {}) {
   const runtimeState = runtimeHarness(options.initialRuntime || recovery, { rejectPointer: options.rejectPointer,
     restartFailure: options.restartFailure, healthFailure: options.healthFailure });
-  const store = options.store || new MemoryFreezeStore();
+  const store = options.store || new MemoryFreezeStore(options.initialGeneration || 0);
   const durableFreeze = options.durableFreeze || new DurableFreezeController({
     store,
     owner: options.controllerId || 'controller-one',
@@ -202,7 +207,7 @@ function controllerHarness(options = {}) {
   };
   const calls = { restore: 0, forwardRecovery: 0, cleanup: 0, migration: 0,
     switchConnection: 0, restrictedRestart: 0 };
-  const contextValue = freezeContext();
+  const contextValue = freezeContext({ expectedOpenGeneration: options.initialGeneration || 0 });
   let snapshot = options.initialSnapshot || null;
   let candidateVerified = false;
   const runtimeDependencies = {
@@ -1112,6 +1117,137 @@ async function main() {
       controllerSource: "class Controller { async run() { case 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE': return this.dependencies.acceptance.wait(); } }",
       waiterSource: waitForRecordedAcceptance.toString(),
     }), /Legacy immediate-timeout acceptance path is present/);
+  });
+
+  await test('76 reviewed recovery bytes remain trusted under the historical safe alias', async () => {
+    const aliasReference = recovery.reference.replace('recovery.zip', 'current-beta-runtime.zip');
+    const settings = { WEBSITE_RUN_FROM_PACKAGE: aliasReference, DEPLOYED_COMMIT: recovery.commit,
+      DEPLOYED_PACKAGE: 'current-beta-runtime.zip' };
+    assert.equal(runtimeMatches(settings, recovery), false, 'Legacy exact-name classifier must reproduce UNKNOWN');
+    const result = await classifyRuntime({ settings, runtime: recovery, role: 'RECOVERY', verifyPackage: okPackage });
+    assert.equal(result.verdict, 'PASS');
+    assert.equal(result.state, RUNTIME_CLASSIFICATIONS.VERIFIED_RECOVERY);
+    assert.equal(result.aliasAccepted, true);
+  });
+
+  await test('77 correct reviewed filename with wrong bytes fails closed', async () => {
+    const settings = { WEBSITE_RUN_FROM_PACKAGE: recovery.reference, DEPLOYED_COMMIT: recovery.commit,
+      DEPLOYED_PACKAGE: recovery.packageName };
+    const result = await classifyRuntime({ settings, runtime: recovery, role: 'RECOVERY',
+      verifyPackage: async () => { throw new Error('Remote package SHA-256 differs from the reviewed artifact'); } });
+    assert.equal(result.verdict, 'FAIL_CLOSED');
+    assert.equal(result.state, RUNTIME_CLASSIFICATIONS.MISMATCHED);
+  });
+
+  await test('78 correct bytes with wrong source identity fail closed', async () => {
+    const settings = { WEBSITE_RUN_FROM_PACKAGE: recovery.reference, DEPLOYED_COMMIT: 'c'.repeat(40),
+      DEPLOYED_PACKAGE: recovery.packageName };
+    const result = await classifyRuntime({ settings, runtime: recovery, role: 'RECOVERY', verifyPackage: okPackage });
+    assert.equal(result.verdict, 'FAIL_CLOSED');
+    assert.equal(result.state, RUNTIME_CLASSIFICATIONS.MISMATCHED);
+    assert.equal(result.reason, 'DEPLOYED_SOURCE_IDENTITY_DIFFERS');
+  });
+
+  await test('79 missing reviewed recovery manifest binding fails closed', async () => {
+    const settings = { WEBSITE_RUN_FROM_PACKAGE: recovery.reference, DEPLOYED_COMMIT: recovery.commit,
+      DEPLOYED_PACKAGE: recovery.packageName };
+    const result = await classifyRuntime({ settings, runtime: { ...recovery, manifestBindingVerified: false },
+      role: 'RECOVERY', verifyPackage: okPackage });
+    assert.equal(result.verdict, 'FAIL_CLOSED');
+    assert.equal(result.state, RUNTIME_CLASSIFICATIONS.MISMATCHED);
+  });
+
+  await test('80 expired or unusable reviewed recovery reference fails closed', async () => {
+    const settings = { WEBSITE_RUN_FROM_PACKAGE: recovery.reference, DEPLOYED_COMMIT: recovery.commit,
+      DEPLOYED_PACKAGE: recovery.packageName };
+    const result = await classifyRuntime({ settings, runtime: recovery, role: 'RECOVERY',
+      verifyPackage: async () => { throw new Error('Package reference expires before the required recovery window'); } });
+    assert.equal(result.verdict, 'FAIL_CLOSED');
+    assert.equal(result.state, RUNTIME_CLASSIFICATIONS.UNAVAILABLE);
+  });
+
+  await test('81 already-active reviewed recovery alias is a verified no-op', async () => {
+    const aliasRuntime = { ...recovery,
+      reference: recovery.reference.replace('recovery.zip', 'current-beta-runtime.zip'),
+      packageName: 'current-beta-runtime.zip' };
+    const harness = runtimeHarness(aliasRuntime);
+    const result = await rollbackRuntimePointer({ recoveryRuntime: recovery, ...harness.dependencies });
+    assert.equal(result.verdict, 'PASS');
+    assert.equal(result.runtimeRollback, 'NO-OP');
+    assert.equal(result.classification.state, RUNTIME_CLASSIFICATIONS.VERIFIED_RECOVERY);
+    assert.equal(harness.calls.apply, 0);
+  });
+
+  await test('82 arbitrary package remains UNKNOWN and fail closed', async () => {
+    const result = await classifyConfiguredRuntime({ settings: {
+      WEBSITE_RUN_FROM_PACKAGE: reference.replace('candidate.zip', 'arbitrary.zip'),
+      DEPLOYED_COMMIT: 'f'.repeat(40), DEPLOYED_PACKAGE: 'arbitrary.zip',
+    }, candidateRuntime: candidate, recoveryRuntime: recovery, verifyPackage: okPackage });
+    assert.equal(result.verdict, 'FAIL_CLOSED');
+    assert.equal(result.state, RUNTIME_CLASSIFICATIONS.UNKNOWN);
+  });
+
+  await test('83 future cutover starts from OPEN generation 20 and remains monotonic', async () => {
+    const harness = controllerHarness({ initialGeneration: 20 });
+    const result = await harness.controller.execute();
+    assert.equal(result.verdict, 'ACCEPTED');
+    assert.equal(result.journal.state, 'OPEN');
+    assert(result.journal.generation > 20);
+    assert.equal(harness.store.lease, null);
+  });
+
+  await test('84 recovery from generation 20 stays frozen until verified recovery then reopens', async () => {
+    const harness = controllerHarness({ initialGeneration: 20, rejectPointer: true });
+    const result = await harness.controller.execute();
+    assert.equal(result.verdict, 'RECOVERED');
+    assert.equal(result.journal.state, 'OPEN');
+    assert(result.journal.generation > 20);
+    assert.equal(harness.calls.restore, 1);
+    assert.equal(harness.calls.cleanup, 1);
+    assert.equal(harness.store.lease, null);
+  });
+
+  await test('85 outer wrapper pins lock ownership and cleanup is idempotent', async () => {
+    class FakeTransaction {
+      constructor() { this.mode = 'NoLock'; this.committed = false; this.rolledBack = false; }
+      async begin() { this.begun = true; }
+      async commit() { this.committed = true; }
+      async rollback() { this.rolledBack = true; }
+    }
+    class FakeRequest {
+      constructor(transaction) { this.transaction = transaction; }
+      input() { return this; }
+      async query(statement) {
+        if (statement.includes('sp_getapplock')) {
+          this.transaction.mode = 'Exclusive';
+          return { recordset: [{ result: 0, sessionId: 42 }] };
+        }
+        const initialMode = this.transaction.mode;
+        this.transaction.mode = 'NoLock';
+        return { recordset: [{ initialMode, result: 0, sessionId: 42 }] };
+      }
+    }
+    const driver = { Transaction: FakeTransaction, Request: FakeRequest,
+      ISOLATION_LEVEL: { READ_COMMITTED: 'READ_COMMITTED' } };
+    const lock = await acquirePinnedLock({ pool: {}, resource: 'test', timeout: 0, driver });
+    assert.equal(lock.transaction.begun, true);
+    const released = await releasePinnedLock({ lock, resource: 'test', driver });
+    assert.equal(released.verdict, 'LOCK_RELEASED');
+    assert.equal(lock.transaction.committed, true);
+    const absent = await releasePinnedLock({ lock: null, resource: 'test', driver });
+    assert.equal(absent.verdict, 'LOCK_ALREADY_ABSENT');
+  });
+
+  await test('86 lost outer SQL session is reported absent and never reopens durable state', async () => {
+    class LostRequest { async query() { throw new Error('Connection is closed'); } input() { return this; } }
+    const transaction = { rollbackCalled: false, async rollback() { this.rollbackCalled = true; } };
+    const result = await releasePinnedLock({ lock: { transaction }, resource: 'test',
+      driver: { Request: LostRequest } });
+    assert.equal(result.verdict, 'LOCK_ALREADY_ABSENT');
+    assert.equal(result.reason, 'OWNING_SQL_SESSION_LOST');
+    assert.equal(transaction.rollbackCalled, true);
+    assert.equal(Object.hasOwn(result, 'durableState'), false,
+      'Outer wrapper cleanup must not independently reopen durable control');
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

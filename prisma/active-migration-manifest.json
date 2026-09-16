@@ -1,7 +1,7 @@
 {
   "manifestVersion": 2,
   "sourceCheckpoint": "9332627314ea6f8786625cc0891f58b9582736e5",
-  "currentCanonicalDatabase": "reliance-beta-recovery-a8ae548",
+  "currentCanonicalDatabase": "reliance-beta-recovery-v2-c1fe9e5",
   "entries": [
     {
       "name": "00000000000000_reliance_forward_baseline_20260914_v2",

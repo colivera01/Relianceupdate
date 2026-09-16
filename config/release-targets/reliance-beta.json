@@ -2,8 +2,8 @@
   "specVersion": 2,
   "environment": "beta",
   "server": "sql-reliance-beta-wcus.database.windows.net",
-  "database": "reliance-beta-recovery-a8ae548",
-  "resourceId": "/subscriptions/f50140d7-274d-4eec-b309-b109c6763615/resourceGroups/rg-reliance-beta-eastus/providers/Microsoft.Sql/servers/sql-reliance-beta-wcus/databases/reliance-beta-recovery-a8ae548",
+  "database": "reliance-beta-recovery-v2-c1fe9e5",
+  "resourceId": "/subscriptions/f50140d7-274d-4eec-b309-b109c6763615/resourceGroups/rg-reliance-beta-eastus/providers/Microsoft.Sql/servers/sql-reliance-beta-wcus/databases/reliance-beta-recovery-v2-c1fe9e5",
   "canonicalRole": "CURRENT_CANONICAL_BETA_DATABASE",
   "incidentOriginalDatabase": "reliance-beta-db",
   "expectedStates": {
@@ -15,5 +15,5 @@
       "successfulDistinctMigrations": 57
     }
   },
-  "sha256": "e81c80e6c7ae16142752a4e7c0a576cf54833174771eb56aec5f496d8200feac"
+  "sha256": "f27f09cc19502c581a5392b2b61c2e9d47d6e87993320ee10afc4bfcaeaad2ea"
 }

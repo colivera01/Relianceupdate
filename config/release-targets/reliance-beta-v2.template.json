@@ -2,8 +2,8 @@
   "specVersion": 2,
   "environment": "beta",
   "server": "sql-reliance-beta-wcus.database.windows.net",
-  "database": "reliance-beta-recovery-a8ae548",
-  "resourceId": "/subscriptions/f50140d7-274d-4eec-b309-b109c6763615/resourceGroups/rg-reliance-beta-eastus/providers/Microsoft.Sql/servers/sql-reliance-beta-wcus/databases/reliance-beta-recovery-a8ae548",
+  "database": "reliance-beta-recovery-v2-c1fe9e5",
+  "resourceId": "/subscriptions/f50140d7-274d-4eec-b309-b109c6763615/resourceGroups/rg-reliance-beta-eastus/providers/Microsoft.Sql/servers/sql-reliance-beta-wcus/databases/reliance-beta-recovery-v2-c1fe9e5",
   "canonicalRole": "CURRENT_CANONICAL_BETA_DATABASE",
   "incidentOriginalDatabase": "reliance-beta-db",
   "expectedStates": {

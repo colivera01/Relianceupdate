@@ -6,4 +6,4 @@ Raw file hashes, byte counts, aggregate hashes, Git blob identities, archive cou
 
 Dangerous development commands (`migrate dev`, `migrate reset`, and `db push`) are blocked for protected targets. SQL helpers execute only allowlisted V2 scripts. The ledger rotation preserves the original 64-row/57-name history under a dated legacy table; it does not falsify or rewrite recorded history.
 
-The current canonical beta database is `reliance-beta-recovery-a8ae548`. The original `reliance-beta-db` is incident evidence and is not a V2 target.
+The current canonical beta database is `reliance-beta-recovery-v2-c1fe9e5`. The original `reliance-beta-db` is incident evidence and is not a V2 target.

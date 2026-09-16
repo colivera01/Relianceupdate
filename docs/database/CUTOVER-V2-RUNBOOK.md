@@ -1,6 +1,6 @@
 # Reliance Cutover V2 Runbook
 
-This candidate is rooted at `9332627314ea6f8786625cc0891f58b9582736e5` and treats `reliance-beta-recovery-a8ae548` as the canonical beta database. The incident database `reliance-beta-db` remains preserved and isolated.
+This candidate is rooted at `9332627314ea6f8786625cc0891f58b9582736e5` and treats `reliance-beta-recovery-v2-c1fe9e5` as the canonical beta database. The incident database `reliance-beta-db` remains preserved and isolated.
 
 V2 uses one runtime path in disposable and live environments: verify an immutable remote ZIP, update only `WEBSITE_RUN_FROM_PACKAGE`, `DEPLOYED_COMMIT`, and `DEPLOYED_PACKAGE` through structured settings input, restart, and verify the pointer, remote hash, health, and baked build identity. ZipDeploy, OneDeploy, and `az webapp deploy` are prohibited.
 

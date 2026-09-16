@@ -73,7 +73,7 @@ function createArchiveManifest({ root, sourceCommit, archiveDirectory }) {
     archiveVersion: 3,
     sourceCommit,
     generatedAt: new Date().toISOString(),
-    currentCanonicalDatabase: 'reliance-beta-recovery-a8ae548',
+    currentCanonicalDatabase: 'reliance-beta-recovery-v2-c1fe9e5',
     migrationDirectoryCount: directories.length,
     archivedSqlFileCount: archivedFiles.length,
     sourceGitBlobPreservation: true,
@@ -94,7 +94,7 @@ function createActiveManifest({ root, sourceCommit, archiveManifestPath, archive
   return {
     manifestVersion: 2,
     sourceCheckpoint: sourceCommit,
-    currentCanonicalDatabase: 'reliance-beta-recovery-a8ae548',
+    currentCanonicalDatabase: 'reliance-beta-recovery-v2-c1fe9e5',
     entries,
     aggregateSha256: sha256(Buffer.from(entries.map((entry) => `${entry.name}\0${entry.sha256}\0${entry.bytes}\n`).join(''))),
     legacyArchiveManifest: slash(path.relative(root, archiveManifestPath)),

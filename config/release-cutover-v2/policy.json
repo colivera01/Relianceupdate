@@ -14,6 +14,6 @@
     "liveContainer": "deployments",
     "controlBlob": "cutover-control/environment-v2.json"
   },
-  "activeDatabase": "reliance-beta-recovery-a8ae548",
+  "activeDatabase": "reliance-beta-recovery-v2-c1fe9e5",
   "incidentDatabase": "reliance-beta-db"
 }

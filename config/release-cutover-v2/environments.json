@@ -4,7 +4,7 @@
     "resourceGroup": "rg-reliance-beta-eastus",
     "appService": "app-reliance-beta-wcus",
     "sqlServer": "sql-reliance-beta-wcus",
-    "database": "reliance-beta-recovery-a8ae548",
+    "database": "reliance-beta-recovery-v2-c1fe9e5",
     "storageAccount": "streliancebetawcus",
     "storageContainer": "deployments",
     "operatorFirewallRequired": true
