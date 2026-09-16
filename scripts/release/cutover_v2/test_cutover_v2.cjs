@@ -14,8 +14,8 @@ const { compareParity, REQUIRED_PROPERTIES } = require('./parity_manifest.cjs');
 const { scanFiles, verifyV2ExecutionPaths } = require('./prohibited_path_guard.cjs');
 const { CutoverV2Controller, controllerLoss, durableRecoveryDatabase } = require('./cutover_v2_controller.cjs');
 const { AppQuiescence, snapshotIdentity } = require('./app_quiescence.cjs');
-const { assertRecoveryDatabaseName, databaseUrlFor, requiredPackageThrough,
-  validateAuthorization } = require('./orchestrator.cjs');
+const { assertInitialDurableControl, assertRecoveryDatabaseName, databaseUrlFor, requiredPackageThrough,
+  validateAuthorization, validateExpectedDurableControl } = require('./orchestrator.cjs');
 const { parseSqlServerUrl } = require('./sql_application_lock.cjs');
 
 const results = [];
@@ -516,6 +516,7 @@ async function main() {
       sqlServerResourceId: '/subscriptions/sql', databaseResourceId: '/subscriptions/db',
       expectedRemoteHead: 'e'.repeat(40), preStructuralSha256: 'f'.repeat(64),
       preLedgerSha256: '1'.repeat(64), preProtectedDataSha256: '2'.repeat(64),
+      expectedDurableState: 'OPEN', expectedDurableGeneration: 0,
       operationId: 'cutover-v2-test',
       candidateRuntime: { requiredThrough: '2030-01-01T00:00:00.000Z' },
       recoveryRuntime: { requiredThrough: '2030-01-01T00:00:00.000Z' },
@@ -527,7 +528,8 @@ async function main() {
     for (const field of ['candidateSha', 'candidateArtifactSha256', 'recoveryArtifactSha256',
       'migrationArtifactSha256', 'releaseReceiptSha256',
       'appServiceResourceId', 'sqlServerResourceId', 'databaseResourceId', 'expectedRemoteHead',
-      'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256', 'operationId']) authorization[field] = binding[field];
+      'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256',
+      'expectedDurableState', 'expectedDurableGeneration', 'operationId']) authorization[field] = binding[field];
     try {
       fs.writeFileSync(file, JSON.stringify(authorization));
       process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256 = sha256(fs.readFileSync(file));
@@ -540,6 +542,38 @@ async function main() {
       delete process.env.RELIANCE_PRODUCT_OWNER_AUTHORIZATION_SHA256;
       fs.rmSync(temporary, { recursive: true, force: true });
     }
+  });
+  await test('29b Product Owner durable OPEN generation-zero binding passes', async () => {
+    const binding = { expectedDurableState: 'OPEN', expectedDurableGeneration: 0 };
+    const result = assertInitialDurableControl(binding, {
+      verdict: 'OPEN', document: { state: 'OPEN', generation: 0 },
+    });
+    assert.equal(result.stateBinding, 'PASS');
+    assert.equal(result.generationBinding, 'PASS');
+  });
+  await test('29c authorized OPEN zero rejects actual FROZEN one before mutation', async () => {
+    const binding = { expectedDurableState: 'OPEN', expectedDurableGeneration: 0 };
+    assert.throws(() => assertInitialDurableControl(binding, {
+      verdict: 'FAIL_CLOSED', document: { state: 'FROZEN', generation: 1 },
+    }), /state differs/);
+  });
+  await test('29d authorized OPEN zero rejects actual OPEN one before mutation', async () => {
+    const binding = { expectedDurableState: 'OPEN', expectedDurableGeneration: 0 };
+    assert.throws(() => assertInitialDurableControl(binding, {
+      verdict: 'OPEN', document: { state: 'OPEN', generation: 1 },
+    }), /generation differs/);
+  });
+  await test('29e missing durable control fails closed before mutation', async () => {
+    const binding = { expectedDurableState: 'OPEN', expectedDurableGeneration: 0 };
+    assert.throws(() => assertInitialDurableControl(binding, null), /control blob is missing/);
+  });
+  await test('29f manifest missing expected durable state fails closed', async () => {
+    assert.throws(() => validateExpectedDurableControl({ expectedDurableGeneration: 0 }),
+      /expected durable state/);
+  });
+  await test('29g manifest missing expected durable generation fails closed', async () => {
+    assert.throws(() => validateExpectedDurableControl({ expectedDurableState: 'OPEN' }),
+      /expected durable generation/);
   });
 
   const snapshotCases = [

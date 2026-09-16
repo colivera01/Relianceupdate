@@ -54,9 +54,30 @@ function assertRecoveryDatabaseName(value) {
   return value;
 }
 
+function validateExpectedDurableControl(binding) {
+  assert.equal(binding.expectedDurableState, 'OPEN',
+    'Authorized expected durable state must be OPEN');
+  assert.equal(binding.expectedDurableGeneration, 0,
+    'Authorized expected durable generation must be 0');
+  return { state: binding.expectedDurableState, generation: binding.expectedDurableGeneration };
+}
+
+function assertInitialDurableControl(binding, durableState) {
+  const expected = validateExpectedDurableControl(binding);
+  assert(durableState?.document, 'Durable freeze control blob is missing');
+  assert.equal(durableState.document.state, expected.state,
+    'Actual durable state differs from Product Owner authorization');
+  assert.equal(durableState.document.generation, expected.generation,
+    'Actual durable generation differs from Product Owner authorization');
+  return { verdict: 'PASS', authorized: expected,
+    actual: { state: durableState.document.state, generation: durableState.document.generation },
+    stateBinding: 'PASS', generationBinding: 'PASS' };
+}
+
 function validateBinding(root, binding, environment, descriptor) {
   assert.equal(binding.bindingVersion, 2, 'Unsupported V2 binding');
   assert.equal(binding.environment, environment, 'Binding environment differs');
+  validateExpectedDurableControl(binding);
   assert.match(binding.candidateSha || '', /^[a-f0-9]{40}$/, 'Candidate SHA is invalid');
   assert.match(binding.expectedRemoteHead || '', /^[a-f0-9]{40}$/, 'Expected remote head is invalid');
   assert.equal(binding.canonicalDatabase, descriptor.database, 'Canonical database differs');
@@ -99,7 +120,8 @@ function validateAuthorization(file, binding, bindingSha256) {
   assert.equal(authorization.bindingSha256, bindingSha256, 'Authorization binding differs');
   for (const field of ['candidateSha', 'candidateArtifactSha256', 'recoveryArtifactSha256', 'migrationArtifactSha256',
     'releaseReceiptSha256', 'appServiceResourceId', 'sqlServerResourceId', 'databaseResourceId',
-    'expectedRemoteHead', 'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256', 'operationId'])
+    'expectedRemoteHead', 'preStructuralSha256', 'preLedgerSha256', 'preProtectedDataSha256',
+    'expectedDurableState', 'expectedDurableGeneration', 'operationId'])
     assert.equal(authorization[field], binding[field], `Authorization ${field} differs`);
   assert.equal(authorization.packageValidThrough, binding.candidateRuntime.requiredThrough,
     'Authorization package validity differs');
@@ -266,8 +288,13 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
   assert.equal(evidence.activeAssignmentDuplicateCount, 0, 'Active assignment duplicates exist');
   const { controller: durable, blob } = await blobControl(descriptor, binding, `preflight-${crypto.randomUUID()}`);
   const durableState = await durable.inspect();
-  assert.equal(durableState.verdict, resume ? 'FAIL_CLOSED' : 'OPEN',
-    resume ? 'No durable frozen operation exists to adopt' : 'Durable environment is not OPEN');
+  let durableAuthorization = null;
+  if (resume) {
+    assert.equal(durableState.verdict, 'FAIL_CLOSED', 'No durable frozen operation exists to adopt');
+  } else {
+    durableAuthorization = assertInitialDurableControl(binding, durableState);
+    assert.equal(durableState.verdict, 'OPEN', 'Durable environment is not OPEN');
+  }
   const properties = await blob.getProperties(); assert.notEqual(properties.leaseState, 'leased', 'Environment lease is unavailable');
   const operationId = binding.operationId || `cutover-v2-${safeId(binding.candidateSha.slice(0, 12))}`;
   const app = new AppQuiescence({ subscription: descriptor.subscription, resourceGroup: descriptor.resourceGroup,
@@ -286,7 +313,12 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
       database: descriptor.database, pitrEarliestRestoreDate: state.database.earliestRestoreDate },
     packages: { candidate: { sha256: runtimes.candidate.sha256, requiredThrough: runtimes.candidate.requiredThrough },
       recovery: { sha256: runtimes.recovery.sha256, requiredThrough: runtimes.recovery.requiredThrough } },
-    evidence, durable: durableState, leaseReadiness: 'PASS', sqlLockReadiness: 'PASS', quiescence,
+    evidence, durable: durableState, durableAuthorization,
+    authorizedDurableState: binding.expectedDurableState,
+    authorizedDurableGeneration: binding.expectedDurableGeneration,
+    stateBinding: durableAuthorization?.stateBinding || null,
+    generationBinding: durableAuthorization?.generationBinding || null,
+    leaseReadiness: 'PASS', sqlLockReadiness: 'PASS', quiescence,
     executionPaths: verifyV2ExecutionPaths(root), runtimePointerRollbackReadiness: 'PASS',
     forwardGitRecovery: 'PASS', deploymentArchitecture: 'POINTER_BASED' };
   if (writeEvidence && binding.dryRunOutput) fs.writeFileSync(path.resolve(root, binding.dryRunOutput), `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
@@ -662,5 +694,6 @@ if (require.main === module) main().catch((error) => {
   process.stderr.write(`CUTOVER_V2_ORCHESTRATOR_FAILED: ${error.message}\n`); process.exitCode = 2;
 });
 
-module.exports = { assertRecoveryDatabaseName, captureEvidence, databaseUrlFor, execute, preflight,
-  requiredPackageThrough, validateAuthorization, validateBinding };
+module.exports = { assertInitialDurableControl, assertRecoveryDatabaseName, captureEvidence, databaseUrlFor,
+  execute, preflight, requiredPackageThrough, validateAuthorization, validateBinding,
+  validateExpectedDurableControl };
