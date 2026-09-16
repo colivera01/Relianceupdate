@@ -15,6 +15,9 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function assertBinding(binding) {
+  assert(String(binding.cutoverId || '').trim(), 'Acceptance cutover ID is missing');
+  assert(Number.isSafeInteger(binding.durableGeneration) && binding.durableGeneration >= 1,
+    'Acceptance durable generation is invalid');
   assert(/^[a-f0-9]{40}$/.test(binding.candidateSha || ''), 'Acceptance candidate SHA is invalid');
   for (const field of ['runtimeArtifactSha256', 'runtimePackageReferenceSha256', 'migrationArtifactSha256',
     'releaseReceiptSha256', 'structuralSha256', 'ledgerSha256', 'protectedDataSha256',
@@ -31,7 +34,7 @@ function assertBinding(binding) {
 }
 
 function createAcceptanceState({ stateFile, decisionFile, binding, timeoutMs = DEFAULT_ACCEPTANCE_TIMEOUT_MS,
-  now = () => new Date(), randomUUID = () => crypto.randomUUID(), randomBytes = (size) => crypto.randomBytes(size) }) {
+  now = () => new Date(), randomBytes = (size) => crypto.randomBytes(size) }) {
   assert(stateFile, 'Acceptance state output is required');
   assert(decisionFile, 'Acceptance decision output is required');
   assert(Number.isInteger(timeoutMs) && timeoutMs >= 15 * 60_000 && timeoutMs <= 45 * 60_000,
@@ -40,7 +43,7 @@ function createAcceptanceState({ stateFile, decisionFile, binding, timeoutMs = D
   assert(!fs.existsSync(stateFile), 'Acceptance state already exists');
   assert(!fs.existsSync(decisionFile), 'Acceptance decision already exists');
   const created = now();
-  const cutoverId = randomUUID();
+  const cutoverId = binding.cutoverId;
   const bindingSha256 = sha256(Buffer.from(JSON.stringify(binding), 'utf8'));
   const challengeNonce = randomBytes(24).toString('hex');
   const state = {
@@ -68,6 +71,8 @@ function validateDecision(state, decision, now = new Date()) {
   assert.equal(decision.challenge, state.challenge, 'Acceptance challenge differs');
   assert.equal(decision.candidateSha, state.binding.candidateSha, 'Acceptance candidate differs');
   assert.equal(decision.targetResourceId, state.binding.targetResourceId, 'Acceptance target differs');
+  assert.equal(decision.durableGeneration, state.binding.durableGeneration,
+    'Acceptance durable generation differs');
   const decidedAt = new Date(decision.decidedAt).getTime();
   const createdAt = new Date(state.createdAt).getTime();
   const expiresAt = new Date(state.expiresAt).getTime();
@@ -96,6 +101,7 @@ function submitDecision({ stateFile, action, cutoverId, challenge, now = () => n
     challenge,
     candidateSha: state.binding.candidateSha,
     targetResourceId: state.binding.targetResourceId,
+    durableGeneration: state.binding.durableGeneration,
     decidedAt: decidedAt.toISOString(),
     explicitProductOwnerAction: true,
   };
@@ -104,23 +110,44 @@ function submitDecision({ stateFile, action, cutoverId, challenge, now = () => n
 }
 
 async function waitForAcceptance({ stateFile, decisionFile, binding, timeoutMs = DEFAULT_ACCEPTANCE_TIMEOUT_MS,
-  pollMs = 30_000, assertInvariants, onWaiting = () => {}, simulation = null }) {
-  const state = createAcceptanceState({ stateFile, decisionFile, binding, timeoutMs });
+  pollMs = 30_000, assertInvariants, onWaiting = () => {}, simulation = null,
+  now = () => new Date(), sleep = delay }) {
+  const state = createAcceptanceState({ stateFile, decisionFile, binding, timeoutMs, now });
+  return waitForRecordedAcceptance({ stateFile, decisionFile, state, pollMs, assertInvariants,
+    onWaiting, simulation, now, sleep });
+}
+
+function validateRecordedState({ stateFile, decisionFile, state }) {
+  assert(state && typeof state === 'object', 'Durable acceptance state is missing');
+  assert.equal(state.status, ACCEPTANCE_STATUS, 'Cutover is not waiting for Product Owner acceptance');
+  assertBinding(state.binding);
+  assert.equal(path.resolve(state.decisionFile), path.resolve(decisionFile),
+    'Acceptance decision path differs');
+  assert(fs.existsSync(stateFile), 'Acceptance state file is missing');
+  assert.deepEqual(readJson(stateFile), state, 'Acceptance state file differs from the durable journal');
+  return state;
+}
+
+async function waitForRecordedAcceptance({ stateFile, decisionFile, state, pollMs = 30_000,
+  assertInvariants, onWaiting = () => {}, simulation = null, now = () => new Date(), sleep = delay }) {
+  validateRecordedState({ stateFile, decisionFile, state });
+  assert.equal(typeof assertInvariants, 'function', 'Acceptance invariant check is required');
+  assert([null, 'ACCEPT', 'REJECT'].includes(simulation),
+    'Acceptance simulation may only submit an explicit ACCEPT or REJECT');
   onWaiting(state);
   if (simulation === 'ACCEPT' || simulation === 'REJECT') {
     submitDecision({ stateFile, action: simulation, cutoverId: state.cutoverId, challenge: state.challenge });
   }
   const deadline = new Date(state.expiresAt).getTime();
-  while (Date.now() <= deadline) {
+  while (now().getTime() <= deadline) {
     await assertInvariants(state);
     if (fs.existsSync(decisionFile)) {
-      const decision = validateDecision(state, readJson(decisionFile));
+      const decision = validateDecision(state, readJson(decisionFile), now());
       return { state, decision, decisionSha256: sha256(fs.readFileSync(decisionFile)) };
     }
-    if (simulation === 'TIMEOUT') break;
-    await delay(Math.min(pollMs, Math.max(1, deadline - Date.now())));
+    await sleep(Math.min(pollMs, Math.max(1, deadline - now().getTime())));
   }
-  return { state, decision: { action: 'TIMEOUT', decidedAt: new Date().toISOString() }, decisionSha256: null };
+  return { state, decision: { action: 'TIMEOUT', decidedAt: now().toISOString() }, decisionSha256: null };
 }
 
 function createAcceptanceReceipt({ output, state, decision, decisionSha256, authorizationReference,
@@ -191,5 +218,7 @@ module.exports = {
   DEFAULT_ACCEPTANCE_TIMEOUT_MS,
   submitDecision,
   validateDecision,
+  validateRecordedState,
   waitForAcceptance,
+  waitForRecordedAcceptance,
 };

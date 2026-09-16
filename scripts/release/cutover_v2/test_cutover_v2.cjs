@@ -15,7 +15,9 @@ const { scanFiles, verifyV2ExecutionPaths } = require('./prohibited_path_guard.c
 const { CutoverV2Controller, controllerLoss, durableRecoveryDatabase } = require('./cutover_v2_controller.cjs');
 const { AppQuiescence, snapshotIdentity } = require('./app_quiescence.cjs');
 const { assertInitialDurableControl, assertRecoveryDatabaseName, databaseUrlFor, requiredPackageThrough,
-  validateAuthorization, validateExpectedDurableControl } = require('./orchestrator.cjs');
+  createAcceptanceAdapter, validateAuthorization, validateExpectedDurableControl } = require('./orchestrator.cjs');
+const { createAcceptanceReceipt, createAcceptanceState, submitDecision, validateDecision,
+  waitForRecordedAcceptance } = require('./acceptance_control.cjs');
 const { parseSqlServerUrl } = require('./sql_application_lock.cjs');
 
 const results = [];
@@ -39,6 +41,30 @@ const candidate = runtime('candidate.zip', 'a'.repeat(40));
 const recovery = runtime('recovery.zip', 'b'.repeat(40));
 const okPackage = async ({ reference: value }) => ({ verdict: 'PASS', sanitizedReference: value.split('?')[0],
   referenceSha256: crypto.createHash('sha256').update(value).digest('hex'), size: bytes.length, sha256: packageHash });
+
+function acceptanceBinding(overrides = {}) {
+  return {
+    cutoverId: 'v2-acceptance-test', durableGeneration: 8, candidateSha: candidate.commit,
+    runtimeArtifactSha256: packageHash, runtimePackageReferenceSha256: sha256(candidate.reference),
+    migrationArtifactSha256: 'c'.repeat(64), releaseReceiptSha256: 'd'.repeat(64),
+    structuralSha256: '1'.repeat(64), ledgerSha256: '2'.repeat(64), protectedDataSha256: '3'.repeat(64),
+    deploymentControlSha256: '4'.repeat(64), durableFreezeControlSha256: '5'.repeat(64),
+    parityManifestSha256: '6'.repeat(64), targetResourceId: '/subscriptions/test/app',
+    activeMigrations: [{ name: 'baseline' }, { name: 'reconciliation' }],
+    runtimePackageName: candidate.packageName, runtimePackageSize: candidate.size,
+    technicalCutoverCompletedAt: '2026-09-16T12:00:00.000Z', environment: 'disposable',
+    ...overrides,
+  };
+}
+
+function decisionFor(state, overrides = {}) {
+  return {
+    decisionVersion: 1, action: 'ACCEPT', cutoverId: state.cutoverId, challenge: state.challenge,
+    candidateSha: state.binding.candidateSha, targetResourceId: state.binding.targetResourceId,
+    durableGeneration: state.binding.durableGeneration, decidedAt: '2026-09-16T12:01:00.000Z',
+    explicitProductOwnerAction: true, ...overrides,
+  };
+}
 
 function runtimeHarness(initial = recovery, options = {}) {
   let settings = {
@@ -866,6 +892,209 @@ async function main() {
     const document = (await controller.freeze(freezeContext())).document;
     document.recoveryDatabase = { ...durable, databaseUrl: 'sqlserver://secret' };
     assert.throws(() => validateJournal(document), /must not persist a connection value/);
+  });
+
+  await test('65 acceptance wait does not immediately time out and explicit ACCEPT creates receipt', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-acceptance-'));
+    const stateFile = path.join(temporary, 'state.json');
+    const decisionFile = path.join(temporary, 'decision.json');
+    const receiptFile = path.join(temporary, 'receipt.json');
+    let current = new Date('2026-09-16T12:00:00.000Z');
+    try {
+      const state = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => current });
+      let sleeps = 0;
+      const result = await waitForRecordedAcceptance({ stateFile, decisionFile, state, pollMs: 1,
+        now: () => current, assertInvariants: async () => ({ verdict: 'PASS' }), sleep: async () => {
+          sleeps += 1; current = new Date('2026-09-16T12:01:00.000Z');
+          submitDecision({ stateFile, action: 'ACCEPT', cutoverId: state.cutoverId,
+            challenge: state.challenge, now: () => current });
+        } });
+      assert.equal(sleeps, 1, 'Acceptance wait returned before polling for a decision');
+      assert.equal(result.decision.action, 'ACCEPT');
+      const receipt = createAcceptanceReceipt({ output: receiptFile, state, decision: result.decision,
+        decisionSha256: result.decisionSha256, authorizationReference: 'authorization',
+        authoritativeSha: candidate.commit, health: { verdict: 'PASS' }, smoke: { verdict: 'PASS' },
+        tagTargets: { candidate: candidate.commit } });
+      assert.equal(receipt.receipt.productOwnerAcceptance.explicit, true);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('66 explicit REJECT returns no acceptance receipt', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-reject-'));
+    const stateFile = path.join(temporary, 'state.json'); const decisionFile = path.join(temporary, 'decision.json');
+    try {
+      const current = new Date('2026-09-16T12:01:00.000Z');
+      const state = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => new Date('2026-09-16T12:00:00.000Z') });
+      submitDecision({ stateFile, action: 'REJECT', cutoverId: state.cutoverId,
+        challenge: state.challenge, now: () => current });
+      const result = await waitForRecordedAcceptance({ stateFile, decisionFile, state,
+        now: () => current, assertInvariants: async () => ({ verdict: 'PASS' }) });
+      assert.equal(result.decision.action, 'REJECT');
+      assert.equal(fs.existsSync(path.join(temporary, 'receipt.json')), false);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('67 actual original deadline produces TIMEOUT without a receipt', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-timeout-'));
+    const stateFile = path.join(temporary, 'state.json'); const decisionFile = path.join(temporary, 'decision.json');
+    try {
+      const state = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => new Date('2026-09-16T12:00:00.000Z') });
+      const result = await waitForRecordedAcceptance({ stateFile, decisionFile, state,
+        now: () => new Date('2026-09-16T12:30:00.001Z'),
+        assertInvariants: async () => ({ verdict: 'PASS' }) });
+      assert.equal(result.decision.action, 'TIMEOUT');
+      assert.equal(result.decisionSha256, null);
+      assert.equal(fs.existsSync(path.join(temporary, 'receipt.json')), false);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('68 replacement controller preserves the original challenge and deadline', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-adopt-wait-'));
+    const stateFile = path.join(temporary, 'state.json'); const decisionFile = path.join(temporary, 'decision.json');
+    try {
+      const original = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => new Date('2026-09-16T12:00:00.000Z') });
+      const adoptedState = structuredClone(original);
+      submitDecision({ stateFile, action: 'REJECT', cutoverId: original.cutoverId,
+        challenge: original.challenge, now: () => new Date('2026-09-16T12:10:00.000Z') });
+      const result = await waitForRecordedAcceptance({ stateFile, decisionFile, state: adoptedState,
+        now: () => new Date('2026-09-16T12:10:00.000Z'),
+        assertInvariants: async () => ({ verdict: 'PASS', adopted: true }) });
+      assert.equal(result.state.challenge, original.challenge);
+      assert.equal(result.state.expiresAt, original.expiresAt);
+      assert.equal(result.decision.action, 'REJECT');
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('69 wrong acceptance identity fields and stale decisions fail closed', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-negative-decision-'));
+    const stateFile = path.join(temporary, 'state.json'); const decisionFile = path.join(temporary, 'decision.json');
+    try {
+      const state = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => new Date('2026-09-16T12:00:00.000Z') });
+      const now = new Date('2026-09-16T12:05:00.000Z');
+      assert.throws(() => validateDecision(state, decisionFor(state, { cutoverId: 'other' }), now), /cutover ID differs/);
+      assert.throws(() => validateDecision(state, decisionFor(state, { challenge: '0'.repeat(64) }), now), /challenge differs/);
+      assert.throws(() => validateDecision(state, decisionFor(state, { candidateSha: 'f'.repeat(40) }), now), /candidate differs/);
+      assert.throws(() => validateDecision(state, decisionFor(state, { durableGeneration: 99 }), now), /generation differs/);
+      assert.throws(() => validateDecision(state, decisionFor(state,
+        { decidedAt: '2026-09-16T11:59:59.000Z' }), now), /predates/);
+      assert.throws(() => validateDecision(state, decisionFor(state,
+        { decidedAt: '2026-09-16T12:31:00.000Z' }), now), /after the deadline/);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('70 duplicate ACCEPT and ACCEPT after timeout are rejected', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-duplicate-accept-'));
+    const stateFile = path.join(temporary, 'state.json'); const decisionFile = path.join(temporary, 'decision.json');
+    try {
+      const state = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => new Date('2026-09-16T12:00:00.000Z') });
+      submitDecision({ stateFile, action: 'ACCEPT', cutoverId: state.cutoverId, challenge: state.challenge,
+        now: () => new Date('2026-09-16T12:01:00.000Z') });
+      assert.throws(() => submitDecision({ stateFile, action: 'ACCEPT', cutoverId: state.cutoverId,
+        challenge: state.challenge, now: () => new Date('2026-09-16T12:02:00.000Z') }), /EEXIST/);
+      fs.rmSync(decisionFile);
+      assert.throws(() => submitDecision({ stateFile, action: 'ACCEPT', cutoverId: state.cutoverId,
+        challenge: state.challenge, now: () => new Date('2026-09-16T12:31:00.000Z') }), /expired/);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('71 ACCEPT after rollback or wrong adoption context is rejected', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-rollback-accept-'));
+    const stateFile = path.join(temporary, 'state.json'); const decisionFile = path.join(temporary, 'decision.json');
+    try {
+      const state = createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding(),
+        now: () => new Date('2026-09-16T12:00:00.000Z') });
+      submitDecision({ stateFile, action: 'ACCEPT', cutoverId: state.cutoverId, challenge: state.challenge,
+        now: () => new Date('2026-09-16T12:01:00.000Z') });
+      await assert.rejects(waitForRecordedAcceptance({ stateFile, decisionFile, state,
+        now: () => new Date('2026-09-16T12:01:00.000Z'),
+        assertInvariants: async () => { throw new Error('Durable journal is not waiting after rollback started'); } }),
+      /not waiting after rollback started/);
+      await assert.rejects(waitForRecordedAcceptance({ stateFile, decisionFile, state,
+        now: () => new Date('2026-09-16T12:01:00.000Z'),
+        assertInvariants: async () => { throw new Error('Wrong controller adoption context'); } }),
+      /Wrong controller adoption context/);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('72 live orchestrator adapter reaches WAITING and consumes explicit ACCEPT', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-adapter-'));
+    fs.mkdirSync(path.join(temporary, 'prisma'));
+    fs.writeFileSync(path.join(temporary, 'prisma', 'active-migration-manifest.json'), JSON.stringify({ entries: [
+      { name: 'baseline', sha256: 'a'.repeat(64), bytes: 1 },
+      { name: 'reconciliation', sha256: 'b'.repeat(64), bytes: 1 },
+    ] }));
+    let current = new Date('2026-09-16T12:00:00.000Z'); let journal; let adapter;
+    const binding = { candidateSha: candidate.commit, candidateArtifactSha256: packageHash,
+      migrationArtifactSha256: 'c'.repeat(64), releaseReceiptSha256: 'd'.repeat(64),
+      parityManifestSha256: '6'.repeat(64), appServiceResourceId: '/subscriptions/test/app',
+      candidateRuntime: candidate, acceptanceWindowMinutes: 30 };
+    try {
+      adapter = createAcceptanceAdapter({ root: temporary, environment: 'live', binding,
+        operationId: 'v2-acceptance-test', authorizationSha256: 'e'.repeat(64),
+        durableFreeze: { currentJournal: async () => structuredClone(journal) },
+        app: { verifyAcceptanceMode: async () => ({ verdict: 'PASS' }) },
+        runtime: { verifyCandidate: async () => ({ verdict: 'PASS' }) },
+        simulation: null, now: () => current, pollMs: 1, sleep: async () => {
+          current = new Date('2026-09-16T12:01:00.000Z');
+          submitDecision({ stateFile: adapter.paths.stateFile, action: 'ACCEPT', cutoverId: journal.acceptance.cutoverId,
+            challenge: journal.acceptance.challenge, now: () => current });
+        } });
+      const beforeWaiting = { generation: 7, packageState: { candidate: {
+        referenceSha256: sha256(candidate.reference) } }, currentDatabase: {
+        structuralSha256: '1'.repeat(64), ledgerSha256: '2'.repeat(64), protectedDataSha256: '3'.repeat(64) },
+      quiescenceSnapshot: { snapshotSha256: '4'.repeat(64) } };
+      const state = await adapter.prepare({}, beforeWaiting);
+      journal = { ...beforeWaiting, state: 'FROZEN', phase: 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE',
+        generation: 8, cutoverId: state.cutoverId, candidateSha: candidate.commit, acceptance: state };
+      const decision = await adapter.wait({}, state);
+      assert.equal(decision.action, 'ACCEPT');
+      assert.equal(state.binding.durableGeneration, 8);
+      const receipt = await adapter.createReceipt(decision, {}, state);
+      assert.equal(receipt.receipt.productOwnerAcceptance.explicit, true);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('73 resumed acceptance adapter keeps the original deadline after adoption', async () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'reliance-adapter-resume-'));
+    fs.mkdirSync(path.join(temporary, 'prisma'));
+    fs.writeFileSync(path.join(temporary, 'prisma', 'active-migration-manifest.json'), JSON.stringify({ entries: [
+      { name: 'baseline' }, { name: 'reconciliation' },
+    ] }));
+    let current = new Date('2026-09-16T12:00:00.000Z'); let journal; let replacement;
+    const binding = { candidateSha: candidate.commit, candidateArtifactSha256: packageHash,
+      migrationArtifactSha256: 'c'.repeat(64), releaseReceiptSha256: 'd'.repeat(64),
+      parityManifestSha256: '6'.repeat(64), appServiceResourceId: '/subscriptions/test/app',
+      candidateRuntime: candidate, acceptanceWindowMinutes: 30 };
+    const common = { root: temporary, environment: 'live', binding, operationId: 'v2-acceptance-test',
+      authorizationSha256: 'e'.repeat(64),
+      durableFreeze: { currentJournal: async () => structuredClone(journal) },
+      app: { verifyAcceptanceMode: async () => ({ verdict: 'PASS' }) },
+      runtime: { verifyCandidate: async () => ({ verdict: 'PASS' }) }, simulation: null, pollMs: 1 };
+    try {
+      const original = createAcceptanceAdapter({ ...common, now: () => current });
+      const beforeWaiting = { generation: 7, packageState: { candidate: {
+        referenceSha256: sha256(candidate.reference) } }, currentDatabase: {
+        structuralSha256: '1'.repeat(64), ledgerSha256: '2'.repeat(64), protectedDataSha256: '3'.repeat(64) },
+      quiescenceSnapshot: { snapshotSha256: '4'.repeat(64) } };
+      const state = await original.prepare({}, beforeWaiting);
+      journal = { ...beforeWaiting, state: 'FROZEN', phase: 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE',
+        generation: 9, cutoverId: state.cutoverId, candidateSha: candidate.commit, acceptance: state };
+      current = new Date('2026-09-16T12:10:00.000Z');
+      replacement = createAcceptanceAdapter({ ...common, now: () => current, sleep: async () => {
+        submitDecision({ stateFile: replacement.paths.stateFile, action: 'REJECT', cutoverId: state.cutoverId,
+          challenge: state.challenge, now: () => current });
+      } });
+      const decision = await replacement.wait({}, state);
+      assert.equal(decision.action, 'REJECT');
+      assert.equal(state.expiresAt, '2026-09-16T12:30:00.000Z');
+      assert.equal(state.challenge, journal.acceptance.challenge);
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

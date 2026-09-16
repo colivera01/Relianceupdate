@@ -8,6 +8,8 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { BlobServiceClient, StorageSharedKeyCredential } = require('@azure/storage-blob');
 const { AppQuiescence } = require('./app_quiescence.cjs');
+const { createAcceptanceReceipt, createAcceptanceState,
+  waitForRecordedAcceptance } = require('./acceptance_control.cjs');
 const { CutoverV2Controller, controllerLoss } = require('./cutover_v2_controller.cjs');
 const { createAzureBlobStore, DurableFreezeController } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
@@ -337,6 +339,107 @@ function durableRuntime(runtime) {
     referenceSha256: sha256(runtime.reference) };
 }
 
+function createAcceptanceAdapter({ root, environment, binding, operationId, authorizationSha256,
+  durableFreeze, app, runtime, simulation = environment === 'disposable'
+    ? (process.env.RELIANCE_CUTOVER_ACCEPTANCE_SIMULATION || 'REJECT') : null,
+  now = () => new Date(), pollMs = 30_000, sleep }) {
+  assert(environment !== 'live' || simulation === null,
+    'Live Product Owner acceptance cannot be simulated');
+  const prefix = `.cutover-v2-${environment}-${safeId(operationId)}-acceptance`;
+  const evidenceRoot = binding.files?.releaseReceipt
+    ? path.dirname(path.resolve(root, binding.files.releaseReceipt)) : root;
+  const stateFile = path.join(evidenceRoot, `${prefix}.json`);
+  const decisionFile = path.join(evidenceRoot, `${prefix}-decision.json`);
+  const receiptFile = path.join(evidenceRoot, `${prefix}-receipt.json`);
+  const activeMigrations = readJson(path.join(root, 'prisma/active-migration-manifest.json')).entries;
+
+  const assertWaitingInvariants = async (state) => {
+    const journal = await durableFreeze.currentJournal();
+    assert.equal(journal.state, 'FROZEN', 'Acceptance environment is not FROZEN');
+    assert.equal(journal.phase, 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE',
+      'Durable journal is not waiting for Product Owner acceptance');
+    assert.deepEqual(journal.acceptance, state, 'Durable acceptance state differs');
+    assert.equal(journal.cutoverId, state.cutoverId, 'Durable acceptance cutover ID differs');
+    assert.equal(journal.candidateSha, state.binding.candidateSha, 'Durable acceptance candidate differs');
+    assert.equal(journal.acceptance.binding.durableGeneration, state.binding.durableGeneration,
+      'Durable acceptance generation binding differs');
+    assert(journal.generation >= state.binding.durableGeneration,
+      'Current durable generation predates the acceptance checkpoint');
+    await app.verifyAcceptanceMode();
+    const running = await runtime.verifyCandidate();
+    assert.equal(running.verdict, 'PASS', 'Acceptance runtime identity differs');
+    return { verdict: 'PASS', generation: journal.generation };
+  };
+
+  const validateReceipt = (receipt) => {
+    assert.equal(receipt.cutoverId, operationId, 'Acceptance receipt cutover ID differs');
+    assert.equal(receipt.candidateSha, binding.candidateSha, 'Acceptance receipt candidate differs');
+    assert.equal(receipt.runtimeArtifactSha256, binding.candidateArtifactSha256,
+      'Acceptance receipt runtime artifact differs');
+    assert.equal(receipt.migrationArtifactSha256, binding.migrationArtifactSha256,
+      'Acceptance receipt migration artifact differs');
+    assert.equal(receipt.releaseReceiptSha256, binding.releaseReceiptSha256,
+      'Acceptance receipt release evidence differs');
+    return receipt;
+  };
+
+  return {
+    paths: { stateFile, decisionFile, receiptFile },
+    prepare: async (_context, journal) => {
+      const durableGeneration = journal.generation + 1;
+      const createdAt = now().toISOString();
+      const acceptanceBinding = {
+        cutoverId: operationId,
+        durableGeneration,
+        candidateSha: binding.candidateSha,
+        runtimeArtifactSha256: binding.candidateArtifactSha256,
+        runtimePackageReferenceSha256: journal.packageState.candidate.referenceSha256,
+        migrationArtifactSha256: binding.migrationArtifactSha256,
+        releaseReceiptSha256: binding.releaseReceiptSha256,
+        structuralSha256: journal.currentDatabase.structuralSha256,
+        ledgerSha256: journal.currentDatabase.ledgerSha256,
+        protectedDataSha256: journal.currentDatabase.protectedDataSha256,
+        deploymentControlSha256: journal.quiescenceSnapshot.snapshotSha256,
+        durableFreezeControlSha256: sha256(JSON.stringify({ cutoverId: operationId,
+          durableGeneration, phase: 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE',
+          candidateSha: binding.candidateSha, targetResourceId: binding.appServiceResourceId })),
+        parityManifestSha256: binding.parityManifestSha256,
+        targetResourceId: binding.appServiceResourceId,
+        activeMigrations,
+        runtimePackageName: binding.candidateRuntime.packageName,
+        runtimePackageSize: binding.candidateRuntime.size,
+        technicalCutoverCompletedAt: createdAt,
+        environment,
+      };
+      return createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding,
+        timeoutMs: binding.acceptanceWindowMinutes * 60_000, now });
+    },
+    wait: async (_context, state) => {
+      const result = await waitForRecordedAcceptance({ stateFile, decisionFile, state, pollMs,
+        assertInvariants: assertWaitingInvariants, simulation, now, ...(sleep ? { sleep } : {}) });
+      return { ...result.decision, decisionSha256: result.decisionSha256 };
+    },
+    createReceipt: async (decision, _context, state) => {
+      assert.equal(decision.action, 'ACCEPT', 'Only explicit ACCEPT can create an acceptance receipt');
+      if (fs.existsSync(receiptFile)) {
+        const receipt = validateReceipt(readJson(receiptFile));
+        return { receipt, sha256: sha256File(receiptFile) };
+      }
+      return createAcceptanceReceipt({ output: receiptFile, state, decision,
+        decisionSha256: decision.decisionSha256, authorizationReference: authorizationSha256,
+        authoritativeSha: binding.candidateSha, health: { verdict: 'PASS' },
+        smoke: { customer: 'PASS', vendor: 'PASS', admin: 'PASS',
+          bradley: 'UNPROVEN-NOT-REQUIRED' },
+        tagTargets: { candidate: binding.candidateSha } });
+    },
+    resumeReceipt: async () => {
+      assert(fs.existsSync(receiptFile), 'Acceptance receipt is missing during resume');
+      const receipt = validateReceipt(readJson(receiptFile));
+      return { receipt, sha256: sha256File(receiptFile) };
+    },
+  };
+}
+
 function readAdoption(file) {
   assert(file && fs.existsSync(file), 'Resume/adopt requires an adoption evidence file');
   const adoption = readJson(file);
@@ -482,6 +585,8 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
       expectedActive: 'RECOVERY', observedActive: currentRuntime.state },
   };
 
+  const acceptance = createAcceptanceAdapter({ root, environment, binding, operationId,
+    authorizationSha256, durableFreeze: control.controller, app: prepared.app, runtime: runtimeDeps });
   const controller = new CutoverV2Controller({ context: {
     operationId,
     targetResourceId: binding.appServiceResourceId,
@@ -642,22 +747,7 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
       const currentUrl = databaseUrlFor(prepared.databaseUrl, journal.currentDatabase.database);
       return { verdict: 'PASS', evidence: await captureEvidence(currentUrl) };
     },
-    acceptance: {
-      prepare: async () => {
-        const createdAt = new Date();
-        return { createdAt: createdAt.toISOString(),
-          expiresAt: new Date(createdAt.getTime() + binding.acceptanceWindowMinutes * 60_000).toISOString(),
-          challenge: sha256(`${operationId}:${binding.candidateSha}:${createdAt.toISOString()}`) };
-      },
-      wait: async (_context, acceptance) => {
-        assert(new Date(acceptance.expiresAt).getTime() >= Date.now(), 'Original acceptance deadline expired');
-        return { action: environment === 'disposable' ? 'REJECT' : 'TIMEOUT', challenge: acceptance.challenge };
-      },
-      createReceipt: async (_acceptance, _context, acceptance) => ({
-        sha256: sha256(`accept:${operationId}:${acceptance.challenge}`),
-      }),
-      resumeReceipt: async () => ({ sha256: sha256(`accept:${operationId}:resumed`) }),
-    },
+    acceptance,
     createRecoveryReceipt: async (value) => ({ sha256: sha256(JSON.stringify(value)) }),
     cleanup: async () => ({ verdict: 'PASS', whileFrozen: true }),
     afterCheckpoint: async (phase) => {
@@ -695,5 +785,5 @@ if (require.main === module) main().catch((error) => {
 });
 
 module.exports = { assertInitialDurableControl, assertRecoveryDatabaseName, captureEvidence, databaseUrlFor,
-  execute, preflight, requiredPackageThrough, validateAuthorization, validateBinding,
+  createAcceptanceAdapter, execute, preflight, requiredPackageThrough, validateAuthorization, validateBinding,
   validateExpectedDurableControl };
