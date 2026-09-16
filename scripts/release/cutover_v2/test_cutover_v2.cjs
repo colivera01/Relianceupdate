@@ -15,7 +15,8 @@ const { scanFiles, verifyV2ExecutionPaths } = require('./prohibited_path_guard.c
 const { CutoverV2Controller, controllerLoss, durableRecoveryDatabase } = require('./cutover_v2_controller.cjs');
 const { AppQuiescence, snapshotIdentity } = require('./app_quiescence.cjs');
 const { assertInitialDurableControl, assertRecoveryDatabaseName, databaseUrlFor, requiredPackageThrough,
-  createAcceptanceAdapter, validateAuthorization, validateExpectedDurableControl } = require('./orchestrator.cjs');
+  createAcceptanceAdapter, validateAuthorization, validateExpectedDurableControl,
+  verifyAcceptanceControllerWiring } = require('./orchestrator.cjs');
 const { createAcceptanceReceipt, createAcceptanceState, submitDecision, validateDecision,
   waitForRecordedAcceptance } = require('./acceptance_control.cjs');
 const { parseSqlServerUrl } = require('./sql_application_lock.cjs');
@@ -1095,6 +1096,22 @@ async function main() {
       assert.equal(state.expiresAt, '2026-09-16T12:30:00.000Z');
       assert.equal(state.challenge, journal.acceptance.challenge);
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+  });
+
+  await test('74 live preflight reports the reviewed acceptance controller as connected', async () => {
+    assert.deepEqual(verifyAcceptanceControllerWiring(), {
+      verdict: 'PASS', controller: 'CONNECTED', immediateTimeoutBug: 'ABSENT',
+      waitingState: 'REACHABLE', accept: 'SUPPORTED', reject: 'SUPPORTED', timeout: 'SUPPORTED',
+      resumeDuringAcceptance: 'SUPPORTED', originalDeadlinePreserved: 'PASS',
+    });
+  });
+
+  await test('75 live preflight rejects the legacy immediate-timeout acceptance path', async () => {
+    assert.throws(() => verifyAcceptanceControllerWiring({
+      adapterSource: "async function wait() { waitForRecordedAcceptance(); return { action: environment === 'disposable' ? 'REJECT' : 'TIMEOUT' }; }",
+      controllerSource: "class Controller { async run() { case 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE': return this.dependencies.acceptance.wait(); } }",
+      waiterSource: waitForRecordedAcceptance.toString(),
+    }), /Legacy immediate-timeout acceptance path is present/);
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

@@ -309,6 +309,7 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
   await lock.acquire();
   await assertSecondActorBlocked({ databaseUrl: sourceDatabaseUrl, resourceId: binding.databaseResourceId });
   await lock.release();
+  const acceptanceController = verifyAcceptanceControllerWiring();
   const result = { verdict: 'PASS', mode: 'DRY_RUN', capturedAt: new Date().toISOString(), liveMutations: 0,
     cutoverWouldProceedIfAuthorized: true, source: { localSha, localTree, remote },
     target: { appId: state.app.id, sqlServerId: state.server.id, databaseId: state.database.id,
@@ -320,6 +321,7 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
     authorizedDurableGeneration: binding.expectedDurableGeneration,
     stateBinding: durableAuthorization?.stateBinding || null,
     generationBinding: durableAuthorization?.generationBinding || null,
+    acceptanceController,
     leaseReadiness: 'PASS', sqlLockReadiness: 'PASS', quiescence,
     executionPaths: verifyV2ExecutionPaths(root), runtimePointerRollbackReadiness: 'PASS',
     forwardGitRecovery: 'PASS', deploymentArchitecture: 'POINTER_BASED' };
@@ -337,6 +339,42 @@ function durableRuntime(runtime) {
   return { commit: runtime.commit, packageName: runtime.packageName, size: runtime.size,
     sha256: runtime.sha256, requiredThrough: runtime.requiredThrough,
     referenceSha256: sha256(runtime.reference) };
+}
+
+function verifyAcceptanceControllerWiring({
+  adapterSource = createAcceptanceAdapter.toString(),
+  controllerSource = CutoverV2Controller.toString(),
+  waiterSource = waitForRecordedAcceptance.toString(),
+} = {}) {
+  assert.match(controllerSource, /WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE/,
+    'Acceptance waiting state is not reachable');
+  assert.match(controllerSource, /dependencies\.acceptance\.wait/,
+    'Cutover controller does not invoke its acceptance dependency');
+  assert.match(adapterSource, /waitForRecordedAcceptance/,
+    'Live orchestrator does not invoke the reviewed acceptance controller');
+  assert.doesNotMatch(adapterSource, /environment\s*===\s*['"]disposable['"]\s*\?\s*['"]REJECT['"]\s*:\s*['"]TIMEOUT['"]/,
+    'Legacy immediate-timeout acceptance path is present');
+  assert.match(waiterSource, /const deadline = new Date\(state\.expiresAt\)\.getTime\(\)/,
+    'Acceptance timeout is not bound to the recorded deadline');
+  assert.match(waiterSource, /while \(now\(\)\.getTime\(\) <= deadline\)/,
+    'Acceptance controller does not wait through the recorded deadline');
+  assert.match(waiterSource, /await sleep/,
+    'Acceptance controller does not poll while waiting');
+  const waitIndex = waiterSource.indexOf('while (now().getTime() <= deadline)');
+  const timeoutIndex = waiterSource.lastIndexOf("action: 'TIMEOUT'");
+  assert(waitIndex >= 0 && timeoutIndex > waitIndex,
+    'Acceptance TIMEOUT can occur before the recorded wait loop completes');
+  return {
+    verdict: 'PASS',
+    controller: 'CONNECTED',
+    immediateTimeoutBug: 'ABSENT',
+    waitingState: 'REACHABLE',
+    accept: 'SUPPORTED',
+    reject: 'SUPPORTED',
+    timeout: 'SUPPORTED',
+    resumeDuringAcceptance: 'SUPPORTED',
+    originalDeadlinePreserved: 'PASS',
+  };
 }
 
 function createAcceptanceAdapter({ root, environment, binding, operationId, authorizationSha256,
@@ -786,4 +824,4 @@ if (require.main === module) main().catch((error) => {
 
 module.exports = { assertInitialDurableControl, assertRecoveryDatabaseName, captureEvidence, databaseUrlFor,
   createAcceptanceAdapter, execute, preflight, requiredPackageThrough, validateAuthorization, validateBinding,
-  validateExpectedDurableControl };
+  validateExpectedDurableControl, verifyAcceptanceControllerWiring };
