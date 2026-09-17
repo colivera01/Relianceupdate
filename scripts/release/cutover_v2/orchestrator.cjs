@@ -13,6 +13,7 @@ const { createAcceptanceReceipt, createAcceptanceState,
 const { CutoverV2Controller, controllerLoss } = require('./cutover_v2_controller.cjs');
 const { createAzureBlobStore, DurableFreezeController } = require('./durable_freeze.cjs');
 const { RecoveryLockHandoff } = require('./lock_handoff.cjs');
+const { GitReleaseControl } = require('./git_release_control.cjs');
 const { classifyConfiguredRuntime, invokeStructuredUpdater,
   verifyRemotePackage, verifyRunningRuntime } = require('./runtime_package.cjs');
 const { SqlApplicationLock, assertSecondActorBlocked } = require('./sql_application_lock.cjs');
@@ -84,6 +85,17 @@ function validateBinding(root, binding, environment, descriptor) {
   validateExpectedDurableControl(binding);
   assert.match(binding.candidateSha || '', /^[a-f0-9]{40}$/, 'Candidate SHA is invalid');
   assert.match(binding.expectedRemoteHead || '', /^[a-f0-9]{40}$/, 'Expected remote head is invalid');
+  assert.match(binding.rollbackCommitSha || '', /^[a-f0-9]{40}$/, 'Rollback commit SHA is invalid');
+  assert.match(binding.rollbackTreeSha || '', /^[a-f0-9]{40}$/, 'Rollback tree SHA is invalid');
+  assert(String(binding.gitRemote || '').trim(), 'Git remote is missing');
+  assert(String(binding.gitRepository || '').trim(), 'Git repository is missing');
+  assert(Array.isArray(binding.releaseTags) && binding.releaseTags.length === 1,
+    'Exactly one reviewed release/accepted tag is required');
+  for (const tag of binding.releaseTags) {
+    assert.equal(tag.name, `release/accepted/${binding.candidateSha}`,
+      'Release tag name differs from the reviewed candidate convention');
+    assert.equal(tag.targetSha, binding.candidateSha, 'Release tag target differs from the candidate');
+  }
   assert.equal(binding.canonicalDatabase, descriptor.database, 'Canonical database differs');
   for (const field of ['appServiceResourceId', 'sqlServerResourceId', 'databaseResourceId'])
     assert(String(binding[field] || '').startsWith('/subscriptions/'), `${field} is invalid`);
@@ -113,6 +125,21 @@ function validateBinding(root, binding, environment, descriptor) {
     assert.equal(sha256File(file), expected, `${field} hash differs`);
   }
   return { verdict: 'PASS' };
+}
+
+function createGitReleaseControl(root, binding, options = {}) {
+  return new GitReleaseControl({
+    root,
+    remote: binding.gitRemote,
+    repository: binding.gitRepository,
+    branch: binding.authoritativeBranch,
+    expectedStartSha: binding.expectedRemoteHead,
+    candidateSha: binding.candidateSha,
+    rollbackSha: binding.rollbackCommitSha,
+    rollbackTree: binding.rollbackTreeSha,
+    releaseTags: binding.releaseTags,
+    ...options,
+  });
 }
 
 function validateAuthorization(file, binding, bindingSha256) {
@@ -265,8 +292,15 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
   const localTree = (await run('git', ['rev-parse', 'HEAD^{tree}'], { cwd: root })).trim();
   assert.equal(localSha, binding.candidateSha, 'Local candidate differs');
   assert.equal(localTree, binding.candidateTree, 'Local candidate tree differs');
-  const remote = (await run('git', ['ls-remote', 'origin', `refs/heads/${binding.authoritativeBranch}`], { cwd: root })).split(/\s+/)[0];
-  assert.equal(remote, binding.expectedRemoteHead, 'Authoritative remote differs');
+  const gitRelease = createGitReleaseControl(root, binding);
+  const gitInspection = await gitRelease.inspect();
+  const remote = gitInspection.remoteHead;
+  if (resume) {
+    assert([binding.expectedRemoteHead, binding.candidateSha, binding.rollbackCommitSha].includes(remote),
+      'Authoritative remote is outside the durable-resume Git state set');
+  } else {
+    assert.equal(remote, binding.expectedRemoteHead, 'Authoritative remote differs');
+  }
   const state = resourceState(descriptor);
   assert.equal(state.app.id.toLowerCase(), binding.appServiceResourceId.toLowerCase(), 'App resource differs');
   assert.equal(state.server.id.toLowerCase(), binding.sqlServerResourceId.toLowerCase(), 'SQL server resource differs');
@@ -334,9 +368,12 @@ async function preflight({ root, environment, descriptor, binding, writeEvidence
     acceptanceController,
     leaseReadiness: 'PASS', sqlLockReadiness: 'PASS', quiescence,
     executionPaths: verifyV2ExecutionPaths(root), runtimePointerRollbackReadiness: 'PASS',
+    gitReleaseControl: { verdict: 'PASS', promotion: 'READY', forwardOnlyRollback: 'READY',
+      remoteVerification: 'READY', finalTags: 'READY', inspected: gitInspection },
     forwardGitRecovery: 'PASS', deploymentArchitecture: 'POINTER_BASED' };
   if (writeEvidence && binding.dryRunOutput) fs.writeFileSync(path.resolve(root, binding.dryRunOutput), `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
-  return { result, runtimes, databaseUrl: sourceDatabaseUrl, configuredDatabaseUrl, app, durableState };
+  return { result, runtimes, databaseUrl: sourceDatabaseUrl, configuredDatabaseUrl, app, durableState,
+    gitRelease, gitInspection };
 }
 
 function databaseNameFromUrl(value) {
@@ -388,7 +425,7 @@ function verifyAcceptanceControllerWiring({
 }
 
 function createAcceptanceAdapter({ root, environment, binding, operationId, authorizationSha256,
-  durableFreeze, app, runtime, simulation = environment === 'disposable'
+  durableFreeze, app, runtime, gitRelease, simulation = environment === 'disposable'
     ? (process.env.RELIANCE_CUTOVER_ACCEPTANCE_SIMULATION || 'REJECT') : null,
   now = () => new Date(), pollMs = 30_000, sleep }) {
   assert(environment !== 'live' || simulation === null,
@@ -416,7 +453,8 @@ function createAcceptanceAdapter({ root, environment, binding, operationId, auth
     await app.verifyAcceptanceMode();
     const running = await runtime.verifyCandidate();
     assert.equal(running.verdict, 'PASS', 'Acceptance runtime identity differs');
-    return { verdict: 'PASS', generation: journal.generation };
+    const authoritativeGit = await gitRelease.verifyCandidatePromotion();
+    return { verdict: 'PASS', generation: journal.generation, authoritativeGit };
   };
 
   const validateReceipt = (receipt) => {
@@ -428,6 +466,10 @@ function createAcceptanceAdapter({ root, environment, binding, operationId, auth
       'Acceptance receipt migration artifact differs');
     assert.equal(receipt.releaseReceiptSha256, binding.releaseReceiptSha256,
       'Acceptance receipt release evidence differs');
+    assert.equal(receipt.githubAuthoritativeSha, binding.candidateSha,
+      'Acceptance receipt authoritative remote differs');
+    assert.deepEqual(receipt.tagTargets?.releaseTags, binding.releaseTags,
+      'Acceptance receipt release tags differ');
     return receipt;
   };
 
@@ -458,6 +500,8 @@ function createAcceptanceAdapter({ root, environment, binding, operationId, auth
         runtimePackageSize: binding.candidateRuntime.size,
         technicalCutoverCompletedAt: createdAt,
         environment,
+        authoritativeBranch: binding.authoritativeBranch,
+        authoritativeRemoteHead: (await gitRelease.verifyCandidatePromotion()).observedRemoteHead,
       };
       return createAcceptanceState({ stateFile, decisionFile, binding: acceptanceBinding,
         timeoutMs: binding.acceptanceWindowMinutes * 60_000, now });
@@ -473,12 +517,13 @@ function createAcceptanceAdapter({ root, environment, binding, operationId, auth
         const receipt = validateReceipt(readJson(receiptFile));
         return { receipt, sha256: sha256File(receiptFile) };
       }
+      const authoritativeGit = await gitRelease.verifyCandidatePromotion();
       return createAcceptanceReceipt({ output: receiptFile, state, decision,
         decisionSha256: decision.decisionSha256, authorizationReference: authorizationSha256,
-        authoritativeSha: binding.candidateSha, health: { verdict: 'PASS' },
+        authoritativeSha: authoritativeGit.observedRemoteHead, health: { verdict: 'PASS' },
         smoke: { customer: 'PASS', vendor: 'PASS', admin: 'PASS',
           bradley: 'UNPROVEN-NOT-REQUIRED' },
-        tagTargets: { candidate: binding.candidateSha } });
+        tagTargets: { releaseTags: binding.releaseTags } });
     },
     resumeReceipt: async () => {
       assert(fs.existsSync(receiptFile), 'Acceptance receipt is missing during resume');
@@ -537,6 +582,7 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
   });
 
   const currentRuntime = await runtimeDeps.inspect();
+  const gitRelease = prepared.gitRelease;
   let adopted = null;
   if (mode === 'resume') {
     const adoption = readAdoption(adoptionFile);
@@ -564,6 +610,20 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
       : [observedJournal.currentDatabase.database];
     assert(allowedDatabases.includes(configuredDatabase),
       'Pre-adoption database target differs from the durable journal');
+    const observedGitRemote = await gitRelease.remoteHead();
+    const recoveryPhase = ['FAILED_FROZEN', 'ROLLBACK_REQUESTED', 'PITR_IN_PROGRESS',
+      'RECOVERY_DB_VERIFIED', 'RECOVERY_DB_LOCKED', 'DB_SWITCHED_TO_RECOVERY',
+      'RUNTIME_RECOVERY_COMPLETE', 'GIT_RECOVERY_COMPLETE', 'RECOVERY_VERIFIED'].includes(observedJournal.phase);
+    const promotionUncertain = observedJournal.phase === 'GIT_PROMOTION_STARTED';
+    const allowedGitRemotes = recoveryPhase
+      ? [binding.expectedRemoteHead, binding.candidateSha, binding.rollbackCommitSha]
+      : promotionUncertain
+        ? [binding.expectedRemoteHead, binding.candidateSha]
+        : observedJournal.gitState?.promotion?.phase === 'VERIFIED'
+          ? [binding.candidateSha]
+          : [binding.expectedRemoteHead];
+    assert(allowedGitRemotes.includes(observedGitRemote),
+      'Pre-adoption authoritative Git remote differs from the durable journal');
     if (observedJournal.quiescenceSnapshot) prepared.app.readAndVerifySnapshot({
       expected: adoption.quiescenceSnapshot,
       mutationBoundary: observedJournal.recoveryPoint?.mutationBoundaryAt || null,
@@ -634,10 +694,12 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
       candidate: durableRuntime(prepared.runtimes.candidate), recovery: durableRuntime(prepared.runtimes.recovery),
       expectedActive: 'RECOVERY', observedActive: currentRuntime.state,
       observedClassification: currentRuntime.classification },
+    gitState: gitRelease.initialDurableState(prepared.gitInspection.remoteHead),
   };
 
   const acceptance = createAcceptanceAdapter({ root, environment, binding, operationId,
-    authorizationSha256, durableFreeze: control.controller, app: prepared.app, runtime: runtimeDeps });
+    authorizationSha256, durableFreeze: control.controller, app: prepared.app, runtime: runtimeDeps,
+    gitRelease });
   const controller = new CutoverV2Controller({ context: {
     operationId,
     targetResourceId: binding.appServiceResourceId,
@@ -685,10 +747,7 @@ async function execute({ root, environment, descriptor, binding, bindingSha256, 
     durableFreeze: control.controller,
     lockHandoff: handoff,
     runtime: runtimeDeps,
-    git: {
-      forwardOnlyRecovery: async () => ({ verdict: environment === 'live'
-        ? 'FORWARD_ONLY_RECOVERY_REQUIRED' : 'DISPOSABLE_SIMULATION', noReset: true }),
-    },
+    git: gitRelease,
     database: {
       captureRecoveryPoint: async () => {
         const evidence = await captureEvidence(prepared.databaseUrl);
@@ -836,5 +895,6 @@ if (require.main === module) main().catch((error) => {
 });
 
 module.exports = { assertInitialDurableControl, assertRecoveryDatabaseName, captureEvidence, databaseUrlFor,
-  createAcceptanceAdapter, execute, preflight, requiredPackageThrough, validateAuthorization, validateBinding,
+  createAcceptanceAdapter, createGitReleaseControl, execute, preflight, requiredPackageThrough,
+  validateAuthorization, validateBinding,
   validateExpectedDurableControl, verifyAcceptanceControllerWiring };

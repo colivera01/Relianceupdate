@@ -14,7 +14,7 @@
     "prisma:migrate": "node scripts/release/run_guarded_prisma.cjs migrate deploy",
     "db:studio": "prisma studio",
     "release:validate-sqlserver-schema": "node scripts/release/validate_sqlserver_schema_contract.cjs",
-    "release:v2:gate": "node scripts/release/cutover_v2/prohibited_path_guard.cjs . && node scripts/release/verify_migration_manifest.cjs && node scripts/release/cutover_v2/test_cutover_v2.cjs",
+    "release:v2:gate": "node scripts/release/cutover_v2/prohibited_path_guard.cjs . && node scripts/release/verify_migration_manifest.cjs && node scripts/release/cutover_v2/test_git_release_control.cjs && node scripts/release/cutover_v2/test_cutover_v2.cjs",
     "release:v2:test-settings": "python -m unittest -v scripts.release.test_update_azure_package_settings scripts.release.test_update_azure_database_setting",
     "release:v2:test-migrations": "node scripts/release/test_sha256_controls.cjs && node scripts/release/test_malformed_hash_fail_closed.cjs && node scripts/release/test_migration_immutability.cjs && node scripts/release/test_migration_staging.cjs && node scripts/release/test_migration_safety.cjs",
     "test:rv8:protected": "node scripts/release/run_rv8_protected_regression_gate.cjs",

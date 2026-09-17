@@ -17,6 +17,8 @@ const DURABLE_PHASES = Object.freeze([
   'BASELINE_RECOGNIZED',
   'RECONCILIATION_STARTED',
   'RECONCILIATION_APPLIED',
+  'GIT_PROMOTION_STARTED',
+  'GIT_PROMOTED',
   'CANDIDATE_POINTER_SWITCH_STARTED',
   'CANDIDATE_POINTER_SET',
   'CANDIDATE_STARTED',
@@ -31,6 +33,8 @@ const DURABLE_PHASES = Object.freeze([
   'GIT_RECOVERY_COMPLETE',
   'RECOVERY_VERIFIED',
   'ACCEPTED',
+  'FINAL_TAGS_STARTED',
+  'FINAL_TAGS_VERIFIED',
   'CLEANUP_IN_PROGRESS',
   'FAILED_FROZEN',
   'OPEN',
@@ -45,13 +49,17 @@ const NORMAL_TRANSITIONS = {
   BASELINE_RECOGNITION_STARTED: ['BASELINE_RECOGNIZED', 'FAILED_FROZEN'],
   BASELINE_RECOGNIZED: ['RECONCILIATION_STARTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
   RECONCILIATION_STARTED: ['RECONCILIATION_APPLIED', 'FAILED_FROZEN'],
-  RECONCILIATION_APPLIED: ['CANDIDATE_POINTER_SWITCH_STARTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
+  RECONCILIATION_APPLIED: ['GIT_PROMOTION_STARTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
+  GIT_PROMOTION_STARTED: ['GIT_PROMOTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
+  GIT_PROMOTED: ['CANDIDATE_POINTER_SWITCH_STARTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
   CANDIDATE_POINTER_SWITCH_STARTED: ['CANDIDATE_POINTER_SET', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
   CANDIDATE_POINTER_SET: ['CANDIDATE_STARTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
   CANDIDATE_STARTED: ['POST_DEPLOY_VERIFIED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
   POST_DEPLOY_VERIFIED: ['WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
   WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE: ['ACCEPTED', 'ROLLBACK_REQUESTED', 'FAILED_FROZEN'],
-  ACCEPTED: ['CLEANUP_IN_PROGRESS', 'FAILED_FROZEN'],
+  ACCEPTED: ['FINAL_TAGS_STARTED', 'FAILED_FROZEN'],
+  FINAL_TAGS_STARTED: ['FINAL_TAGS_VERIFIED', 'FAILED_FROZEN'],
+  FINAL_TAGS_VERIFIED: ['CLEANUP_IN_PROGRESS', 'FAILED_FROZEN'],
   ROLLBACK_REQUESTED: ['PITR_IN_PROGRESS', 'RUNTIME_RECOVERY_COMPLETE', 'FAILED_FROZEN'],
   PITR_IN_PROGRESS: ['RECOVERY_DB_VERIFIED', 'FAILED_FROZEN'],
   RECOVERY_DB_VERIFIED: ['RECOVERY_DB_LOCKED', 'FAILED_FROZEN'],
@@ -81,6 +89,25 @@ function validateOpenState(document) {
   return document;
 }
 
+function validateGitState(gitState) {
+  assert(gitState && typeof gitState === 'object', 'Durable Git release state is missing');
+  assert(String(gitState.remote || '').trim(), 'Durable Git remote is missing');
+  assert(String(gitState.repository || '').trim(), 'Durable Git repository is missing');
+  assert(String(gitState.branch || '').trim(), 'Durable Git branch is missing');
+  for (const field of ['expectedStartingRemoteSha', 'authorizedCandidateSha', 'authorizedRollbackSha']) {
+    assert(isCommit(gitState[field]), `Durable Git ${field} is invalid`);
+  }
+  assert.match(gitState.authorizedRollbackTree || '', /^[a-f0-9]{40}$/i,
+    'Durable Git rollback tree is invalid');
+  assert(gitState.promotion && typeof gitState.promotion.attempted === 'boolean',
+    'Durable Git promotion state is invalid');
+  assert(gitState.rollback && typeof gitState.rollback.attempted === 'boolean'
+    && typeof gitState.rollback.required === 'boolean', 'Durable Git rollback state is invalid');
+  assert(gitState.tags && Array.isArray(gitState.tags.entries) && gitState.tags.entries.length >= 1,
+    'Durable Git tag state is invalid');
+  return gitState;
+}
+
 function validateJournal(document) {
   assert.equal(document.version, 2, 'Unsupported durable cutover journal version');
   assert([STATE_OPEN, STATE_FROZEN].includes(document.state), 'Durable cutover state is invalid');
@@ -107,6 +134,7 @@ function validateJournal(document) {
   assert(!Number.isNaN(new Date(document.lastUpdatedAt).getTime()), 'Durable cutover update time is invalid');
   assert(document.packageState && document.packageState.candidate && document.packageState.recovery,
     'Durable package state is incomplete');
+  if (document.phase !== 'OPEN' || document.gitState) validateGitState(document.gitState);
   if (document.recoveryDatabase) {
     assert(!Object.hasOwn(document.recoveryDatabase, 'databaseUrl'),
       'Durable recovery database must not persist a connection value');
@@ -139,6 +167,7 @@ function assertFreezeContext(context) {
   }
   assert(context.packageState?.candidate && context.packageState?.recovery,
     'Initial durable package state is incomplete');
+  validateGitState(context.gitState);
   assert(context.currentDatabase?.resourceId === context.targetDatabaseResourceId,
     'Initial durable database state differs from the target');
   return context;
@@ -242,6 +271,7 @@ class DurableFreezeController {
         recoveryPoint: null,
         currentDatabase: context.currentDatabase,
         packageState: context.packageState,
+        gitState: context.gitState,
         acceptance: null,
         recoveryDatabase: null,
         controller,
@@ -332,7 +362,7 @@ class DurableFreezeController {
     assert((NORMAL_TRANSITIONS[before.phase] || []).includes(phase),
       `Impossible durable transition ${before.phase} -> ${phase}`);
     const permittedPatch = new Set(['quiescenceSnapshot', 'recoveryPoint', 'currentDatabase',
-      'packageState', 'acceptance', 'recoveryDatabase', 'lastError']);
+      'packageState', 'gitState', 'acceptance', 'recoveryDatabase', 'lastError']);
     for (const field of Object.keys(patch)) assert(permittedPatch.has(field), `Durable patch field ${field} is not permitted`);
     const now = this.now().toISOString();
     const document = {
@@ -477,5 +507,6 @@ module.exports = {
   createAzureBlobStore,
   ownerFingerprint,
   validateJournal,
+  validateGitState,
   validateState,
 };

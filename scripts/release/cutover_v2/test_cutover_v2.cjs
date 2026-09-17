@@ -45,6 +45,10 @@ const runtime = (name, commit) => ({ reference: reference.replace('candidate.zip
   targetAppServiceResourceId: '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/app' });
 const candidate = runtime('candidate.zip', 'a'.repeat(40));
 const recovery = runtime('recovery.zip', 'b'.repeat(40));
+const startingCommit = '9'.repeat(40);
+const rollbackCommit = '8'.repeat(40);
+const rollbackTree = '7'.repeat(40);
+const releaseTags = [{ name: `release/accepted/${candidate.commit}`, targetSha: candidate.commit }];
 const okPackage = async ({ reference: value }) => ({ verdict: 'PASS', sanitizedReference: value.split('?')[0],
   referenceSha256: crypto.createHash('sha256').update(value).digest('hex'), size: bytes.length, sha256: packageHash });
 
@@ -145,6 +149,19 @@ function freezeContext(overrides = {}) {
       expectedActive: 'RECOVERY',
       observedActive: 'RECOVERY_ACTIVE',
     },
+    gitState: {
+      remote: 'origin', repository: 'test/reliance', branch: 'authoritative',
+      expectedStartingRemoteSha: startingCommit,
+      authorizedCandidateSha: candidate.commit,
+      authorizedRollbackSha: rollbackCommit,
+      authorizedRollbackTree: rollbackTree,
+      promotion: { phase: 'NOT_STARTED', attempted: false, result: null,
+        observedRemoteBefore: startingCommit, observedRemoteAfter: null },
+      rollback: { required: false, attempted: false, result: null,
+        observedRemoteBefore: null, observedRemoteAfter: null },
+      tags: { phase: 'NOT_STARTED', attempted: false,
+        entries: releaseTags.map((tag) => ({ ...tag, result: null, observedTarget: null })) },
+    },
     ...overrides,
   };
 }
@@ -205,9 +222,10 @@ function controllerHarness(options = {}) {
     async acquireRecovery() { if (options.recoveryLockFails) throw new Error('recovery lock unavailable'); return { verdict: 'PASS' }; },
     async assertCanSwitchConnection() { return { verdict: 'PASS' }; },
   };
-  const calls = { restore: 0, forwardRecovery: 0, cleanup: 0, migration: 0,
+  const calls = { restore: 0, promote: 0, forwardRecovery: 0, tags: 0, cleanup: 0, migration: 0,
     switchConnection: 0, restrictedRestart: 0 };
   const contextValue = freezeContext({ expectedOpenGeneration: options.initialGeneration || 0 });
+  const gitRemote = options.gitRemote || { head: startingCommit, tags: new Map() };
   let snapshot = options.initialSnapshot || null;
   let candidateVerified = false;
   const runtimeDependencies = {
@@ -288,7 +306,49 @@ function controllerHarness(options = {}) {
       switchConnection: async () => { calls.switchConnection += 1; return { verdict: 'PASS' }; },
     },
     runtime: runtimeDependencies,
-    git: { forwardOnlyRecovery: async () => { calls.forwardRecovery += 1; return { verdict: 'PASS' }; } },
+    git: {
+      inspect: async () => ({ verdict: 'PASS', remoteHead: gitRemote.head }),
+      promoteCandidate: async () => {
+        const before = gitRemote.head;
+        if (before === startingCommit) { calls.promote += 1; gitRemote.head = candidate.commit; }
+        else assert.equal(before, candidate.commit, 'simulated promotion remote differs');
+        return { verdict: 'PASS', promotionAttempted: before === startingCommit,
+          result: before === startingCommit ? 'FAST_FORWARD_VERIFIED' : 'RECONCILED_ALREADY_PROMOTED',
+          observedRemoteBefore: before, observedRemoteAfter: gitRemote.head };
+      },
+      verifyCandidatePromotion: async () => {
+        assert.equal(gitRemote.head, candidate.commit, 'simulated authoritative remote is not candidate');
+        return { verdict: 'PASS', observedRemoteHead: gitRemote.head };
+      },
+      forwardOnlyRecovery: async () => {
+        calls.forwardRecovery += 1;
+        const before = gitRemote.head;
+        if (before === startingCommit) return { verdict: 'PASS', rollbackRequired: false,
+          rollbackAttempted: false, result: 'CANDIDATE_NOT_PROMOTED',
+          observedRemoteBefore: before, observedRemoteAfter: before };
+        if (before === candidate.commit) gitRemote.head = rollbackCommit;
+        else assert.equal(before, rollbackCommit, 'simulated rollback remote differs');
+        return { verdict: 'PASS', rollbackRequired: true, rollbackAttempted: before === candidate.commit,
+          result: before === candidate.commit ? 'FAST_FORWARD_VERIFIED' : 'RECONCILED_ALREADY_ROLLED_BACK',
+          observedRemoteBefore: before, observedRemoteAfter: gitRemote.head, observedRemoteTree: rollbackTree };
+      },
+      ensureReleaseTags: async () => {
+        assert.equal(gitRemote.head, candidate.commit, 'cannot tag a non-candidate remote');
+        calls.tags += 1;
+        const entries = releaseTags.map((tag) => {
+          const before = gitRemote.tags.get(tag.name);
+          if (before) assert.equal(before, tag.targetSha, 'simulated release tag mismatch');
+          else gitRemote.tags.set(tag.name, tag.targetSha);
+          return { ...tag, result: before ? 'IDEMPOTENT_ALREADY_VERIFIED' : 'FAST_FORWARD_VERIFIED',
+            observedTarget: tag.targetSha };
+        });
+        return { verdict: 'PASS', attempted: true, phase: 'VERIFIED', entries };
+      },
+      verifyReleaseTags: async () => ({ verdict: 'PASS', phase: 'VERIFIED', entries: releaseTags.map((tag) => {
+        assert.equal(gitRemote.tags.get(tag.name), tag.targetSha, 'simulated release tag missing');
+        return { ...tag, result: 'VERIFIED', observedTarget: tag.targetSha };
+      }) }),
+    },
     verifyTechnical: async () => ({ verdict: 'PASS' }), verifyRecovered: async () => ({ verdict: 'PASS' }),
     verifyResumeState: async () => ({ verdict: 'PASS' }),
     acceptance: {
@@ -305,7 +365,7 @@ function controllerHarness(options = {}) {
   const context = { operationId: 'v2-test', targetResourceId: contextValue.targetAppServiceResourceId,
     candidateRuntime: candidate, recoveryRuntime: recovery, journalContext: contextValue };
   return { controller: new CutoverV2Controller({ dependencies, context }), durableFreeze, runtimeState, calls,
-    store, context, dependencies, snapshot: () => snapshot, candidateVerified: () => candidateVerified };
+    store, context, dependencies, gitRemote, snapshot: () => snapshot, candidateVerified: () => candidateVerified };
 }
 
 async function main() {
@@ -334,21 +394,31 @@ async function main() {
     const harness = controllerHarness({ migrationFails: true });
     const result = await harness.controller.execute(); assert.equal(result.verdict, 'RECOVERED');
     assert.equal(harness.runtimeState.calls.apply, 0);
+    assert.equal(harness.calls.promote, 0);
+    assert.equal(harness.calls.tags, 0);
+    assert.equal(harness.gitRemote.head, startingCommit);
   });
   await test('07 runtime pointer failure after database migration', async () => {
     const harness = controllerHarness({ rejectPointer: true });
     const result = await harness.controller.execute(); assert.equal(result.verdict, 'RECOVERED');
     assert.equal(harness.runtimeState.calls.apply, 1);
+    assert.equal(harness.calls.promote, 1);
+    assert.equal(harness.gitRemote.head, rollbackCommit);
+    assert.equal(harness.calls.tags, 0);
   });
   await test('08 Product Owner reject', async () => {
     const harness = controllerHarness({ acceptance: 'REJECT' });
     const result = await harness.controller.execute(); assert.equal(result.reason, 'REJECT');
     assert.equal(harness.calls.restrictedRestart, 2,
       'Candidate acceptance and recovered runtime must each use the restricted restart path');
+    assert.equal(harness.gitRemote.head, rollbackCommit);
+    assert.equal(harness.calls.tags, 0);
   });
   await test('09 acceptance timeout', async () => {
     const harness = controllerHarness({ acceptance: 'TIMEOUT' });
     const result = await harness.controller.execute(); assert.equal(result.reason, 'TIMEOUT');
+    assert.equal(harness.gitRemote.head, rollbackCommit);
+    assert.equal(harness.calls.tags, 0);
   });
   await test('10 materially long PITR remains frozen', async () => {
     const harness = controllerHarness({ acceptance: 'REJECT', longPitr: true });
@@ -399,10 +469,11 @@ async function main() {
     const harness = runtimeHarness(candidate, { restartFailure: true });
     await assert.rejects(rollbackRuntime({ recoveryRuntime: recovery, ...harness.dependencies }), /restart failure/);
   });
-  await test('18 temporary firewall access cleanup failure stays frozen', async () => {
+  await test('18 post-accept cleanup failure stays frozen for durable resume', async () => {
     const harness = controllerHarness({ cleanupFails: true });
-    await assert.rejects(harness.controller.execute(), /cleanup failed/);
+    await assert.rejects(harness.controller.execute(), /requires durable resume/);
     assert.equal((await harness.durableFreeze.inspect()).verdict, 'FAIL_CLOSED');
+    assert.equal((await harness.durableFreeze.inspect()).document.phase, 'FINAL_TAGS_VERIFIED');
   });
   await test('19 second cutover actor blocked by lease', async () => {
     const store = new MemoryFreezeStore(); const one = new DurableFreezeController({ store, owner: 'one' });
@@ -741,7 +812,7 @@ async function main() {
     const second = controllerHarness({ store: first.store, durableFreeze: adopter,
       initialSnapshot: frozen.quiescenceSnapshot,
       initialRuntime: options.initialRuntime || (frozen.packageState.expectedActive === 'CANDIDATE' ? candidate : recovery),
-      acceptance: options.acceptance,
+      acceptance: options.acceptance, gitRemote: first.gitRemote,
     });
     return { frozen, second, result: await second.controller.resume() };
   }
@@ -789,7 +860,8 @@ async function main() {
     const adopter = new DurableFreezeController({ store: first.store, owner: 'replacement' });
     await adopter.resumeFrozen(adoptionFor(frozen));
     const second = controllerHarness({ store: first.store, durableFreeze: adopter,
-      initialSnapshot: frozen.quiescenceSnapshot, initialRuntime: candidate, acceptance: 'REJECT' });
+      initialSnapshot: frozen.quiescenceSnapshot, initialRuntime: candidate, acceptance: 'REJECT',
+      gitRemote: first.gitRemote });
     const result = await second.controller.resume();
     assert.equal(result.verdict, 'RECOVERED');
     const waitingEvent = result.journal.events.find((event) => event.phase === 'WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE');
@@ -1039,6 +1111,7 @@ async function main() {
     const binding = { candidateSha: candidate.commit, candidateArtifactSha256: packageHash,
       migrationArtifactSha256: 'c'.repeat(64), releaseReceiptSha256: 'd'.repeat(64),
       parityManifestSha256: '6'.repeat(64), appServiceResourceId: '/subscriptions/test/app',
+      authoritativeBranch: 'authoritative', releaseTags,
       candidateRuntime: candidate, acceptanceWindowMinutes: 30 };
     try {
       adapter = createAcceptanceAdapter({ root: temporary, environment: 'live', binding,
@@ -1046,6 +1119,8 @@ async function main() {
         durableFreeze: { currentJournal: async () => structuredClone(journal) },
         app: { verifyAcceptanceMode: async () => ({ verdict: 'PASS' }) },
         runtime: { verifyCandidate: async () => ({ verdict: 'PASS' }) },
+        gitRelease: { verifyCandidatePromotion: async () => ({ verdict: 'PASS',
+          observedRemoteHead: candidate.commit }) },
         simulation: null, now: () => current, pollMs: 1, sleep: async () => {
           current = new Date('2026-09-16T12:01:00.000Z');
           submitDecision({ stateFile: adapter.paths.stateFile, action: 'ACCEPT', cutoverId: journal.acceptance.cutoverId,
@@ -1076,12 +1151,15 @@ async function main() {
     const binding = { candidateSha: candidate.commit, candidateArtifactSha256: packageHash,
       migrationArtifactSha256: 'c'.repeat(64), releaseReceiptSha256: 'd'.repeat(64),
       parityManifestSha256: '6'.repeat(64), appServiceResourceId: '/subscriptions/test/app',
+      authoritativeBranch: 'authoritative', releaseTags,
       candidateRuntime: candidate, acceptanceWindowMinutes: 30 };
     const common = { root: temporary, environment: 'live', binding, operationId: 'v2-acceptance-test',
       authorizationSha256: 'e'.repeat(64),
       durableFreeze: { currentJournal: async () => structuredClone(journal) },
       app: { verifyAcceptanceMode: async () => ({ verdict: 'PASS' }) },
-      runtime: { verifyCandidate: async () => ({ verdict: 'PASS' }) }, simulation: null, pollMs: 1 };
+      runtime: { verifyCandidate: async () => ({ verdict: 'PASS' }) },
+      gitRelease: { verifyCandidatePromotion: async () => ({ verdict: 'PASS',
+        observedRemoteHead: candidate.commit }) }, simulation: null, pollMs: 1 };
     try {
       const original = createAcceptanceAdapter({ ...common, now: () => current });
       const beforeWaiting = { generation: 7, packageState: { candidate: {
@@ -1194,6 +1272,9 @@ async function main() {
     assert.equal(result.journal.state, 'OPEN');
     assert(result.journal.generation > 20);
     assert.equal(harness.store.lease, null);
+    assert.equal(harness.gitRemote.head, candidate.commit);
+    assert.equal(harness.gitRemote.tags.get(releaseTags[0].name), candidate.commit);
+    assert.equal(harness.calls.tags, 1);
   });
 
   await test('84 recovery from generation 20 stays frozen until verified recovery then reopens', async () => {
@@ -1248,6 +1329,54 @@ async function main() {
     assert.equal(transaction.rollbackCalled, true);
     assert.equal(Object.hasOwn(result, 'durableState'), false,
       'Outer wrapper cleanup must not independently reopen durable control');
+  });
+
+  await test('87 controller loss before Git push resumes one candidate promotion', async () => {
+    const first = controllerHarness({ afterCheckpoint: async (phase) => {
+      if (phase === 'GIT_PROMOTION_STARTED') throw controllerLoss('loss before Git push');
+    } });
+    await assert.rejects(first.controller.execute(), /before Git push/);
+    assert.equal(first.gitRemote.head, startingCommit);
+    const resumed = await resumeAfterLoss(first);
+    assert.equal(resumed.result.verdict, 'ACCEPTED');
+    assert.equal(resumed.second.calls.promote, 1);
+    assert.equal(first.gitRemote.head, candidate.commit);
+  });
+
+  await test('88 controller loss after Git push reconciles without duplicate promotion', async () => {
+    const first = controllerHarness({ afterCheckpoint: async (phase) => {
+      if (phase === 'GIT_PROMOTED') throw controllerLoss('loss after Git push');
+    } });
+    await assert.rejects(first.controller.execute(), /after Git push/);
+    assert.equal(first.gitRemote.head, candidate.commit);
+    const resumed = await resumeAfterLoss(first);
+    assert.equal(resumed.result.verdict, 'ACCEPTED');
+    assert.equal(resumed.second.calls.promote, 0);
+    assert.equal(first.gitRemote.head, candidate.commit);
+  });
+
+  await test('89 controller loss before Git rollback resumes one forward-only rollback', async () => {
+    const first = controllerHarness({ acceptance: 'REJECT', afterCheckpoint: async (phase) => {
+      if (phase === 'RUNTIME_RECOVERY_COMPLETE') throw controllerLoss('loss before Git rollback');
+    } });
+    await assert.rejects(first.controller.execute(), /before Git rollback/);
+    assert.equal(first.gitRemote.head, candidate.commit);
+    const resumed = await resumeAfterLoss(first, { initialRuntime: recovery, acceptance: 'REJECT' });
+    assert.equal(resumed.result.verdict, 'RECOVERED');
+    assert.equal(resumed.second.calls.forwardRecovery, 1);
+    assert.equal(first.gitRemote.head, rollbackCommit);
+  });
+
+  await test('90 controller loss after Git rollback reconciles without duplicate rollback', async () => {
+    const first = controllerHarness({ acceptance: 'REJECT', afterCheckpoint: async (phase) => {
+      if (phase === 'GIT_RECOVERY_COMPLETE') throw controllerLoss('loss after Git rollback');
+    } });
+    await assert.rejects(first.controller.execute(), /after Git rollback/);
+    assert.equal(first.gitRemote.head, rollbackCommit);
+    const resumed = await resumeAfterLoss(first, { initialRuntime: recovery, acceptance: 'REJECT' });
+    assert.equal(resumed.result.verdict, 'RECOVERED');
+    assert.equal(resumed.second.calls.forwardRecovery, 0);
+    assert.equal(first.gitRemote.head, rollbackCommit);
   });
 
   const failures = results.filter((result) => result.verdict === 'FAIL');

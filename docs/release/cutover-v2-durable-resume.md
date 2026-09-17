@@ -14,7 +14,7 @@ The live and disposable modes call the same controller, journal, quiescence, mig
 
 ## Durable journal
 
-The external lease-protected control blob records the cutover identity, target App Service/SQL/database resource IDs, candidate and recovery package identities, migration and receipt hashes, original authorization hash, current durable phase, last completed checkpoint, current database role, current package state, immutable snapshot identity, recovery point, controller identity, hashed lease identity, lease generation, timestamps, and transition evidence.
+The external lease-protected control blob records the cutover identity, target App Service/SQL/database resource IDs, candidate and recovery package identities, migration and receipt hashes, original authorization hash, current durable phase, last completed checkpoint, current database role, current package state, immutable snapshot identity, recovery point, controller identity, hashed lease identity, lease generation, timestamps, and transition evidence. Git state is part of that same journal: remote/repository/branch, expected start, candidate, rollback commit and rollback tree, observed remote before/after, promotion and rollback attempts/results, and reviewed tag names, targets, phase, and verification results.
 
 Every non-OPEN phase keeps the environment state FROZEN. Unexpected transitions, missing evidence, unknown runtime/database state, snapshot mismatch, lease loss, and ambiguous interrupted migration steps fail closed. Only a validated acceptance or recovery receipt can complete `CLEANUP_IN_PROGRESS -> OPEN`.
 
@@ -40,7 +40,9 @@ The orchestrator independently binds the remaining identity fields from the revi
 
 ## Phase-aware recovery
 
-Resume continues from the journal checkpoint. Completed ledger, baseline, reconciliation, package, database-switch, runtime-recovery, and Git-recovery checkpoints are not replayed. Provider PITR uses the already persisted recovery point, an unambiguously named recovery/restore database, deterministic recovery database identity, and provider request fingerprint. The initial Azure restore is submitted asynchronously. If a replacement controller cannot yet see the target, it must find an accepted, non-failed Azure write for that exact recovery resource before waiting; it cannot submit a second restore. Provider visibility and Online-state waits use the configured worst-case recovery allowance instead of a short fixed poll window.
+Resume continues from the journal checkpoint. Completed ledger, baseline, reconciliation, Git-promotion, package, database-switch, runtime-recovery, Git-recovery, and final-tag checkpoints are not replayed. At an uncertain Git boundary the replacement controller reads the authoritative remote: original means promotion was not completed, candidate means promotion completed, and the reviewed rollback commit means recovery completed. Any other remote identity fails closed. The same reconciliation rule makes candidate promotion, forward-only rollback, and exact-target tag creation idempotent without rewriting history.
+
+Provider PITR uses the already persisted recovery point, an unambiguously named recovery/restore database, deterministic recovery database identity, and provider request fingerprint. The initial Azure restore is submitted asynchronously. If a replacement controller cannot yet see the target, it must find an accepted, non-failed Azure write for that exact recovery resource before waiting; it cannot submit a second restore. Provider visibility and Online-state waits use the configured worst-case recovery allowance instead of a short fixed poll window.
 
 The durable journal stores only recovery database names, resource IDs, provider request fingerprints, and status. Connection values are reconstructed from the already verified source configuration inside the active controller and are never persisted in the journal or evidence package.
 

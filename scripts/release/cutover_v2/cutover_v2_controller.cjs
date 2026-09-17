@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { rollbackRuntimePointer, setRuntimePointer } = require('./runtime_package.cjs');
 
 const CONTROLLER_LOSS_CODE = 'RELIANCE_CONTROLLER_LOSS';
+const GIT_OUTCOME_UNCERTAIN_CODE = 'RELIANCE_GIT_OUTCOME_UNCERTAIN';
 
 function controllerLoss(message = 'Injected controller loss') {
   const error = new Error(message);
@@ -13,7 +14,7 @@ function controllerLoss(message = 'Injected controller loss') {
 }
 
 function isControllerLoss(error) {
-  return error?.code === CONTROLLER_LOSS_CODE;
+  return [CONTROLLER_LOSS_CODE, GIT_OUTCOME_UNCERTAIN_CODE].includes(error?.code);
 }
 
 function expectedSnapshot(journal) {
@@ -191,6 +192,31 @@ class CutoverV2Controller {
             break;
           }
           case 'RECONCILIATION_APPLIED': {
+            const observed = await this.dependencies.git.inspect();
+            journal = await this.checkpoint('GIT_PROMOTION_STARTED', {
+              evidence: { verdict: 'READY', observedRemoteBefore: observed.remoteHead,
+                expectedStartingRemoteSha: journal.gitState.expectedStartingRemoteSha,
+                authorizedCandidateSha: journal.gitState.authorizedCandidateSha },
+              patch: { gitState: { ...journal.gitState, promotion: {
+                ...journal.gitState.promotion, phase: 'STARTED', attempted: false,
+                observedRemoteBefore: observed.remoteHead,
+              } } },
+            });
+            break;
+          }
+          case 'GIT_PROMOTION_STARTED': {
+            const promotion = await this.dependencies.git.promoteCandidate();
+            journal = await this.checkpoint('GIT_PROMOTED', {
+              evidence: promotion,
+              patch: { gitState: { ...journal.gitState, promotion: {
+                phase: 'VERIFIED', attempted: promotion.promotionAttempted,
+                result: promotion.result, observedRemoteBefore: promotion.observedRemoteBefore,
+                observedRemoteAfter: promotion.observedRemoteAfter,
+              } } },
+            });
+            break;
+          }
+          case 'GIT_PROMOTED': {
             const observed = await this.dependencies.runtime.inspect();
             assert(['RECOVERY_ACTIVE', 'CANDIDATE_ACTIVE'].includes(observed.state),
               'Current package state is unknown before candidate activation');
@@ -235,12 +261,13 @@ class CutoverV2Controller {
             break;
           }
           case 'POST_DEPLOY_VERIFIED': {
+            const authoritativeGit = await this.dependencies.git.verifyCandidatePromotion();
             const acceptance = await this.dependencies.acceptance.prepare(this.context, journal);
             assert(acceptance && acceptance.createdAt && acceptance.expiresAt && acceptance.challenge,
               'Durable Product Owner acceptance state is incomplete');
             journal = await this.checkpoint('WAITING_FOR_PRODUCT_OWNER_ACCEPTANCE', {
               evidence: { verdict: 'PASS', challengeSha256: acceptance.challenge,
-                expiresAt: acceptance.expiresAt },
+                expiresAt: acceptance.expiresAt, authoritativeGit },
               patch: { acceptance },
             });
             break;
@@ -253,9 +280,31 @@ class CutoverV2Controller {
             journal = await this.checkpoint('ACCEPTED', {
               evidence: { verdict: 'PASS', receiptSha256: receipt.sha256 },
             });
-            return this.finishOpen(journal, receipt, 'ACCEPTED');
+            break;
           }
           case 'ACCEPTED': {
+            const receipt = await this.dependencies.acceptance.resumeReceipt(this.context, journal);
+            const authoritativeGit = await this.dependencies.git.verifyCandidatePromotion();
+            journal = await this.checkpoint('FINAL_TAGS_STARTED', {
+              evidence: { verdict: 'READY', authoritativeGit,
+                tags: journal.gitState.tags.entries.map(({ name, targetSha }) => ({ name, targetSha })) },
+              patch: { gitState: { ...journal.gitState, tags: {
+                ...journal.gitState.tags, phase: 'STARTED', attempted: false,
+              } } },
+            });
+            break;
+          }
+          case 'FINAL_TAGS_STARTED': {
+            const tags = await this.dependencies.git.ensureReleaseTags();
+            journal = await this.checkpoint('FINAL_TAGS_VERIFIED', {
+              evidence: tags,
+              patch: { gitState: { ...journal.gitState, tags: {
+                phase: 'VERIFIED', attempted: tags.attempted, entries: tags.entries,
+              } } },
+            });
+            break;
+          }
+          case 'FINAL_TAGS_VERIFIED': {
             const receipt = await this.dependencies.acceptance.resumeReceipt(this.context, journal);
             return this.finishOpen(journal, receipt, 'ACCEPTED');
           }
@@ -366,7 +415,16 @@ class CutoverV2Controller {
       }
       if (journal.phase === 'RUNTIME_RECOVERY_COMPLETE') {
         const git = await this.dependencies.git.forwardOnlyRecovery();
-        journal = await this.checkpoint('GIT_RECOVERY_COMPLETE', { evidence: git || { verdict: 'PASS' } });
+        journal = await this.checkpoint('GIT_RECOVERY_COMPLETE', {
+          evidence: git || { verdict: 'PASS' },
+          patch: { gitState: { ...journal.gitState, rollback: {
+            required: git.rollbackRequired, attempted: git.rollbackAttempted,
+            result: git.result, observedRemoteBefore: git.observedRemoteBefore,
+            observedRemoteAfter: git.observedRemoteAfter,
+            ...(git.observedRemoteTree ? { observedRemoteTree: git.observedRemoteTree } : {}),
+          }, tags: { ...journal.gitState.tags,
+            phase: journal.gitState.tags.phase === 'VERIFIED' ? 'VERIFIED' : 'SKIPPED' } } },
+        });
       }
       if (journal.phase === 'GIT_RECOVERY_COMPLETE') {
         await this.dependencies.app.restrictedRestart({
@@ -393,18 +451,32 @@ class CutoverV2Controller {
 
   async finishOpen(initialJournal, receipt, verdict) {
     let journal = initialJournal;
-    journal = await this.checkpoint('CLEANUP_IN_PROGRESS', {
-      evidence: await this.dependencies.cleanup({ whileFrozen: true }),
-    });
-    await this.dependencies.app.restore({
-      expectedSnapshot: expectedSnapshot(journal),
-      mutationBoundary: journal.recoveryPoint?.mutationBoundaryAt || null,
-    });
-    const opened = await this.dependencies.durableFreeze.reopen({ acceptanceReceiptSha256: receipt.sha256 });
-    await this.dependencies.lockHandoff.releaseAfterExplicitReopen?.();
-    this.record('OPEN', opened);
-    return { verdict, reason: journal.lastError?.reason || null, journal: opened.document,
-      events: this.events, receipt };
+    try {
+      const gitFinal = verdict === 'ACCEPTED' ? {
+        authoritativeRemote: await this.dependencies.git.verifyCandidatePromotion(),
+        tags: await this.dependencies.git.verifyReleaseTags(),
+      } : null;
+      journal = await this.checkpoint('CLEANUP_IN_PROGRESS', {
+        evidence: { ...(await this.dependencies.cleanup({ whileFrozen: true })),
+          ...(gitFinal ? { gitFinal } : {}) },
+      });
+      await this.dependencies.app.restore({
+        expectedSnapshot: expectedSnapshot(journal),
+        mutationBoundary: journal.recoveryPoint?.mutationBoundaryAt || null,
+      });
+      const opened = await this.dependencies.durableFreeze.reopen({ acceptanceReceiptSha256: receipt.sha256 });
+      await this.dependencies.lockHandoff.releaseAfterExplicitReopen?.();
+      this.record('OPEN', opened);
+      return { verdict, reason: journal.lastError?.reason || null, journal: opened.document,
+        events: this.events, receipt };
+    } catch (error) {
+      if (verdict === 'ACCEPTED' && ['FINAL_TAGS_VERIFIED', 'CLEANUP_IN_PROGRESS'].includes(journal.phase)) {
+        const interrupted = controllerLoss('Accepted Git-tag finalization requires durable resume');
+        interrupted.cause = error;
+        throw interrupted;
+      }
+      throw error;
+    }
   }
 }
 
