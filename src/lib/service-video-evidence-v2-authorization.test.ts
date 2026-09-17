@@ -107,7 +107,10 @@ async function persistedParticipationEvidence() {
   return { evidence, create };
 }
 
-function authorizationDb(evidence: any, contractVersion = RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
+function authorizationDb(
+  evidence: any,
+  contractVersion: string = RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+) {
   return {
     recordingGateDecisionEvidence: { findFirst: vi.fn().mockResolvedValue(evidence) },
     recordingScopeAssessment: { findFirst: vi.fn().mockResolvedValue({ contractVersion }) },
