@@ -6,10 +6,6 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     mode,
-    build: {
-      sourceCommit: process.env.RELIANCE_BUILD_SOURCE_COMMIT || 'UNSET',
-      packageName: process.env.RELIANCE_BUILD_PACKAGE_NAME || 'UNSET',
-    },
     timestamp: new Date().toISOString(),
   });
 }

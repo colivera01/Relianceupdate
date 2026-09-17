@@ -4,23 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 const migrationPath = path.join(
   process.cwd(),
-  'docs/database/migration-history-legacy/2026-09-14-v2/20260906183000_fix_review_window_nullable_unique/migration.sql',
-);
-const baselinePath = path.join(
-  process.cwd(),
-  'prisma/migrations/00000000000000_reliance_forward_baseline_20260914_v2/migration.sql',
+  'prisma/migrations/20260906183000_fix_review_window_nullable_unique/migration.sql',
 );
 
 describe('Review Window SQL Server constraint contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
-  const baseline = fs.readFileSync(baselinePath, 'utf8');
   const schema = fs.readFileSync(path.join(process.cwd(), 'prisma/schema.prisma'), 'utf8');
-
-  it('defines the nullable review relation as a filtered unique index in the active baseline', () => {
-    expect(baseline).toMatch(/CREATE UNIQUE NONCLUSTERED INDEX \[review_windows_reviewId_key\][\s\S]*WHERE \[reviewId\] IS NOT NULL/);
-    expect(baseline).not.toMatch(/UPDATE\s+\[dbo\]\.\[review_windows\]/i);
-    expect(baseline).not.toMatch(/INSERT\s+INTO/i);
-  });
 
   it('replaces the nullable review relation with a filtered unique index', () => {
     expect(migration).toContain('DROP CONSTRAINT [review_windows_reviewId_key]');

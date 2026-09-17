@@ -3,10 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   outputFileTracingRoot: __dirname,
-  env: {
-    RELIANCE_BUILD_SOURCE_COMMIT: process.env.RELIANCE_BUILD_SOURCE_COMMIT || 'UNSET',
-    RELIANCE_BUILD_PACKAGE_NAME: process.env.RELIANCE_BUILD_PACKAGE_NAME || 'UNSET',
-  },
   outputFileTracingIncludes: {
     '/*': ['./node_modules/.prisma/client/**/*', './node_modules/@prisma/client/**/*', './node_modules/@img/sharp-linux-x64/**/*', './node_modules/@img/sharp-libvips-linux-x64/**/*'],
   },

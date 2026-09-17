@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import hashlib
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -188,60 +187,6 @@ class InputAndDryRunTests(unittest.TestCase):
         result = json.loads(output.getvalue())
         self.assertEqual(result["mode"], "dry-run")
         self.assertTrue(result["unrelatedSettingsPreserved"])
-
-
-class RemotePackageIntegrityTests(unittest.TestCase):
-    class Response:
-        status = 200
-
-        def __init__(self, value: bytes) -> None:
-            self.value = value
-            self.offset = 0
-
-        def __enter__(self) -> "RemotePackageIntegrityTests.Response":
-            return self
-
-        def __exit__(self, *_: object) -> None:
-            return None
-
-        def read(self, size: int) -> bytes:
-            chunk = self.value[self.offset : self.offset + size]
-            self.offset += len(chunk)
-            return chunk
-
-    def test_remote_size_hash_and_sas_validity_are_verified_without_exposing_url(self) -> None:
-        package = b"reviewed-package"
-        reference = (
-            "https://storage.example/deployments/app.zip?se=2031-08-12T23%3A59%3A00Z"
-            "&sp=r&sig=A%2BB%3D%25"
-        )
-        with mock.patch.object(
-            settings_tool.urllib.request,
-            "urlopen",
-            return_value=self.Response(package),
-        ):
-            evidence = settings_tool.verify_package_integrity(
-                reference,
-                expected_size=len(package),
-                expected_sha256=hashlib.sha256(package).hexdigest(),
-                required_through="2031-08-12T22:00:00Z",
-            )
-        self.assertEqual(evidence["remotePackageSize"], len(package))
-        self.assertEqual(evidence["remotePackageSha256"], hashlib.sha256(package).hexdigest())
-        self.assertNotIn("?", evidence["sanitizedPackage"])
-        self.assertNotIn("sig=", json.dumps(evidence))
-
-    def test_expiring_reference_fails_before_download(self) -> None:
-        opener = mock.Mock()
-        with mock.patch.object(settings_tool.urllib.request, "urlopen", opener):
-            with self.assertRaisesRegex(RuntimeError, "expires before"):
-                settings_tool.verify_package_integrity(
-                    "https://storage.example/app.zip?se=2020-01-01T00%3A00%3A00Z&sig=x",
-                    expected_size=1,
-                    expected_sha256=hashlib.sha256(b"x").hexdigest(),
-                    required_through="2031-01-01T00:00:00Z",
-                )
-        opener.assert_not_called()
 
 
 if __name__ == "__main__":

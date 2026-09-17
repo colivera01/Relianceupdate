@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
@@ -51,9 +50,6 @@ def parse_args() -> argparse.Namespace:
     package_source.add_argument("--package-url-env")
     package_source.add_argument("--reuse-current-package-url", action="store_true")
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--expected-size", type=int)
-    parser.add_argument("--expected-sha256")
-    parser.add_argument("--required-through")
     return parser.parse_args()
 
 
@@ -117,73 +113,8 @@ def validate_package_url(value: str) -> None:
         raise RuntimeError(f"Package availability check failed: {type(error.reason).__name__}") from None
 
 
-def verify_package_integrity(
-    value: str,
-    *,
-    expected_size: int,
-    expected_sha256: str,
-    required_through: str,
-) -> dict[str, Any]:
-    if expected_size <= 0:
-        raise RuntimeError("Expected package size must be positive")
-    normalized_hash = expected_sha256.lower()
-    if len(normalized_hash) != 64 or any(character not in "0123456789abcdef" for character in normalized_hash):
-        raise RuntimeError("Expected package SHA-256 is invalid")
-
-    parsed = urllib.parse.urlsplit(value)
-    query = urllib.parse.parse_qs(parsed.query)
-    expiry_values = query.get("se", [])
-    if len(expiry_values) != 1:
-        raise RuntimeError("The signed package reference must expose exactly one expiry")
-    try:
-        expiry = datetime.fromisoformat(expiry_values[0].replace("Z", "+00:00"))
-        required = datetime.fromisoformat(required_through.replace("Z", "+00:00"))
-    except ValueError as error:
-        raise RuntimeError("Package validity timestamps are invalid") from error
-    if expiry.tzinfo is None or required.tzinfo is None:
-        raise RuntimeError("Package validity timestamps must include a time zone")
-    if expiry.astimezone(timezone.utc) < required.astimezone(timezone.utc):
-        raise RuntimeError("Package reference expires before the required safety window")
-
-    digest = hashlib.sha256()
-    observed_size = 0
-    request = urllib.request.Request(value, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=180) as response:
-            if response.status != 200:
-                raise RuntimeError(f"Package download failed with HTTP {response.status}")
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                observed_size += len(chunk)
-                digest.update(chunk)
-    except urllib.error.HTTPError as error:
-        raise RuntimeError(f"Package integrity check failed with HTTP {error.code}") from None
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"Package integrity check failed: {type(error.reason).__name__}") from None
-
-    observed_hash = digest.hexdigest()
-    if observed_size != expected_size:
-        raise RuntimeError("Remote package size differs from the reviewed artifact")
-    if not hmac.compare_digest(observed_hash, normalized_hash):
-        raise RuntimeError("Remote package SHA-256 differs from the reviewed artifact")
-    return {
-        "remotePackageSize": observed_size,
-        "remotePackageSha256": observed_hash,
-        "packageReferenceSha256": hashlib.sha256(value.encode("utf-8")).hexdigest(),
-        "packageReferenceExpiresAt": expiry.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "packageReferenceValidThrough": required.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "sanitizedPackage": f"{parsed.scheme}://{parsed.netloc}{parsed.path}",
-    }
-
-
-def compare_preserved(
-    before: dict[str, str],
-    after: dict[str, str],
-    approved_keys: set[str] = APPROVED_KEYS,
-) -> list[str]:
-    names = (set(before) | set(after)) - approved_keys
+def compare_preserved(before: dict[str, str], after: dict[str, str]) -> list[str]:
+    names = (set(before) | set(after)) - APPROVED_KEYS
     return sorted(name for name in names if before.get(name) != after.get(name))
 
 
@@ -225,11 +156,9 @@ def apply_scoped_settings(
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     temporary_directory: str | None = None,
-    approved_keys: set[str] = APPROVED_KEYS,
 ) -> None:
-    if set(updates) != approved_keys or any(not isinstance(value, str) or not value for value in updates.values()):
-        label = "exactly the three approved values" if approved_keys == APPROVED_KEYS else "its exact approved key set"
-        raise RuntimeError(f"The scoped App Settings update must contain {label}")
+    if set(updates) != APPROVED_KEYS or any(not isinstance(value, str) or not value for value in updates.values()):
+        raise RuntimeError("The scoped App Settings update must contain exactly the three approved values")
 
     with secure_temporary_directory(temporary_directory) as secure_directory:
         descriptor, temporary_path = tempfile.mkstemp(
@@ -284,14 +213,13 @@ def verify_post_update(
     after: dict[str, str],
     candidate: dict[str, str],
     fingerprint_key: bytes,
-    approved_keys: set[str] = APPROVED_KEYS,
 ) -> tuple[str, str]:
-    preserved_before = {name: value for name, value in before.items() if name not in approved_keys}
-    preserved_after = {name: value for name, value in after.items() if name not in approved_keys}
+    preserved_before = {name: value for name, value in before.items() if name not in APPROVED_KEYS}
+    preserved_after = {name: value for name, value in after.items() if name not in APPROVED_KEYS}
     before_fingerprint = collection_fingerprint(preserved_before, fingerprint_key)
     after_fingerprint = collection_fingerprint(preserved_after, fingerprint_key)
-    mismatches = compare_preserved(before, after, approved_keys)
-    approved_match = all(after.get(name) == candidate[name] for name in approved_keys)
+    mismatches = compare_preserved(before, after)
+    approved_match = all(after.get(name) == candidate[name] for name in APPROVED_KEYS)
 
     if len(after) != len(before) or mismatches or not approved_match or before_fingerprint != after_fingerprint:
         raise RuntimeError(
@@ -328,21 +256,6 @@ def main() -> int:
     if not package_url:
         raise RuntimeError("The package URL was not supplied through the approved source")
     validate_package_url(package_url)
-    integrity_arguments = (args.expected_size, args.expected_sha256, args.required_through)
-    if any(argument is not None for argument in integrity_arguments) and not all(
-        argument is not None for argument in integrity_arguments
-    ):
-        raise RuntimeError("Expected size, SHA-256, and required-through must be supplied together")
-    package_integrity = (
-        verify_package_integrity(
-            package_url,
-            expected_size=args.expected_size,
-            expected_sha256=args.expected_sha256,
-            required_through=args.required_through,
-        )
-        if all(argument is not None for argument in integrity_arguments)
-        else {}
-    )
 
     candidate = dict(before)
     candidate.update(
@@ -369,7 +282,6 @@ def main() -> int:
                     "unrelatedSettingsPreserved": True,
                     "preservationFingerprint": before_fingerprint,
                     "packageUrlAvailable": True,
-                    **package_integrity,
                 },
                 indent=2,
             )
@@ -395,7 +307,6 @@ def main() -> int:
                 "preservationFingerprintBefore": before_fingerprint,
                 "preservationFingerprintAfter": after_fingerprint,
                 "packageUrlAvailable": True,
-                **package_integrity,
             },
             indent=2,
         )
