@@ -814,6 +814,7 @@ export async function GET(
           riskLevel: permissionGate.riskLevel,
           scopeSummary: permissionGate.scopeSummary,
           canonicalBlock: permissionGate.block,
+          employeeParticipation: permissionGate.employeeParticipation || null,
           serviceOrderReleasedAt: legacyCompliance.serviceOrderReleasedAt,
           releasedMembershipIds: legacyCompliance.releasedMembershipIds,
         },

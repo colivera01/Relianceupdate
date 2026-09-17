@@ -9,6 +9,11 @@ import {
   isCustomerRecordingNoticeKind,
   retryRecordingNotice,
 } from "@/lib/recording/recording-notice";
+import {
+  EMPLOYEE_PARTICIPATION_DECLINED_NOTIFICATION_KIND,
+  dispatchEmployeeParticipationDeclinedNotification,
+  isEmployeeParticipationDeclinedNotificationKind,
+} from "@/lib/notifications/send-employee-participation-declined";
 
 function secretMatches(supplied: string, expected: string): boolean {
   const left = crypto.createHash("sha256").update(supplied).digest();
@@ -35,6 +40,7 @@ export async function POST(request: Request) {
       OR: [
         { kind: { startsWith: "CUSTOMER_PERMISSION_REQUEST" } },
         { kind: { startsWith: CUSTOMER_RECORDING_NOTICE_KIND } },
+        { kind: { startsWith: EMPLOYEE_PARTICIPATION_DECLINED_NOTIFICATION_KIND } },
       ],
       status: "FAILED",
       deadLetteredAt: null,
@@ -50,12 +56,15 @@ export async function POST(request: Request) {
     const maxAttempts = Math.max(1, Number(candidate.maxAttempts || 4));
     if (Number(candidate.attemptCount || 0) >= maxAttempts) {
       const recordingNotice = isCustomerRecordingNoticeKind(candidate.kind);
+      const employeeDecline = isEmployeeParticipationDeclinedNotificationKind(candidate.kind);
       await (prisma as any).bookingNotification.update({
         where: { id: candidate.id },
         data: {
           deadLetteredAt: now,
           lastError: recordingNotice
             ? "recording_notice_retry_limit_reached"
+            : employeeDecline
+              ? "employee_participation_decline_delivery_retry_limit_reached"
             : "permission_delivery_retry_limit_reached",
         },
       });
@@ -80,6 +89,15 @@ export async function POST(request: Request) {
         });
         results.push({ notificationId: candidate.id, status: "retry_failed" });
       }
+      continue;
+    }
+
+    if (isEmployeeParticipationDeclinedNotificationKind(candidate.kind)) {
+      const retried = await dispatchEmployeeParticipationDeclinedNotification({
+        notificationId: candidate.id,
+        actorUserId: "employee-participation-notification-worker",
+      });
+      results.push({ notificationId: candidate.id, status: retried.status });
       continue;
     }
 

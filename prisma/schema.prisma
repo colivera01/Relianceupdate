@@ -90,33 +90,36 @@ model Vendor {
   accountStatusAdminNotes String?   @db.NVarChar(Max)
 
   // Relations
-  employees                   Employee[]
-  services                    Service[]
-  bookings                    Booking[]
-  reviews                     Review[]
-  devices                     Device[]
-  devicePairingCodes          DevicePairingCode[]
-  memberships                 VendorMembership[]
-  invites                     VendorInvite[]
-  deviceAssignments           DeviceAssignment[]
-  mediaAssets                 MediaAsset[]
-  mediaSessions               MediaSession[]
-  reviewWindows               ReviewWindow[]
-  consentRecords              ConsentRecord[]
-  storageAlerts               VendorStorageAlert[]
-  adminNotifications          AdminNotification[]
-  promotionCampaigns          PromotionCampaign[]
-  serviceIssues               BookingServiceIssue[]
-  managerNotifications        VendorManagerNotification[]
-  operationalOutcomes         VendorOperationalOutcome[]
-  trustScoreSnapshots         VendorTrustScoreSnapshot[]
-  recordingAssessments        RecordingScopeAssessment[]
-  recordingCertifications     EmployeeRecordingCertification[]
-  recordingSafetyEvidence     EmployeeRecordingSafetyEvidence[]
-  recordingLocationAttempts   RecordingLocationAttempt[]
-  recordingLocationExceptions RecordingLocationException[]
-  recordingGateMetrics        RecordingGateMetric[]
-  vendorFavorites             VendorFavorite[]
+  employees                      Employee[]
+  services                       Service[]
+  bookings                       Booking[]
+  reviews                        Review[]
+  devices                        Device[]
+  devicePairingCodes             DevicePairingCode[]
+  memberships                    VendorMembership[]
+  invites                        VendorInvite[]
+  deviceAssignments              DeviceAssignment[]
+  mediaAssets                    MediaAsset[]
+  mediaSessions                  MediaSession[]
+  reviewWindows                  ReviewWindow[]
+  consentRecords                 ConsentRecord[]
+  storageAlerts                  VendorStorageAlert[]
+  adminNotifications             AdminNotification[]
+  promotionCampaigns             PromotionCampaign[]
+  serviceIssues                  BookingServiceIssue[]
+  managerNotifications           VendorManagerNotification[]
+  operationalOutcomes            VendorOperationalOutcome[]
+  trustScoreSnapshots            VendorTrustScoreSnapshot[]
+  recordingAssessments           RecordingScopeAssessment[]
+  recordingCertifications        EmployeeRecordingCertification[]
+  recordingSafetyEvidence        EmployeeRecordingSafetyEvidence[]
+  recordingLocationAttempts      RecordingLocationAttempt[]
+  recordingLocationExceptions    RecordingLocationException[]
+  recordingGateMetrics           RecordingGateMetric[]
+  vendorFavorites                VendorFavorite[]
+  employeeDecisionChallenges     EmployeeDecisionVerificationChallenge[]
+  employeeDecisionSessions       EmployeeVerifiedDecisionSession[]
+  employeeRecordingParticipation EmployeeRecordingParticipationDecision[]
 
   @@map("vendors")
 }
@@ -271,6 +274,9 @@ model User {
   vendorFavorites                 VendorFavorite[]
   customerRegistrationEvidence    CustomerRegistrationEvidence[]
   serviceRecordOrganizationEvents CustomerServiceRecordOrganizationEvent[]
+  employeeDecisionChallenges      EmployeeDecisionVerificationChallenge[]
+  employeeDecisionSessions        EmployeeVerifiedDecisionSession[]
+  employeeRecordingParticipation  EmployeeRecordingParticipationDecision[]
 
   @@map("users")
 }
@@ -483,24 +489,27 @@ model Booking {
   creationRequestKey String?   @db.NVarChar(255)
 
   // Relations
-  user                        User                                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service                     Service                                  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  vendor                      Vendor                                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSessions               MediaSession[]
-  reviewWindows               ReviewWindow[]
-  consentRecords              ConsentRecord[]
-  reviews                     Review[]
-  serviceIssues               BookingServiceIssue[]
-  operationalOutcomes         VendorOperationalOutcome[]
-  notifications               BookingNotification[]
-  recordingAssessments        RecordingScopeAssessment[]
-  recordingCertifications     EmployeeRecordingCertification[]
-  recordingSafetyEvidence     EmployeeRecordingSafetyEvidence[]
-  recordingLocationAttempts   RecordingLocationAttempt[]
-  recordingLocationExceptions RecordingLocationException[]
-  recordingGateMetrics        RecordingGateMetric[]
-  customerOrganizationEvents  CustomerServiceRecordOrganizationEvent[]
-  managerNotifications        VendorManagerNotification[]
+  user                           User                                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service                        Service                                  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vendor                         Vendor                                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSessions                  MediaSession[]
+  reviewWindows                  ReviewWindow[]
+  consentRecords                 ConsentRecord[]
+  reviews                        Review[]
+  serviceIssues                  BookingServiceIssue[]
+  operationalOutcomes            VendorOperationalOutcome[]
+  notifications                  BookingNotification[]
+  recordingAssessments           RecordingScopeAssessment[]
+  recordingCertifications        EmployeeRecordingCertification[]
+  recordingSafetyEvidence        EmployeeRecordingSafetyEvidence[]
+  recordingLocationAttempts      RecordingLocationAttempt[]
+  recordingLocationExceptions    RecordingLocationException[]
+  recordingGateMetrics           RecordingGateMetric[]
+  customerOrganizationEvents     CustomerServiceRecordOrganizationEvent[]
+  managerNotifications           VendorManagerNotification[]
+  employeeDecisionChallenges     EmployeeDecisionVerificationChallenge[]
+  employeeDecisionSessions       EmployeeVerifiedDecisionSession[]
+  employeeRecordingParticipation EmployeeRecordingParticipationDecision[]
 
   @@map("bookings")
 }
@@ -564,13 +573,16 @@ model RecordingScopeAssessment {
   createdAt                          DateTime  @default(now())
   updatedAt                          DateTime  @updatedAt
 
-  booking            Booking                           @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  vendor             Vendor                            @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  authorities        RecordingAuthorityRequirement[]
-  certifications     EmployeeRecordingCertification[]
-  safetyEvidence     EmployeeRecordingSafetyEvidence[]
-  locationAttempts   RecordingLocationAttempt[]
-  locationExceptions RecordingLocationException[]
+  booking                        Booking                                  @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  vendor                         Vendor                                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  authorities                    RecordingAuthorityRequirement[]
+  certifications                 EmployeeRecordingCertification[]
+  safetyEvidence                 EmployeeRecordingSafetyEvidence[]
+  locationAttempts               RecordingLocationAttempt[]
+  locationExceptions             RecordingLocationException[]
+  employeeDecisionChallenges     EmployeeDecisionVerificationChallenge[]
+  employeeDecisionSessions       EmployeeVerifiedDecisionSession[]
+  employeeRecordingParticipation EmployeeRecordingParticipationDecision[]
 
   @@unique([bookingId, generation])
   @@index([bookingId, isCurrent])
@@ -623,6 +635,134 @@ model EmployeeRecordingCertification {
   @@index([assessmentId, status])
   @@index([scopeHash])
   @@map("employee_recording_certifications")
+}
+
+// Purpose-bound OTP evidence for accountless Employee legal decisions. Entry
+// links identify context, but only this verification proves contact control.
+model EmployeeDecisionVerificationChallenge {
+  id                   String    @id @default(cuid())
+  userId               String
+  vendorId             String
+  membershipId         String
+  membershipGeneration Int
+  bookingId            String?
+  assessmentId         String?
+  assignmentGeneration Int?
+  purpose              String    @db.NVarChar(100)
+  contextHash          String    @db.NVarChar(64)
+  channel              String    @db.NVarChar(32)
+  destinationHash      String    @db.NVarChar(64)
+  codeHash             String    @db.NVarChar(64)
+  expiresAt            DateTime
+  failedAttempts       Int       @default(0)
+  maxAttempts          Int       @default(5)
+  deliveryStatus       String    @default("PENDING") @db.NVarChar(32)
+  deliveryReference    String?
+  deliveryError        String?   @db.NVarChar(Max)
+  requestIpHash        String?   @db.NVarChar(64)
+  consumedAt           DateTime?
+  verifiedAt           DateTime?
+  createdAt            DateTime  @default(now())
+
+  user       User                              @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor     Vendor                            @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership VendorMembership                  @relation(fields: [membershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking    Booking?                          @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment RecordingScopeAssessment?         @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessions   EmployeeVerifiedDecisionSession[]
+
+  @@index([membershipId, purpose, channel, createdAt])
+  @@index([requestIpHash, createdAt])
+  @@index([expiresAt, consumedAt])
+  @@index([contextHash])
+  @@map("employee_decision_verification_challenges")
+}
+
+// One-time, short-lived authority created after successful Employee OTP.
+model EmployeeVerifiedDecisionSession {
+  id                   String    @id @default(cuid())
+  challengeId          String    @unique
+  secretHash           String    @unique @db.NVarChar(64)
+  userId               String
+  vendorId             String
+  membershipId         String
+  membershipGeneration Int
+  bookingId            String?
+  assessmentId         String?
+  assignmentGeneration Int?
+  purpose              String    @db.NVarChar(100)
+  contextHash          String    @db.NVarChar(64)
+  verifiedChannel      String    @db.NVarChar(32)
+  verifiedContactHash  String    @db.NVarChar(64)
+  expiresAt            DateTime
+  consumedAt           DateTime?
+  consumedByType       String?   @db.NVarChar(100)
+  consumedById         String?
+  createdAt            DateTime  @default(now())
+
+  challenge          EmployeeDecisionVerificationChallenge    @relation(fields: [challengeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user               User                                     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor             Vendor                                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership         VendorMembership                         @relation(fields: [membershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking            Booking?                                 @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment         RecordingScopeAssessment?                @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recordingDecisions EmployeeRecordingParticipationDecision[]
+  publicDecisions    EmployeePublicMediaConsentDecision[]
+
+  @@index([membershipId, purpose, expiresAt, consumedAt])
+  @@index([contextHash])
+  @@map("employee_verified_decision_sessions")
+}
+
+// Append-only legal decision for one exact Employee and Work Record scope.
+model EmployeeRecordingParticipationDecision {
+  id                    String    @id @default(cuid())
+  userId                String
+  vendorId              String
+  membershipId          String
+  membershipGeneration  Int
+  bookingId             String
+  assignmentGeneration  Int
+  assessmentId          String
+  assessmentGeneration  Int
+  scopeHash             String    @db.NVarChar(64)
+  audioAllowed          Boolean
+  recordingBoundary     String    @db.NVarChar(Max)
+  participantPlan       String    @db.NVarChar(Max)
+  decision              String    @db.NVarChar(32)
+  policyVersion         String    @db.NVarChar(100)
+  contractVersion       Int       @default(1)
+  consentTextSnapshot   String    @db.NVarChar(Max)
+  consentTextHash       String    @db.NVarChar(64)
+  verificationSessionId String
+  verifiedContactHash   String    @db.NVarChar(64)
+  verifiedChannel       String    @db.NVarChar(32)
+  verificationMethod    String    @db.NVarChar(100)
+  ipAddress             String?
+  userAgent             String?   @db.NVarChar(Max)
+  evidenceHash          String    @unique @db.NVarChar(64)
+  version               Int
+  isCurrent             Boolean   @default(true)
+  capturedMediaAffected Boolean   @default(false)
+  decidedAt             DateTime  @default(now())
+  supersededAt          DateTime?
+  invalidatedAt         DateTime?
+  invalidationReason    String?   @db.NVarChar(Max)
+  createdAt             DateTime  @default(now())
+
+  user                User                            @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor              Vendor                          @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership          VendorMembership                @relation(fields: [membershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking             Booking                         @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment          RecordingScopeAssessment        @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  verificationSession EmployeeVerifiedDecisionSession @relation(fields: [verificationSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([bookingId, membershipId, version])
+  @@index([bookingId, membershipId, isCurrent])
+  @@index([assessmentId, assignmentGeneration, isCurrent])
+  @@index([verificationSessionId])
+  @@index([decidedAt])
+  @@map("employee_recording_participation_decisions")
 }
 
 // Immutable, append-only employee runtime-safety evidence for the future V2
@@ -755,33 +895,34 @@ model RecordingGateMetric {
 
 // Immutable evidence that the canonical recording gate allowed a capture boundary.
 model RecordingGateDecisionEvidence {
-  id                          String   @id @default(cuid())
-  bookingId                   String
-  vendorId                    String
-  assessmentId                String
-  assessmentGeneration        Int
-  scopeHash                   String
-  permissionBasis             String
-  permissionEvidenceId        String
-  consentRecordId             String?
-  certificationId             String
-  membershipId                String
-  assignmentGeneration        Int
-  locationAttemptId           String?
-  locationAttemptEvidenceHash String?  @db.NVarChar(64)
-  locationExceptionId         String?
-  safetyEvidenceId            String?
-  safetyEvidenceHash          String?  @db.NVarChar(64)
-  stage                       String?  @db.NVarChar(64)
-  evidenceVersion             String?  @db.NVarChar(100)
-  surface                     String
-  actorKind                   String?
-  decision                    String   @default("ALLOWED")
-  audioExpected               Boolean  @default(false)
-  audioContractVersion        Int      @default(1)
-  evidenceHash                String
-  snapshotJson                String   @db.NVarChar(Max)
-  createdAt                   DateTime @default(now())
+  id                                String   @id @default(cuid())
+  bookingId                         String
+  vendorId                          String
+  assessmentId                      String
+  assessmentGeneration              Int
+  scopeHash                         String
+  permissionBasis                   String
+  permissionEvidenceId              String
+  consentRecordId                   String?
+  certificationId                   String
+  membershipId                      String
+  assignmentGeneration              Int
+  locationAttemptId                 String?
+  locationAttemptEvidenceHash       String?  @db.NVarChar(64)
+  locationExceptionId               String?
+  safetyEvidenceId                  String?
+  safetyEvidenceHash                String?  @db.NVarChar(64)
+  stage                             String?  @db.NVarChar(64)
+  evidenceVersion                   String?  @db.NVarChar(100)
+  employeeParticipationEvidenceJson String?  @db.NVarChar(Max)
+  surface                           String
+  actorKind                         String?
+  decision                          String   @default("ALLOWED")
+  audioExpected                     Boolean  @default(false)
+  audioContractVersion              Int      @default(1)
+  evidenceHash                      String
+  snapshotJson                      String   @db.NVarChar(Max)
+  createdAt                         DateTime @default(now())
 
   @@index([bookingId, createdAt])
   @@index([vendorId, createdAt])
@@ -1112,31 +1253,41 @@ model ServiceVideoPublicationParticipantDecision {
 // likeness and voice across eligible Service Videos for one Vendor membership.
 // Changing the choice supersedes the prior row instead of rewriting it.
 model EmployeePublicMediaConsentDecision {
-  id                  String    @id @default(cuid())
-  userId              String
-  vendorId            String
-  membershipId        String
-  decision            String
-  coversLikeness      Boolean
-  coversAudio         Boolean
-  effectScope         String
-  policyVersion       String
-  contractVersion     Int       @default(1)
-  consentTextSnapshot String    @db.NVarChar(Max)
-  decisionHash        String
-  verificationMethod  String
-  version             Int
-  isCurrent           Boolean   @default(true)
-  decidedAt           DateTime  @default(now())
-  supersededAt        DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  userId                String
+  vendorId              String
+  membershipId          String
+  decision              String
+  coversLikeness        Boolean
+  coversAudio           Boolean
+  effectScope           String
+  policyVersion         String
+  contractVersion       Int       @default(1)
+  consentTextSnapshot   String    @db.NVarChar(Max)
+  decisionHash          String
+  verificationMethod    String
+  membershipGeneration  Int?
+  verificationSessionId String?
+  verifiedContactHash   String?   @db.NVarChar(64)
+  verifiedChannel       String?   @db.NVarChar(32)
+  consentTextHash       String?   @db.NVarChar(64)
+  ipAddress             String?
+  userAgent             String?   @db.NVarChar(Max)
+  version               Int
+  isCurrent             Boolean   @default(true)
+  decidedAt             DateTime  @default(now())
+  supersededAt          DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  verificationSession EmployeeVerifiedDecisionSession? @relation(fields: [verificationSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([membershipId, version])
   @@index([membershipId, isCurrent])
   @@index([userId, isCurrent])
   @@index([vendorId, decision, isCurrent])
   @@index([decisionHash])
+  @@index([verificationSessionId])
   @@map("employee_public_media_consent_decisions")
 }
 
@@ -1757,11 +1908,12 @@ model DevicePairingCode {
 // MembershipRole: "MANAGER" | "EMPLOYEE"
 // MembershipStatus: "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
 model VendorMembership {
-  id       String @id @default(cuid())
-  vendorId String
-  userId   String
-  role     String @default("EMPLOYEE") // "MANAGER" | "EMPLOYEE"
-  status   String @default("PENDING") // "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
+  id                   String @id @default(cuid())
+  vendorId             String
+  userId               String
+  role                 String @default("EMPLOYEE") // "MANAGER" | "EMPLOYEE"
+  status               String @default("PENDING") // "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
+  membershipGeneration Int    @default(1)
 
   badgeId          String?
   requestedAt      DateTime  @default(now())
@@ -1778,11 +1930,14 @@ model VendorMembership {
   pendingDeviceOs       String?
   pendingAppVersion     String?
 
-  vendor                  Vendor                            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  user                    User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignments             DeviceAssignment[]
-  recordingSafetyEvidence EmployeeRecordingSafetyEvidence[]
-  managerNotifications    VendorManagerNotification[]
+  vendor                         Vendor                                   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user                           User                                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments                    DeviceAssignment[]
+  recordingSafetyEvidence        EmployeeRecordingSafetyEvidence[]
+  managerNotifications           VendorManagerNotification[]
+  employeeDecisionChallenges     EmployeeDecisionVerificationChallenge[]
+  employeeDecisionSessions       EmployeeVerifiedDecisionSession[]
+  employeeRecordingParticipation EmployeeRecordingParticipationDecision[]
 
   @@unique([vendorId, userId])
   @@index([vendorId, status])

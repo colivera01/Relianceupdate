@@ -91,7 +91,7 @@ export async function GET(request: Request): Promise<NextResponse> {
             bookingId: true,
             vendorJobVideoStage: true,
             mediaAssets: {
-              where: { deletedAt: null },
+              where: { deletedAt: null, archiveStatus: "active" },
               select: { id: true },
               take: 1,
             },
@@ -168,6 +168,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       const customer = resolveBookingCustomer(booking);
       return {
         id: booking.id,
+        membershipId,
         vendorId: booking.vendorId,
         vendorName: booking.vendor?.businessName || booking.vendor?.name || "Vendor",
         title: booking.title || booking.service?.name || "Assigned Job",
@@ -197,6 +198,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           canonicalBlock: permissionGate.block,
           correctionRequestedStages: permissionGate.correctionRequestedStages,
           stageRecordingAccess,
+          employeeParticipation: permissionGate.employeeParticipation || null,
         },
         stageProgress,
         canMarkComplete,

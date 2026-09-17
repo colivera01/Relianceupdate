@@ -9,9 +9,15 @@ import {
 } from "@/lib/consent/recording-gate";
 import { SERVICE_VIDEO_AUDIO_CONTRACT_VERSION } from "@/lib/recording/scope-assessment";
 import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
+import {
+  assertEmployeeParticipationEvidenceCurrent,
+  employeeRecordingParticipationContractEnabled,
+} from "@/lib/employee-recording-participation";
 
 export const V2_RECORDING_GATE_EVIDENCE_VERSION =
   "recording-gate-decision-v2-safety-binding-v1" as const;
+export const EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION =
+  "recording-gate-decision-v3-employee-participation-v1" as const;
 
 export const REQUIRED_SERVICE_VIDEO_STAGES = ["INTRO", "IN_PROGRESS", "COMPLETED"] as const;
 export type ServiceVideoStage = (typeof REQUIRED_SERVICE_VIDEO_STAGES)[number];
@@ -148,6 +154,17 @@ export async function persistAllowedRecordingGateDecision(input: {
     : gate.assessmentId;
   if (!permissionEvidenceId) throw new Error("PERMISSION_EVIDENCE_INCOMPLETE");
   const v2 = gate.assessmentContractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+  const employeeParticipationRequired = gate.employeeParticipation?.required === true;
+  if (
+    employeeParticipationRequired &&
+    (!gate.employeeParticipation?.complete ||
+      !gate.employeeParticipation.evidence.length)
+  ) {
+    throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_EVIDENCE_INCOMPLETE");
+  }
+  const employeeParticipationEvidenceJson = employeeParticipationRequired
+    ? stableJson(gate.employeeParticipation!.evidence)
+    : null;
   if (
     v2 &&
     (!gate.v2Safety?.ready ||
@@ -179,13 +196,23 @@ export async function persistAllowedRecordingGateDecision(input: {
     decision: "ALLOWED",
     audioAllowed: gate.audioAllowed,
     audioContractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
-    ...(v2
+    ...(v2 || employeeParticipationRequired
       ? {
-          evidenceVersion: V2_RECORDING_GATE_EVIDENCE_VERSION,
+          evidenceVersion: employeeParticipationRequired
+            ? EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION
+            : V2_RECORDING_GATE_EVIDENCE_VERSION,
           stage: input.stage,
-          safetyEvidenceId: gate.v2Safety!.evidenceId,
-          safetyEvidenceHash: gate.v2Safety!.evidenceHash,
-          locationAttemptEvidenceHash: gate.v2Safety!.locationAttemptEvidenceHash,
+          ...(v2
+            ? {
+                safetyEvidenceId: gate.v2Safety!.evidenceId,
+                safetyEvidenceHash: gate.v2Safety!.evidenceHash,
+                locationAttemptEvidenceHash:
+                  gate.v2Safety!.locationAttemptEvidenceHash,
+              }
+            : {}),
+          ...(employeeParticipationRequired
+            ? { employeeParticipationEvidenceJson }
+            : {}),
         }
       : {}),
   };
@@ -211,8 +238,13 @@ export async function persistAllowedRecordingGateDecision(input: {
       locationExceptionId: gate.locationExceptionId,
       safetyEvidenceId: v2 ? gate.v2Safety!.evidenceId : null,
       safetyEvidenceHash: v2 ? gate.v2Safety!.evidenceHash : null,
-      stage: v2 ? input.stage : null,
-      evidenceVersion: v2 ? V2_RECORDING_GATE_EVIDENCE_VERSION : null,
+      stage: v2 || employeeParticipationRequired ? input.stage : null,
+      evidenceVersion: employeeParticipationRequired
+        ? EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION
+        : v2
+          ? V2_RECORDING_GATE_EVIDENCE_VERSION
+          : null,
+      employeeParticipationEvidenceJson,
       surface: input.surface,
       actorKind: input.actorKind,
       decision: "ALLOWED",
@@ -250,27 +282,55 @@ export async function assertRecordingAuthorizationCurrent(
 
   const assessmentModel = db.recordingScopeAssessment;
   if (!assessmentModel?.findFirst) return evidence;
-  const assessment = await assessmentModel.findFirst({
-    where: { id: evidence.assessmentId, bookingId: input.bookingId, vendorId: input.vendorId },
-    select: { contractVersion: true },
-  });
-  if (assessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) return evidence;
+  const [assessment, booking] = await Promise.all([
+    assessmentModel.findFirst({
+      where: {
+        id: evidence.assessmentId,
+        bookingId: input.bookingId,
+        vendorId: input.vendorId,
+        isCurrent: true,
+      },
+    }),
+    db.booking.findFirst({
+      where: { id: input.bookingId, vendorId: input.vendorId },
+      select: { customerMetadata: true },
+    }),
+  ]);
+  if (!assessment || !booking) {
+    throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE");
+  }
+  const v2 = assessment.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+  const employeeParticipationRequired =
+    employeeRecordingParticipationContractEnabled(booking.customerMetadata);
+  if (!v2 && !employeeParticipationRequired) return evidence;
+  const invalidEvidenceCode = employeeParticipationRequired
+    ? "RECORDING_AUTHORIZATION_EVIDENCE_INVALID"
+    : "V2_RECORDING_AUTHORIZATION_EVIDENCE_INVALID";
+  const staleAuthorizationCode = employeeParticipationRequired
+    ? "RECORDING_AUTHORIZATION_STALE"
+    : "V2_RECORDING_AUTHORIZATION_STALE";
   if (
-    evidence.evidenceVersion !== V2_RECORDING_GATE_EVIDENCE_VERSION ||
+    (v2 && !employeeParticipationRequired &&
+      evidence.evidenceVersion !== V2_RECORDING_GATE_EVIDENCE_VERSION) ||
+    (employeeParticipationRequired &&
+      evidence.evidenceVersion !== EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION) ||
     evidence.stage !== input.stage ||
-    !evidence.safetyEvidenceId ||
-    !evidence.safetyEvidenceHash ||
-    !evidence.locationAttemptId ||
-    !evidence.locationAttemptEvidenceHash ||
+    (v2 &&
+      (!evidence.safetyEvidenceId ||
+        !evidence.safetyEvidenceHash ||
+        !evidence.locationAttemptId ||
+        !evidence.locationAttemptEvidenceHash)) ||
+    (employeeParticipationRequired &&
+      !evidence.employeeParticipationEvidenceJson) ||
     sha256(String(evidence.snapshotJson || "")) !== evidence.evidenceHash
   ) {
-    throw new ServiceVideoMutationBlockedError("V2_RECORDING_AUTHORIZATION_EVIDENCE_INVALID");
+    throw new ServiceVideoMutationBlockedError(invalidEvidenceCode);
   }
   let snapshot: any;
   try {
     snapshot = JSON.parse(String(evidence.snapshotJson || ""));
   } catch {
-    throw new ServiceVideoMutationBlockedError("V2_RECORDING_AUTHORIZATION_EVIDENCE_INVALID");
+    throw new ServiceVideoMutationBlockedError(invalidEvidenceCode);
   }
   if (
     snapshot.evidenceVersion !== evidence.evidenceVersion ||
@@ -282,27 +342,40 @@ export async function assertRecordingAuthorizationCurrent(
     snapshot.membershipId !== evidence.membershipId ||
     Number(snapshot.assignmentGeneration) !== Number(evidence.assignmentGeneration) ||
     snapshot.stage !== evidence.stage ||
-    snapshot.safetyEvidenceId !== evidence.safetyEvidenceId ||
-    snapshot.safetyEvidenceHash !== evidence.safetyEvidenceHash ||
-    snapshot.locationAttemptId !== evidence.locationAttemptId ||
-    snapshot.locationAttemptEvidenceHash !== evidence.locationAttemptEvidenceHash ||
+    (v2 && snapshot.safetyEvidenceId !== evidence.safetyEvidenceId) ||
+    (v2 && snapshot.safetyEvidenceHash !== evidence.safetyEvidenceHash) ||
+    (v2 && snapshot.locationAttemptId !== evidence.locationAttemptId) ||
+    (v2 && snapshot.locationAttemptEvidenceHash !== evidence.locationAttemptEvidenceHash) ||
+    (employeeParticipationRequired &&
+      snapshot.employeeParticipationEvidenceJson !==
+        evidence.employeeParticipationEvidenceJson) ||
     snapshot.decision !== "ALLOWED"
   ) {
-    throw new ServiceVideoMutationBlockedError("V2_RECORDING_AUTHORIZATION_EVIDENCE_INVALID");
+    throw new ServiceVideoMutationBlockedError(invalidEvidenceCode);
   }
 
-  const [booking, membership] = await Promise.all([
-    db.booking.findFirst({
-      where: { id: input.bookingId, vendorId: input.vendorId },
-      select: { customerMetadata: true },
-    }),
-    db.vendorMembership.findFirst({
+  const membership = await db.vendorMembership.findFirst({
       where: { id: input.membershipId, vendorId: input.vendorId, role: "EMPLOYEE", status: "ACTIVE" },
       select: { id: true },
-    }),
-  ]);
+    });
   if (!booking || !membership) {
-    throw new ServiceVideoMutationBlockedError("V2_RECORDING_AUTHORIZATION_STALE");
+    throw new ServiceVideoMutationBlockedError(staleAuthorizationCode);
+  }
+  if (employeeParticipationRequired) {
+    try {
+      await assertEmployeeParticipationEvidenceCurrent({
+        db,
+        bookingId: input.bookingId,
+        vendorId: input.vendorId,
+        customerMetadata: booking.customerMetadata,
+        assessment,
+        storedEvidenceJson: evidence.employeeParticipationEvidenceJson,
+      });
+    } catch {
+      throw new ServiceVideoMutationBlockedError(
+        "EMPLOYEE_RECORDING_PARTICIPATION_STALE",
+      );
+    }
   }
   const gate = await loadRecordingPermissionGate({
     bookingId: input.bookingId,
@@ -325,11 +398,11 @@ export async function assertRecordingAuthorizationCurrent(
     gate.certificationId !== evidence.certificationId ||
     gate.assignmentGeneration !== evidence.assignmentGeneration ||
     gate.locationAttemptId !== evidence.locationAttemptId ||
-    gate.v2Safety?.evidenceId !== evidence.safetyEvidenceId ||
-    gate.v2Safety?.evidenceHash !== evidence.safetyEvidenceHash ||
-    gate.v2Safety?.locationAttemptEvidenceHash !== evidence.locationAttemptEvidenceHash
+    (v2 && gate.v2Safety?.evidenceId !== evidence.safetyEvidenceId) ||
+    (v2 && gate.v2Safety?.evidenceHash !== evidence.safetyEvidenceHash) ||
+    (v2 && gate.v2Safety?.locationAttemptEvidenceHash !== evidence.locationAttemptEvidenceHash)
   ) {
-    throw new ServiceVideoMutationBlockedError("V2_RECORDING_AUTHORIZATION_STALE");
+    throw new ServiceVideoMutationBlockedError(staleAuthorizationCode);
   }
   return evidence;
 }
@@ -366,7 +439,16 @@ export async function assertMediaSessionAuthorizationCurrent(
         select: { contractVersion: true },
       })
     : null;
-  if (currentAssessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
+  const booking = db.booking?.findFirst
+    ? await db.booking.findFirst({
+        where: { id: input.bookingId, vendorId: input.vendorId },
+        select: { customerMetadata: true },
+      })
+    : null;
+  if (
+    currentAssessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+    !employeeRecordingParticipationContractEnabled(booking?.customerMetadata)
+  ) {
     return session;
   }
   if (!session.recordingGateDecisionId) {

@@ -8,12 +8,14 @@ import {
 } from "@/lib/vendor-job-operational-phase";
 import {
   REQUIRED_SERVICE_VIDEO_STAGES,
+  assertRecordingAuthorizationCurrent,
   assertServiceVideoAudioEvidenceConforms,
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
 import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 import { createVendorManagerAuditNotifications } from "@/lib/vendor-manager-notifications";
+import { employeeRecordingParticipationContractEnabled } from "@/lib/employee-recording-participation";
 
 export const CORE_ADMIN_AUDIT_EVIDENCE_VERSION = 1;
 export const CORE_ADMIN_AUDIT_DECISION_EVIDENCE_VERSION = 2;
@@ -152,6 +154,7 @@ async function loadBoundStageEvidence(
       assessmentGeneration: true,
       permissionEvidenceId: true,
       recordingGateDecisionId: true,
+      employeeMembershipId: true,
       mediaSessionId: true,
       audioExpected: true,
       audioPresence: true,
@@ -179,6 +182,28 @@ async function loadBoundStageEvidence(
     }
   }
   return packageStages.map((expected) => byId.get(expected.stageEvidenceId));
+}
+
+async function assertPackageRecordingAuthorizationsCurrent(
+  db: any,
+  stageRows: any[],
+  scope: { bookingId: string; vendorId: string; actorKind: string },
+) {
+  try {
+    for (const stage of stageRows) {
+      await assertRecordingAuthorizationCurrent(db, {
+        gateDecisionId: String(stage.recordingGateDecisionId),
+        bookingId: scope.bookingId,
+        vendorId: scope.vendorId,
+        membershipId: String(stage.employeeMembershipId),
+        stage: String(stage.stage).toUpperCase() as ServiceVideoStage,
+        surface: "admin_evidence",
+        actorKind: scope.actorKind,
+      });
+    }
+  } catch {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_RECORDING_AUTHORIZATION_STALE");
+  }
 }
 
 async function loadBoundMediaAssets(db: any, packageStages: PackageStage[]) {
@@ -406,6 +431,13 @@ export async function submitPackageForCoreAdminAudit(input: {
       bookingId: input.bookingId,
       vendorId: input.vendorId,
     });
+    if (employeeRecordingParticipationContractEnabled(booking.customerMetadata)) {
+      await assertPackageRecordingAuthorizationsCurrent(tx, stageRows as any[], {
+        bookingId: input.bookingId,
+        vendorId: input.vendorId,
+        actorKind: "VENDOR_MANAGER",
+      });
+    }
     const mediaAssets = await loadBoundMediaAssets(tx, packageStages);
     const audioAudit = validatePackageAudio(stageRows, mediaAssets);
     const gateRows = await tx.recordingGateDecisionEvidence.findMany({
@@ -628,6 +660,13 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
     bookingId,
     vendorId: booking.vendorId,
   });
+  if (employeeRecordingParticipationContractEnabled(booking.customerMetadata)) {
+    await assertPackageRecordingAuthorizationsCurrent(db, stageEvidence as any[], {
+      bookingId,
+      vendorId: booking.vendorId,
+      actorKind: "RELIANCE_ADMIN",
+    });
+  }
   const mediaAssets = await loadBoundMediaAssets(db, packageStages);
   const assessmentIds = Array.from(
     new Set(stageEvidence.map((stage: any) => String(stage.assessmentId || "")).filter(Boolean)),

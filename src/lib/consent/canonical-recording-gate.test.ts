@@ -16,6 +16,7 @@ const db = vi.hoisted(() => ({
   lifecycleDeletionFindMany: vi.fn(),
   lifecycleHoldFindMany: vi.fn(),
   lifecycleCaseFindFirst: vi.fn(),
+  participationResolve: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -35,6 +36,11 @@ vi.mock("@/server/db", () => ({
     mediaEvidenceHold: { findMany: db.lifecycleHoldFindMany },
     mediaLifecycleCase: { findFirst: db.lifecycleCaseFindFirst },
   },
+}));
+vi.mock("@/lib/employee-recording-participation", () => ({
+  employeeRecordingParticipationContractEnabled: (value: string | null | undefined) =>
+    String(value || "").includes("employee-recording-participation-v1"),
+  resolveEmployeeRecordingParticipation: db.participationResolve,
 }));
 
 import { loadCanonicalRecordingGate } from "./recording-gate";
@@ -359,7 +365,110 @@ describe("database-backed canonical recording gate", () => {
     db.lifecycleDeletionFindMany.mockResolvedValue([]);
     db.lifecycleHoldFindMany.mockResolvedValue([]);
     db.lifecycleCaseFindFirst.mockResolvedValue(null);
+    db.participationResolve.mockResolvedValue({
+      required: true,
+      contractVersion: "employee-recording-participation-v1",
+      complete: true,
+      status: "ALLOWED",
+      evidence: [{ membershipId: "member-1", decisionId: "participation-1" }],
+      requiredMembershipIds: ["member-1"],
+      missingMembershipIds: [],
+      declinedMembershipIds: [],
+      staleMembershipIds: [],
+      inactiveMembershipIds: [],
+    });
   });
+
+  it.each([
+    ["missing", "REQUIRED"],
+    ["declined", "DECLINED"],
+    ["stale", "STALE"],
+  ])("blocks recording when Employee participation is %s", async (_label, status) => {
+    db.participationResolve.mockResolvedValue({
+      required: true,
+      contractVersion: "employee-recording-participation-v1",
+      complete: false,
+      status,
+      evidence: [],
+      requiredMembershipIds: ["member-1"],
+      missingMembershipIds: status === "REQUIRED" ? ["member-1"] : [],
+      declinedMembershipIds: status === "DECLINED" ? ["member-1"] : [],
+      staleMembershipIds: status === "STALE" ? ["member-1"] : [],
+      inactiveMembershipIds: [],
+    });
+
+    const gate = await load({
+      customerMetadata: JSON.stringify({
+        ...JSON.parse(metadata),
+        vendor_job_employee_recording_participation_contract_version:
+          "employee-recording-participation-v1",
+      }),
+    });
+
+    expect(gate.recordingUnlocked).toBe(false);
+    expect(gate.blockCode).toBe(
+      status === "DECLINED"
+        ? "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED"
+        : status === "STALE"
+          ? "EMPLOYEE_RECORDING_PARTICIPATION_STALE"
+          : "EMPLOYEE_RECORDING_PARTICIPATION_REQUIRED",
+    );
+    expect(gate.block?.responsibleParticipant).toBe("EMPLOYEE");
+  });
+
+  it("allows Service Order release but not recording while Employee participation is pending", async () => {
+    db.participationResolve.mockResolvedValue({
+      required: true,
+      complete: false,
+      status: "REQUIRED",
+      evidence: [],
+      requiredMembershipIds: ["member-1"],
+      missingMembershipIds: ["member-1"],
+      declinedMembershipIds: [],
+      staleMembershipIds: [],
+      inactiveMembershipIds: [],
+    });
+    const customerMetadata = JSON.stringify({
+      ...JSON.parse(metadata),
+      vendor_job_employee_recording_participation_contract_version:
+        "employee-recording-participation-v1",
+    });
+
+    const releaseGate = await load({ customerMetadata, capability: "release" });
+    const recordingGate = await load({ customerMetadata, capability: "record" });
+
+    expect(releaseGate.releaseAllowed).toBe(true);
+    expect(recordingGate.recordingUnlocked).toBe(false);
+  });
+
+  it.each(["VENDOR_MANAGER", "ADMIN", "CUSTOMER"])(
+    "does not let %s override an Employee DECLINE",
+    async (actorKind) => {
+      db.participationResolve.mockResolvedValue({
+        required: true,
+        complete: false,
+        status: "DECLINED",
+        evidence: [],
+        requiredMembershipIds: ["member-1"],
+        missingMembershipIds: [],
+        declinedMembershipIds: ["member-1"],
+        staleMembershipIds: [],
+        inactiveMembershipIds: [],
+      });
+
+      const gate = await load({
+        actorKind,
+        customerMetadata: JSON.stringify({
+          ...JSON.parse(metadata),
+          vendor_job_employee_recording_participation_contract_version:
+            "employee-recording-participation-v1",
+        }),
+      });
+
+      expect(gate.recordingUnlocked).toBe(false);
+      expect(gate.blockCode).toBe("EMPLOYEE_RECORDING_PARTICIPATION_DECLINED");
+    },
+  );
 
   it("fails closed with an actionable assessment block", async () => {
     db.assessmentFindFirst.mockResolvedValue(null);

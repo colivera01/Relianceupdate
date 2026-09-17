@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
+import { membershipActivationData } from "@/lib/vendor-membership-generation";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; membershipId: string }>;
@@ -73,11 +74,11 @@ export async function POST(
       // Update membership
       const approvedMembership = await tx.vendorMembership.update({
         where: { id: membershipId },
-        data: {
-          status: "ACTIVE",
-          approvedAt: new Date(),
+        data: membershipActivationData({
+          currentStatus: membership.status,
+          currentGeneration: membership.membershipGeneration,
           approvedByUserId: userId,
-        },
+        }),
       });
 
       // Upsert phone device

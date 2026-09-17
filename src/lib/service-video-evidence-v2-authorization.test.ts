@@ -2,16 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   loadGate: vi.fn(),
+  assertParticipation: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({ prisma: {} }));
 vi.mock("@/lib/consent/recording-gate", () => ({
   loadRecordingPermissionGate: mocks.loadGate,
 }));
+vi.mock("@/lib/employee-recording-participation", () => ({
+  employeeRecordingParticipationContractEnabled: (metadata: string | null | undefined) =>
+    String(metadata || "").includes("employee-recording-participation-v1"),
+  assertEmployeeParticipationEvidenceCurrent: mocks.assertParticipation,
+}));
 
 import {
   assertMediaSessionAuthorizationCurrent,
   assertRecordingAuthorizationCurrent,
+  EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION,
   persistAllowedRecordingGateDecision,
   V2_RECORDING_GATE_EVIDENCE_VERSION,
 } from "./service-video-evidence";
@@ -49,6 +56,27 @@ const allowedGate = {
   v2Safety: safety,
 };
 
+const employeeParticipationEvidence = [{
+  membershipId: "membership-1",
+  membershipGeneration: 2,
+  decisionId: "participation-1",
+  decisionEvidenceHash: "d".repeat(64),
+  decisionVersion: 1,
+  assignmentGeneration: 4,
+  assessmentGeneration: 2,
+}];
+
+const participationGate = {
+  ...allowedGate,
+  assessmentContractVersion: "recording-assessment-v3-package-audio-v1",
+  v2Safety: null,
+  employeeParticipation: {
+    required: true,
+    complete: true,
+    evidence: employeeParticipationEvidence,
+  },
+};
+
 async function persistedEvidence() {
   const create = vi.fn().mockImplementation(({ data }) => ({ id: "gate-1", ...data }));
   const evidence = await persistAllowedRecordingGateDecision({
@@ -59,6 +87,21 @@ async function persistedEvidence() {
     surface: "media_session",
     stage: "INTRO",
     gate: allowedGate as any,
+    tx: { recordingGateDecisionEvidence: { create } },
+  });
+  return { evidence, create };
+}
+
+async function persistedParticipationEvidence() {
+  const create = vi.fn().mockImplementation(({ data }) => ({ id: "gate-participation-1", ...data }));
+  const evidence = await persistAllowedRecordingGateDecision({
+    bookingId: "booking-1",
+    vendorId: "vendor-1",
+    membershipId: "membership-1",
+    actorKind: "EMPLOYEE",
+    surface: "media_session",
+    stage: "INTRO",
+    gate: participationGate as any,
     tx: { recordingGateDecisionEvidence: { create } },
   });
   return { evidence, create };
@@ -77,6 +120,7 @@ describe("V2 recording authorization evidence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadGate.mockResolvedValue(allowedGate);
+    mocks.assertParticipation.mockResolvedValue({ required: true, complete: true });
   });
 
   it("persists the exact stage, safety, and GPS evidence used by the gate", async () => {
@@ -94,6 +138,45 @@ describe("V2 recording authorization evidence", () => {
     });
     expect(create).toHaveBeenCalledOnce();
     expect(evidence.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("persists the exact ordered Employee participation evidence used by the gate", async () => {
+    const { evidence } = await persistedParticipationEvidence();
+
+    expect(evidence).toMatchObject({
+      evidenceVersion: EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION,
+      stage: "INTRO",
+      employeeParticipationEvidenceJson: JSON.stringify(employeeParticipationEvidence),
+    });
+    expect(evidence.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("rejects media mutation when exact Employee participation evidence becomes stale", async () => {
+    const { evidence } = await persistedParticipationEvidence();
+    const db = {
+      ...authorizationDb(evidence, "recording-assessment-v3-package-audio-v1"),
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({
+          customerMetadata: JSON.stringify({
+            vendor_job_employee_recording_participation_contract_version:
+              "employee-recording-participation-v1",
+          }),
+        }),
+      },
+    };
+    mocks.assertParticipation.mockRejectedValue(
+      new Error("EMPLOYEE_RECORDING_PARTICIPATION_STALE"),
+    );
+
+    await expect(assertRecordingAuthorizationCurrent(db, {
+      gateDecisionId: "gate-participation-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      stage: "INTRO",
+      surface: "upload_complete",
+    })).rejects.toMatchObject({ code: "EMPLOYEE_RECORDING_PARTICIPATION_STALE" });
+    expect(mocks.loadGate).not.toHaveBeenCalled();
   });
 
   it("accepts only the still-current exact evidence identity", async () => {

@@ -104,7 +104,7 @@ describe("GET /api/vendors/[vendorId]/memberships", () => {
     });
   });
 
-  it("includes read-only participation state on the active Manager roster", async () => {
+  it("marks historical or incomplete standing consent as update required on the Manager roster", async () => {
     hoisted.vendorMembershipFindMany.mockResolvedValue([{
       id: "vm1",
       userId: "u1",
@@ -124,7 +124,9 @@ describe("GET /api/vendors/[vendorId]/memberships", () => {
     const json = await readJson(res);
 
     expect(res.status).toBe(200);
-    expect((json.memberships as any[])[0].publicMediaConsent).toMatchObject({ status: "ALLOWED" });
+    expect((json.memberships as any[])[0].publicMediaConsent).toMatchObject({
+      status: "UPDATE_REQUIRED",
+    });
   });
 
   it("does not expose another Employee's participation state to an Employee roster reader", async () => {

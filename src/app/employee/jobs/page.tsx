@@ -29,9 +29,11 @@ import {
   serviceVideoDevicePermissionMessage,
 } from "@/lib/service-video-audio-capture";
 import { tutorialGuides } from "@/lib/user-guidance";
+import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
 
 type EmployeeJob = {
   id: string;
+  membershipId: string | null;
   vendorId: string;
   vendorName: string;
   title: string;
@@ -95,6 +97,12 @@ type RecordingComplianceState = {
       canonicalBlock: RecordingComplianceState["canonicalBlock"];
     }
   >;
+  employeeParticipation?: {
+    required: boolean;
+    complete: boolean;
+    status: "NOT_REQUIRED" | "ALLOWED" | "REQUIRED" | "DECLINED" | "STALE";
+    requiredMembershipIds: string[];
+  } | null;
 };
 
 type StageFeedbackState = {
@@ -336,6 +344,10 @@ export default function EmployeeJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [employeeMembershipRequired, setEmployeeMembershipRequired] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [participationChoice, setParticipationChoice] = useState<{
+    jobId: string;
+    decision: "ALLOW" | "DECLINE";
+  } | null>(null);
   const [managerSubmitCompleteOpen, setManagerSubmitCompleteOpen] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
@@ -442,6 +454,13 @@ export default function EmployeeJobsPage() {
       const normalizedToken = token.trim();
       setCaptureToken(normalizedToken);
       sessionStorage.setItem("employee_capture_token", normalizedToken);
+      window.history.replaceState(
+        {},
+        "",
+        jobId
+          ? `/employee/jobs?jobId=${encodeURIComponent(jobId)}`
+          : "/employee/jobs",
+      );
     } else {
       const storedToken = sessionStorage.getItem("employee_capture_token") || "";
       if (storedToken.trim()) setCaptureToken(storedToken.trim());
@@ -1693,6 +1712,58 @@ export default function EmployeeJobsPage() {
               >
                 Confirm Recording Scope
               </button>
+            ) : null}
+            {job.membershipId && [
+              "EMPLOYEE_RECORDING_PARTICIPATION_REQUIRED",
+              "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED",
+              "EMPLOYEE_RECORDING_PARTICIPATION_STALE",
+            ].includes(canonicalBlock.code) ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Recording for this job
+                </p>
+                {!participationChoice || participationChoice.jobId !== job.id ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setParticipationChoice({ jobId: job.id, decision: "ALLOW" })}
+                      className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white"
+                    >
+                      Allow Recording Participation
+                    </button>
+                    {canonicalBlock.code !== "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED" ? (
+                      <button
+                        type="button"
+                        onClick={() => setParticipationChoice({ jobId: job.id, decision: "DECLINE" })}
+                        className="rounded-lg border border-amber-900 px-4 py-2 text-sm font-bold text-amber-950"
+                      >
+                        Decline Recording Participation
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <EmployeeVerifiedDecision
+                    purpose="EMPLOYEE_RECORDING_PARTICIPATION"
+                    membershipId={job.membershipId}
+                    bookingId={job.id}
+                    decision={participationChoice.decision}
+                    title={participationChoice.decision === "ALLOW" ? "Allow recording for this Work Record" : "Decline recording for this Work Record"}
+                    decisionText={participationChoice.decision === "ALLOW"
+                      ? "I allow Reliance to intentionally record me for this Work Record within the recording scope, boundary, participants, and audio setting shown. This does not authorize Public use."
+                      : "I do not allow Reliance to intentionally record me for this Work Record. Recording that includes me will remain blocked. This does not automatically cancel the service."}
+                    headers={employeeRequestHeaders(false)}
+                    submitUrl={`/api/employee/jobs/${encodeURIComponent(job.id)}/recording-participation`}
+                    onCancel={() => setParticipationChoice(null)}
+                    onComplete={async (body) => {
+                      setParticipationChoice(null);
+                      setActionMessage(body?.decision?.decision === "ALLOW"
+                        ? "Your verified recording-participation choice was saved for this exact Work Record."
+                        : "Recording participation was declined. Recording remains locked, but the underlying service may continue.");
+                      await loadJobs();
+                    }}
+                  />
+                )}
+              </div>
             ) : null}
           </div>
         ) : null}

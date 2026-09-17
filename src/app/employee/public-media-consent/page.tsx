@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Loader2, Mic2, ShieldCheck, UserRound, XCircle
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
 import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
 
@@ -14,7 +15,7 @@ type ConsentMembership = {
   employeeName: string;
   vendorId: string;
   vendorName: string;
-  status: "ALLOWED" | "NOT_ALLOWED" | "NOT_DECIDED";
+  status: "ALLOWED" | "NOT_ALLOWED" | "NOT_DECIDED" | "UPDATE_REQUIRED";
   decision: null | {
     id: string;
     decision: "ALLOW" | "DENY";
@@ -29,6 +30,8 @@ type ConsentMembership = {
 type ConsentView = {
   policyVersion: string;
   consentText: string;
+  consentTextAllow: string;
+  consentTextDeny: string;
   memberships: ConsentMembership[];
   notifications: Array<{ id: string; title: string; message: string; createdAt: string }>;
 };
@@ -46,15 +49,21 @@ export default function EmployeePublicMediaConsentPage() {
   }), [captureToken, participationToken, userId]);
   const [view, setView] = useState<ConsentView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [confirmation, setConfirmation] = useState<{ membershipId: string; decision: "ALLOW" | "DENY" } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setCaptureToken(String(params.get("ct") || params.get("captureToken") || "").trim());
-    setParticipationToken(String(params.get("pct") || params.get("consentToken") || "").trim());
+    const nextCapture = String(params.get("ct") || params.get("captureToken") || sessionStorage.getItem("employee_capture_token") || "").trim();
+    const nextParticipation = String(params.get("pct") || params.get("consentToken") || sessionStorage.getItem("employee_public_participation_token") || "").trim();
+    setCaptureToken(nextCapture);
+    setParticipationToken(nextParticipation);
+    if (nextCapture) sessionStorage.setItem("employee_capture_token", nextCapture);
+    if (nextParticipation) sessionStorage.setItem("employee_public_participation_token", nextParticipation);
+    if (params.has("ct") || params.has("captureToken") || params.has("pct") || params.has("consentToken")) {
+      window.history.replaceState({}, "", "/employee/public-media-consent");
+    }
     setAccessInitialized(true);
   }, []);
 
@@ -84,39 +93,6 @@ export default function EmployeePublicMediaConsentPage() {
   }, [accessInitialized, captureToken, headers, participationToken, userId]);
 
   useEffect(() => { void load(); }, [load]);
-
-  async function decide() {
-    if (!confirmation) return;
-    setWorking(true);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch("/api/employee/public-media-consent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        credentials: "include",
-        body: JSON.stringify(confirmation),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || body?.success === false) {
-        if (String(body?.error || "").includes("ALREADY_PUBLIC_WITHDRAWAL_POLICY_REQUIRED")) {
-          throw new Error("This change involves a Service Video that is already Public. Reliance needs a Product Owner withdrawal decision before changing this consent.");
-        }
-        throw new Error(body?.error || "Your choice could not be saved");
-      }
-      setMessage(confirmation.decision === "ALLOW"
-        ? "Public Service Video participation is now allowed. Eligible pending and future Service Videos may become Public only when the Customer chooses Share Publicly and every Reliance requirement passes."
-        : body?.alreadyPublicAffected
-          ? "Public Service Video participation is no longer allowed for new or pending publication. Reliance has not yet applied a policy to Service Videos that were already Public."
-          : "Public Service Video participation is not allowed. New or pending Service Videos involving you will remain Private.");
-      setConfirmation(null);
-      await load();
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Your choice could not be saved");
-    } finally {
-      setWorking(false);
-    }
-  }
 
   return (
     <div className="reliance-grid-lines min-h-screen bg-[#050a13] px-4 py-8 text-white">
@@ -155,6 +131,7 @@ export default function EmployeePublicMediaConsentPage() {
               <li>The Customer remains the visibility decision-maker for every Service Video.</li>
               <li>This is one standing participation choice, not a separate approval for every job.</li>
               <li>No additional Admin approval is required after all current requirements pass.</li>
+              <li>This optional Public choice does not affect employment, assignments, the underlying service, or Customer Private Proof.</li>
             </ul>
           </CardContent>
         </Card>
@@ -175,7 +152,7 @@ export default function EmployeePublicMediaConsentPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div><p className="text-sm text-slate-400">Business</p><CardTitle className="mt-1 text-xl">{membership.vendorName}</CardTitle></div>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${membership.status === "ALLOWED" ? "bg-emerald-600 text-white" : membership.status === "NOT_ALLOWED" ? "bg-slate-700 text-white" : "bg-amber-500 text-slate-950"}`}>
-                    {membership.status === "ALLOWED" ? "Allowed" : membership.status === "NOT_ALLOWED" ? "Not allowed" : "Choice needed"}
+                    {membership.status === "ALLOWED" ? "Allowed" : membership.status === "NOT_ALLOWED" ? "Not allowed" : membership.status === "UPDATE_REQUIRED" ? "Update required" : "Choice needed"}
                   </span>
                 </div>
               </CardHeader>
@@ -194,29 +171,35 @@ export default function EmployeePublicMediaConsentPage() {
                 </p>
                 {!pending ? (
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={working} onClick={() => setConfirmation({ membershipId: membership.membershipId, decision: "ALLOW" })}>
+                    <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => setConfirmation({ membershipId: membership.membershipId, decision: "ALLOW" })}>
                       <CheckCircle2 className="mr-2 h-4 w-4" /> Allow Public Service Video Participation
                     </Button>
-                    <Button variant="outline" className="border-slate-500 bg-transparent text-white" disabled={working} onClick={() => setConfirmation({ membershipId: membership.membershipId, decision: "DENY" })}>
+                    <Button variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation({ membershipId: membership.membershipId, decision: "DENY" })}>
                       <XCircle className="mr-2 h-4 w-4" /> Do Not Allow
                     </Button>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-blue-400/30 bg-blue-950/30 p-4">
-                    <p className="font-semibold text-blue-100">Confirm your standing choice</p>
-                    <p className="mt-2 text-sm leading-6 text-blue-100/80">
-                      {pending.decision === "ALLOW"
-                        ? "I allow my image, likeness, and voice in eligible Service Videos currently waiting for this choice and in future eligible Service Videos while this consent remains active. Customers still decide whether each Service Video is shared publicly."
-                        : "I do not allow Public Service Video participation. Pending and future Service Videos involving me must remain Private."}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button disabled={working} className={pending.decision === "ALLOW" ? "bg-emerald-600 text-white hover:bg-emerald-700" : ""} onClick={() => void decide()}>
-                        {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {pending.decision === "ALLOW" ? "Confirm Allow" : "Confirm Do Not Allow"}
-                      </Button>
-                      <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation(null)}>Cancel</Button>
-                    </div>
-                  </div>
+                  <EmployeeVerifiedDecision
+                    purpose="EMPLOYEE_STANDING_PUBLIC_MEDIA"
+                    membershipId={membership.membershipId}
+                    decision={pending.decision}
+                    title="Public Service Videos"
+                    decisionText={pending.decision === "ALLOW"
+                      ? view?.consentTextAllow || "I allow my image, likeness, voice, and audio to appear in eligible Reliance Service Videos for this business when the Customer separately chooses to share the complete video publicly. I may change this choice."
+                      : view?.consentTextDeny || "I do not allow Public use of my image, likeness, voice, or audio. Dependent Public videos will be removed from Public display; customer Private Proof remains available."}
+                    headers={headers}
+                    submitUrl="/api/employee/public-media-consent"
+                    onCancel={() => setConfirmation(null)}
+                    onComplete={async (body) => {
+                      setMessage(pending.decision === "ALLOW"
+                        ? "Public Service Video participation is allowed. Customer choice and every other Reliance requirement remain separate."
+                        : body?.alreadyPublicAffected
+                          ? "Public participation is no longer allowed. Dependent Public display was removed; Customer Private Proof remains available."
+                          : "Public Service Video participation is not allowed. Customer Private Proof is unaffected.");
+                      setConfirmation(null);
+                      await load();
+                    }}
+                  />
                 )}
               </CardContent>
             </Card>

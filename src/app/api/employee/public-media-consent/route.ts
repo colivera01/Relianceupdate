@@ -14,6 +14,12 @@ import {
   decideEmployeePublicMediaConsent,
   loadEmployeePublicMediaConsentView,
 } from "@/lib/service-video-publication";
+import {
+  EMPLOYEE_DECISION_COOKIE,
+  employeeDecisionCookieOptions,
+  readEmployeeDecisionCookie,
+  requestIpAddress,
+} from "@/lib/employee-decision-verification";
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : "Public Media Consent request failed";
@@ -79,13 +85,22 @@ export async function POST(request: Request) {
     if (access.membershipId && requestedMembershipId !== access.membershipId) {
       throw new Error("EMPLOYEE_PUBLIC_MEDIA_CONSENT_FORBIDDEN");
     }
+    const sessionSecret = readEmployeeDecisionCookie(request);
+    if (!sessionSecret) throw new Error("EMPLOYEE_DECISION_SESSION_REQUIRED");
     const result = await decideEmployeePublicMediaConsent({
       userId: access.userId,
       membershipId: access.membershipId || requestedMembershipId,
       decision: String(body?.decision || "").trim().toUpperCase() as "ALLOW" | "DENY",
-      verificationMethod: access.verificationMethod,
+      sessionSecret,
+      ipAddress: requestIpAddress(request),
+      userAgent: request.headers.get("user-agent"),
     });
-    return NextResponse.json({ success: true, ...result });
+    const response = NextResponse.json({ success: true, ...result });
+    response.cookies.set(EMPLOYEE_DECISION_COOKIE, "", {
+      ...employeeDecisionCookieOptions(),
+      maxAge: 0,
+    });
+    return response;
   } catch (error) {
     return failure(error);
   }

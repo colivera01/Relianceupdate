@@ -54,9 +54,10 @@ describe("Employee standing Public Media Consent route", () => {
     });
   });
 
-  it("records an explicit choice without accepting a default", async () => {
+  it("records an explicit choice only with the verified one-time session", async () => {
     const response = await POST(new Request("http://localhost/api/employee/public-media-consent", {
       method: "POST",
+      headers: { cookie: "reliance_employee_decision=verified-secret" },
       body: JSON.stringify({ membershipId: "membership-1", decision: "ALLOW" }),
     }));
     expect(response.status).toBe(200);
@@ -64,7 +65,9 @@ describe("Employee standing Public Media Consent route", () => {
       userId: "employee-1",
       membershipId: "membership-1",
       decision: "ALLOW",
-      verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
+      sessionSecret: "verified-secret",
+      ipAddress: "unknown",
+      userAgent: null,
     });
   });
 
@@ -73,6 +76,18 @@ describe("Employee standing Public Media Consent route", () => {
     const response = await GET(new Request("http://localhost/api/employee/public-media-consent"));
     expect(response.status).toBe(401);
     expect(mocks.loadEmployeePublicMediaConsentView).not.toHaveBeenCalled();
+  });
+
+  it("does not treat a signed-in session or entry token as verified decision authority", async () => {
+    const response = await POST(new Request("http://localhost/api/employee/public-media-consent", {
+      method: "POST",
+      body: JSON.stringify({ membershipId: "membership-1", decision: "ALLOW" }),
+    }));
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "EMPLOYEE_DECISION_SESSION_REQUIRED",
+    });
+    expect(mocks.decideEmployeePublicMediaConsent).not.toHaveBeenCalled();
   });
 
   it("lets an accountless Employee use the exact active Service Order membership", async () => {
@@ -95,6 +110,7 @@ describe("Employee standing Public Media Consent route", () => {
 
     const postResponse = await POST(new Request("http://localhost/api/employee/public-media-consent?ct=capture-token", {
       method: "POST",
+      headers: { cookie: "reliance_employee_decision=verified-secret" },
       body: JSON.stringify({ membershipId: "membership-1", decision: "ALLOW" }),
     }));
     expect(postResponse.status).toBe(200);
@@ -102,7 +118,9 @@ describe("Employee standing Public Media Consent route", () => {
       userId: "employee-1",
       membershipId: "membership-1",
       decision: "ALLOW",
-      verificationMethod: "SIGNED_EMPLOYEE_SERVICE_ORDER_LINK",
+      sessionSecret: "verified-secret",
+      ipAddress: "unknown",
+      userAgent: null,
     });
   });
 
@@ -132,6 +150,7 @@ describe("Employee standing Public Media Consent route", () => {
     });
     const response = await POST(new Request("http://localhost/api/employee/public-media-consent", {
       method: "POST",
+      headers: { cookie: "reliance_employee_decision=verified-secret" },
       body: JSON.stringify({ membershipId: "membership-1", decision: "DENY" }),
     }));
     expect(response.status).toBe(200);

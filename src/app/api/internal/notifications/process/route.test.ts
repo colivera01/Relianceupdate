@@ -9,7 +9,8 @@ const hoisted = vi.hoisted(() => {
   const updateMany = vi.fn();
   const rotate = vi.fn();
   const deliver = vi.fn();
-  return { findMany, findConsentRecord, update, updateMany, rotate, deliver };
+  const deliverEmployeeDecline = vi.fn();
+  return { findMany, findConsentRecord, update, updateMany, rotate, deliver, deliverEmployeeDecline };
 });
 
 vi.mock("@/server/db", () => ({
@@ -20,6 +21,12 @@ vi.mock("@/server/db", () => ({
 }));
 vi.mock("@/lib/consent/request-service", () => ({ rotateVerifiedPermissionLink: hoisted.rotate }));
 vi.mock("@/lib/consent/delivery-service", () => ({ deliverVerifiedPermissionRequest: hoisted.deliver }));
+vi.mock("@/lib/notifications/send-employee-participation-declined", () => ({
+  EMPLOYEE_PARTICIPATION_DECLINED_NOTIFICATION_KIND: "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED:",
+  isEmployeeParticipationDeclinedNotificationKind: (kind: string) =>
+    String(kind || "").startsWith("EMPLOYEE_RECORDING_PARTICIPATION_DECLINED:"),
+  dispatchEmployeeParticipationDeclinedNotification: hoisted.deliverEmployeeDecline,
+}));
 
 function workerRequest(secret = "worker-secret") {
   return new Request("http://localhost/api/internal/notifications/process", {
@@ -43,6 +50,7 @@ describe("permission notification worker", () => {
       booking: {},
     });
     hoisted.deliver.mockResolvedValue({ status: "SENT" });
+    hoisted.deliverEmployeeDecline.mockResolvedValue({ claimed: true, status: "SENT" });
   });
 
   afterEach(() => delete process.env.INTERNAL_NOTIFICATION_WORKER_SECRET);
@@ -103,5 +111,25 @@ describe("permission notification worker", () => {
     expect(json.processed).toBe(0);
     expect(hoisted.rotate).not.toHaveBeenCalled();
     expect(hoisted.deliver).not.toHaveBeenCalled();
+  });
+
+  it("retries the existing idempotent Employee participation DECLINE delivery", async () => {
+    hoisted.findMany.mockResolvedValue([{
+      id: "notification-decline",
+      kind: "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED:membership-1:1",
+      consentRecordId: null,
+      attemptCount: 1,
+      maxAttempts: 4,
+    }]);
+
+    const response = await POST(workerRequest());
+    const json = await response.json();
+
+    expect(json.results).toEqual([{ notificationId: "notification-decline", status: "SENT" }]);
+    expect(hoisted.deliverEmployeeDecline).toHaveBeenCalledWith({
+      notificationId: "notification-decline",
+      actorUserId: "employee-participation-notification-worker",
+    });
+    expect(hoisted.rotate).not.toHaveBeenCalled();
   });
 });

@@ -200,6 +200,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           permissionStatus: permissionGate.permissionState,
           serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
           audioAllowed: permissionGate.audioAllowed,
+          employeeParticipation: permissionGate.employeeParticipation || null,
         },
         recordingAssessment: currentRecordingAssessment
           ? (() => {

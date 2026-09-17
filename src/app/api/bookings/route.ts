@@ -32,6 +32,7 @@ import type { GeocodeEvidence, GeocodeFailureStatus } from '@/lib/geocoding';
 import { buildRecordingLocationSnapshot } from '@/lib/recording-location-snapshot';
 import type { RecordingLocationType } from '@/lib/recording-location-snapshot';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
+import { EMPLOYEE_RECORDING_PARTICIPATION_CONTRACT_VERSION } from '@/lib/employee-recording-participation';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -919,6 +920,8 @@ export async function POST(request: NextRequest) {
         });
       }
       nextMeta.vendor_job_permission_workflow_version = 'SIMPLIFIED_V1';
+      nextMeta.vendor_job_employee_recording_participation_contract_version =
+        EMPLOYEE_RECORDING_PARTICIPATION_CONTRACT_VERSION;
       if (requiresCustomerConsent) {
         nextMeta.vendor_job_consent_accepted = false;
         nextMeta.vendor_job_consent_status = 'not_sent';

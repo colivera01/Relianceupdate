@@ -24,6 +24,11 @@ import {
 } from "@/lib/recording/assessment-v2";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 import { validateV2SafetyLocationAttempt } from "@/lib/recording/v2-safety-location";
+import {
+  employeeRecordingParticipationContractEnabled,
+  resolveEmployeeRecordingParticipation,
+  type EmployeeRecordingParticipationResolution,
+} from "@/lib/employee-recording-participation";
 
 export type RecordingPermissionRecord = {
   id?: string | null;
@@ -106,6 +111,7 @@ export type RecordingPermissionGate = {
   locationExceptionId: string | null;
   workRecordStatus: string | null;
   correctionRequestedStages: RecordingStage[];
+  employeeParticipation?: EmployeeRecordingParticipationResolution;
   v2Safety?: V2StageSafetyReadiness;
   blockCode: string | null;
   blockMessage: string | null;
@@ -482,6 +488,17 @@ export async function loadCanonicalRecordingGate(input: {
     })
     : null;
   const capability = input.capability || "record";
+  const employeeParticipation =
+    assessment &&
+    employeeRecordingParticipationContractEnabled(authoritativeMetadata)
+      ? await resolveEmployeeRecordingParticipation({
+          db,
+          bookingId: input.bookingId,
+          vendorId: input.vendorId || assessment.vendorId,
+          customerMetadata: authoritativeMetadata,
+          assessment,
+        })
+      : undefined;
   const safetyRequirement = requiredSafetyCheckForStage(recordingStage);
   const safetyRows =
     capability === "record" &&
@@ -633,6 +650,7 @@ export async function loadCanonicalRecordingGate(input: {
     locationExceptionId: authoritativeLocationException?.id || null,
     workRecordStatus,
     correctionRequestedStages,
+    ...(employeeParticipation ? { employeeParticipation } : {}),
     ...(v2Safety ? { v2Safety } : {}),
   };
   let decision: RecordingPermissionGate;
@@ -809,6 +827,30 @@ export async function loadCanonicalRecordingGate(input: {
         resolution: "Assign an active employee before releasing the service order.",
         serviceMayContinue: true,
       });
+    } else if (
+      capability !== "release" &&
+      employeeParticipation?.required &&
+      !employeeParticipation.complete
+    ) {
+      const declined = employeeParticipation.status === "DECLINED";
+      const stale = employeeParticipation.status === "STALE";
+      decision = blocked(base, {
+        code: declined
+          ? "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED"
+          : stale
+            ? "EMPLOYEE_RECORDING_PARTICIPATION_STALE"
+            : "EMPLOYEE_RECORDING_PARTICIPATION_REQUIRED",
+        why: declined
+          ? "An assigned Employee does not allow intentional recording for this Work Record."
+          : stale
+            ? "An assigned Employee's recording-participation decision no longer matches the current assignment or recording scope."
+            : "Every assigned Employee who may intentionally appear must make a verified recording-participation choice for this Work Record.",
+        responsibleParticipant: "EMPLOYEE",
+        resolution: declined
+          ? "Do not record that Employee. The Vendor Manager may continue the underlying service or revise the future recording plan."
+          : "Each assigned Employee must verify their identity and allow recording for the exact current scope.",
+        serviceMayContinue: true,
+      }, true);
     } else if (capability !== "release" && !released) {
       decision = blocked(base, {
         code: "SERVICE_ORDER_RELEASE_REQUIRED",

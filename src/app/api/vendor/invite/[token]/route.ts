@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { sendTeamInviteAcceptedNotification } from "@/lib/notifications/send-team-invite-accepted";
+import { membershipActivationData } from "@/lib/vendor-membership-generation";
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -305,7 +306,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
               userId: user.id,
             },
           },
-          select: { id: true, role: true, status: true },
+          select: { id: true, role: true, status: true, membershipGeneration: true },
         })
       : null;
 
@@ -354,8 +355,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       },
       update: {
         role: "EMPLOYEE",
-        status: "ACTIVE",
-        approvedAt: new Date(),
+        ...membershipActivationData({
+          currentStatus: membershipForMatchedUser?.status,
+          currentGeneration: membershipForMatchedUser?.membershipGeneration,
+        }),
       },
       create: {
         vendorId: invite.vendorId,

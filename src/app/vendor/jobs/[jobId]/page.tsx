@@ -63,6 +63,16 @@ type JobLike = {
     permissionStatus?: string | null;
     serviceOrderReleasedAt?: string | null;
     audioAllowed?: boolean;
+    employeeParticipation?: {
+      required: boolean;
+      complete: boolean;
+      status: "NOT_REQUIRED" | "ALLOWED" | "REQUIRED" | "DECLINED" | "STALE";
+      requiredMembershipIds: string[];
+      missingMembershipIds: string[];
+      declinedMembershipIds: string[];
+      staleMembershipIds: string[];
+      inactiveMembershipIds: string[];
+    } | null;
   } | null;
   packageVisibility?: {
     state: string;
@@ -693,6 +703,17 @@ export default function VendorJobDetailPage() {
                     </>
                   )}
                   <p className="mt-1 text-sm text-gray-800">Recording: {job.recordingAssessment?.audioAllowed ? 'Video + audio' : 'Video only'}</p>
+                  {job.recordingCompliance?.employeeParticipation?.required ? (
+                    <p className="mt-1 text-sm text-gray-800">
+                      Employee participation: {job.recordingCompliance.employeeParticipation.complete
+                        ? "Verified for every assigned Employee"
+                        : job.recordingCompliance.employeeParticipation.status === "DECLINED"
+                          ? "Declined - recording remains locked"
+                          : job.recordingCompliance.employeeParticipation.status === "STALE"
+                            ? "A new verified decision is required"
+                            : "Waiting for every assigned Employee"}
+                    </p>
+                  ) : null}
                 </CardContent>
               </Card>
             </div>

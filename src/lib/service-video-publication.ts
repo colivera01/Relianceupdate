@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { prisma } from "@/server/db";
 import {
   MEDIA_LIFECYCLE_STATE_UNAVAILABLE,
@@ -10,6 +10,17 @@ import {
 } from "@/lib/service-video-evidence";
 import { SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION } from "@/lib/recording/scope-assessment";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import {
+  consumeEmployeeDecisionSession,
+  EMPLOYEE_DECISION_PURPOSES,
+  loadEmployeeDecisionContext,
+} from "@/lib/employee-decision-verification";
+import { hashOpaqueSecret } from "@/lib/consent/token";
+import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import {
+  assessmentIntentionallyIncludesAssignedEmployee,
+  employeeRecordingParticipationContractEnabled,
+} from "@/lib/employee-recording-participation";
 
 export const PUBLICATION_STATUSES = {
   AWAITING_CUSTOMER: "AWAITING_CUSTOMER_DECISION",
@@ -45,6 +56,14 @@ export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION = "employee-public-med
 export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT =
   "Allow my image, likeness, and voice to appear in eligible Reliance Service Videos that Customers choose to share publicly. This choice applies to eligible Service Videos currently waiting for my participation consent and to future eligible Service Videos while my consent remains active.";
 export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_EFFECT_SCOPE = "CURRENT_PENDING_AND_FUTURE_ELIGIBLE_SERVICE_VIDEOS";
+export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_POLICY_VERSION =
+  "employee-public-media-consent-v2";
+export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT = {
+  ALLOW:
+    "I allow my image, likeness, voice, and audio to appear in eligible Reliance Service Videos for this business when the Customer separately chooses to share the complete video publicly. I may change this choice.",
+  DENY:
+    "I do not allow Public use of my image, likeness, voice, or audio. Dependent Public videos will be removed from Public display; customer Private Proof remains available.",
+} as const;
 
 export type PublicationStageInput = {
   stage: ServiceVideoStage;
@@ -988,6 +1007,7 @@ type StandingConsentRequirement = {
   userId: string;
   vendorId: string;
   membershipStatus: string;
+  membershipGeneration: number;
   requiresLikeness: boolean;
   requiresAudio: boolean;
   stageIds: string[];
@@ -1007,8 +1027,15 @@ function standingConsentEvidenceDocument(input: {
   verificationMethod: string;
   version: number;
   decidedAt: Date | string;
+  membershipGeneration?: number | null;
+  verificationSessionId?: string | null;
+  verifiedContactHash?: string | null;
+  verifiedChannel?: string | null;
+  consentTextHash?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }) {
-  return {
+  const base = {
     contractVersion: Number(input.contractVersion),
     policyVersion: input.policyVersion,
     userId: input.userId,
@@ -1022,6 +1049,17 @@ function standingConsentEvidenceDocument(input: {
     verificationMethod: input.verificationMethod,
     version: Number(input.version),
     decidedAt: new Date(input.decidedAt).toISOString(),
+  };
+  if (Number(input.contractVersion) < 2) return base;
+  return {
+    ...base,
+    membershipGeneration: Number(input.membershipGeneration),
+    verificationSessionId: input.verificationSessionId,
+    verifiedContactHash: input.verifiedContactHash,
+    verifiedChannel: input.verifiedChannel,
+    consentTextHash: input.consentTextHash,
+    ipAddress: input.ipAddress || null,
+    userAgent: input.userAgent || null,
   };
 }
 
@@ -1037,10 +1075,15 @@ function standingConsentDecisionValid(
     row.vendorId !== requirement.vendorId ||
     row.membershipId !== requirement.membershipId ||
     requirement.membershipStatus !== "ACTIVE" ||
-    Number(row.contractVersion || 0) !== 1 ||
-    row.policyVersion !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION ||
+    Number(row.contractVersion || 0) !== 2 ||
+    row.policyVersion !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_POLICY_VERSION ||
+    Number(row.membershipGeneration) !== requirement.membershipGeneration ||
     row.effectScope !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_EFFECT_SCOPE ||
-    row.consentTextSnapshot !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT ||
+    row.consentTextSnapshot !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT.ALLOW ||
+    row.consentTextHash !== hashOpaqueSecret(EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT.ALLOW) ||
+    !row.verificationSessionId ||
+    !row.verifiedContactHash ||
+    !row.verifiedChannel ||
     (requirement.requiresLikeness && row.coversLikeness !== true) ||
     (requirement.requiresAudio && row.coversAudio !== true)
   ) return false;
@@ -1056,13 +1099,76 @@ function standingConsentEvidenceHashValid(row: any): boolean {
 
 async function requiredStandingConsentRows(db: any, proposal: any, stages: any[]): Promise<StandingConsentRequirement[]> {
   const byMembership = new Map<string, StandingConsentRequirement>();
+  const booking = db.booking?.findFirst
+    ? await db.booking.findFirst({
+        where: { id: proposal.bookingId, vendorId: proposal.vendorId },
+        select: { customerMetadata: true },
+      })
+    : null;
+  const currentAssessment =
+    booking && employeeRecordingParticipationContractEnabled(booking.customerMetadata) &&
+    db.recordingScopeAssessment?.findFirst
+      ? await db.recordingScopeAssessment.findFirst({
+          where: {
+            bookingId: proposal.bookingId,
+            vendorId: proposal.vendorId,
+            isCurrent: true,
+          },
+          orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+        })
+      : null;
+  if (
+    currentAssessment &&
+    assessmentIntentionallyIncludesAssignedEmployee(currentAssessment)
+  ) {
+    const assignment = parseAssignmentMetadata(booking.customerMetadata);
+    const memberships = assignment.assignedMembershipIds.length
+      ? await db.vendorMembership.findMany({
+          where: { id: { in: assignment.assignedMembershipIds } },
+          select: {
+            id: true,
+            userId: true,
+            vendorId: true,
+            role: true,
+            status: true,
+            membershipGeneration: true,
+          },
+        })
+      : [];
+    if (memberships.length !== assignment.assignedMembershipIds.length) {
+      throw new Error("PUBLICATION_STANDING_CONSENT_AUTHORITY_UNRESOLVED");
+    }
+    for (const membership of memberships) {
+      if (
+        !membership.userId ||
+        membership.vendorId !== proposal.vendorId ||
+        membership.role !== "EMPLOYEE" ||
+        membership.status !== "ACTIVE"
+      ) {
+        throw new Error("PUBLICATION_STANDING_CONSENT_AUTHORITY_UNRESOLVED");
+      }
+      byMembership.set(membership.id, {
+        membershipId: membership.id,
+        userId: membership.userId,
+        vendorId: membership.vendorId,
+        membershipStatus: membership.status,
+        membershipGeneration: Number(membership.membershipGeneration || 1),
+        requiresLikeness: true,
+        requiresAudio: stages.some((stage) => stage.includesAudio === true),
+        stageIds: stages.map((stage) => stage.id),
+      });
+    }
+    return Array.from(byMembership.values()).sort((left, right) =>
+      left.membershipId.localeCompare(right.membershipId),
+    );
+  }
   for (const stage of stages) {
     if (!stage.containsEmployeeLikeness && !stage.includesAudio) continue;
     const evidence = await db.serviceVideoStageEvidence.findUnique({ where: { id: stage.stageEvidenceId } });
     const membership = evidence
       ? await db.vendorMembership.findUnique({
           where: { id: evidence.employeeMembershipId },
-          select: { id: true, userId: true, vendorId: true, role: true, status: true },
+          select: { id: true, userId: true, vendorId: true, role: true, status: true, membershipGeneration: true },
         })
       : null;
     if (
@@ -1075,6 +1181,7 @@ async function requiredStandingConsentRows(db: any, proposal: any, stages: any[]
       userId: membership.userId,
       vendorId: membership.vendorId,
       membershipStatus: membership.status,
+      membershipGeneration: Number(membership.membershipGeneration || 1),
       requiresLikeness: false,
       requiresAudio: false,
       stageIds: [],
@@ -1839,6 +1946,7 @@ export async function loadEmployeePublicMediaConsentView(input: { userId: string
       vendorId: true,
       role: true,
       status: true,
+      membershipGeneration: true,
       user: { select: { name: true } },
       vendor: { select: { id: true, name: true, businessName: true, accountStatus: true } },
     },
@@ -1858,8 +1966,10 @@ export async function loadEmployeePublicMediaConsentView(input: { userId: string
       })
     : [];
   return {
-    policyVersion: EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION,
-    consentText: EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT,
+    policyVersion: EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_POLICY_VERSION,
+    consentText: EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT.ALLOW,
+    consentTextAllow: EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT.ALLOW,
+    consentTextDeny: EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT.DENY,
     memberships: memberships.map((membership: any) => {
       const decision = decisions.find((row: any) => row.membershipId === membership.id) || null;
       return {
@@ -1867,11 +1977,7 @@ export async function loadEmployeePublicMediaConsentView(input: { userId: string
         employeeName: membership.user?.name || "Employee",
         vendorId: membership.vendorId,
         vendorName: membership.vendor?.businessName || membership.vendor?.name || "Reliance business",
-        status: decision?.decision === "ALLOW"
-          ? "ALLOWED"
-          : decision?.decision === "DENY"
-            ? "NOT_ALLOWED"
-            : "NOT_DECIDED",
+        status: resolveStandingConsentStatus(decision, membership),
         decision: decision ? {
           id: decision.id,
           decision: decision.decision,
@@ -1891,37 +1997,83 @@ export async function loadVendorEmployeePublicMediaConsentStatuses(input: {
   vendorId: string;
   membershipIds: string[];
 }) {
-  const rows = input.membershipIds.length
-    ? await (prisma as any).employeePublicMediaConsentDecision.findMany({
+  const [rows, memberships] = input.membershipIds.length
+    ? await Promise.all([
+      (prisma as any).employeePublicMediaConsentDecision.findMany({
         where: {
           vendorId: input.vendorId,
           membershipId: { in: input.membershipIds },
           isCurrent: true,
         },
         orderBy: { decidedAt: "desc" },
-      })
-    : [];
+      }),
+      (prisma as any).vendorMembership.findMany({
+        where: { vendorId: input.vendorId, id: { in: input.membershipIds } },
+        select: { id: true, status: true, membershipGeneration: true },
+      }),
+    ])
+    : [[], []];
   return new Map(input.membershipIds.map((membershipId) => {
     const row = rows.find((candidate: any) => candidate.membershipId === membershipId) || null;
+    const membership = memberships.find((candidate: any) => candidate.id === membershipId) || null;
     return [membershipId, {
-      status: row?.decision === "ALLOW" ? "ALLOWED" : row?.decision === "DENY" ? "NOT_ALLOWED" : "NOT_DECIDED",
+      status: resolveStandingConsentStatus(row, membership),
       decidedAt: row?.decidedAt || null,
     }];
   }));
+}
+
+export function resolveStandingConsentStatus(decision: any, membership: any):
+  "ALLOWED" | "NOT_ALLOWED" | "NOT_DECIDED" | "UPDATE_REQUIRED" {
+  if (!decision) return "NOT_DECIDED";
+  if (!standingConsentEvidenceHashValid(decision)) return "UPDATE_REQUIRED";
+  const contractVersion = Number(decision.contractVersion || 1);
+  if (contractVersion >= 2) {
+    if (
+      String(membership?.status || "").toUpperCase() !== "ACTIVE" ||
+      Number(decision.membershipGeneration) !== Number(membership?.membershipGeneration || 1) ||
+      decision.policyVersion !== EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_POLICY_VERSION
+    ) return "UPDATE_REQUIRED";
+    return decision.decision === "ALLOW" ? "ALLOWED" : "NOT_ALLOWED";
+  }
+  if (
+    contractVersion === 1 &&
+    decision.policyVersion === EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION
+  ) {
+    return decision.decision === "DENY" ? "NOT_ALLOWED" : "UPDATE_REQUIRED";
+  }
+  return "UPDATE_REQUIRED";
 }
 
 export async function decideEmployeePublicMediaConsent(input: {
   userId: string;
   membershipId: string;
   decision: "ALLOW" | "DENY";
-  verificationMethod: string;
+  sessionSecret: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }) {
+  const context = await loadEmployeeDecisionContext({
+    db: prisma as any,
+    purpose: EMPLOYEE_DECISION_PURPOSES.STANDING_PUBLIC,
+    userId: input.userId,
+    membershipId: input.membershipId,
+  });
   return (prisma as any).$transaction(async (tx: any) => {
     const decision = String(input.decision || "").trim().toUpperCase();
     if (!['ALLOW', 'DENY'].includes(decision)) throw new Error("EMPLOYEE_PUBLIC_MEDIA_CONSENT_DECISION_INVALID");
+    const currentContext = await loadEmployeeDecisionContext({
+      db: tx,
+      purpose: EMPLOYEE_DECISION_PURPOSES.STANDING_PUBLIC,
+      userId: input.userId,
+      membershipId: input.membershipId,
+    });
+    if (currentContext.contextHash !== context.contextHash) {
+      throw new Error("EMPLOYEE_PUBLIC_MEDIA_CONSENT_CONTEXT_STALE");
+    }
     const membership = await tx.vendorMembership.findUnique({
       where: { id: input.membershipId },
-      select: { id: true, userId: true, vendorId: true, role: true, status: true },
+      select: { id: true, userId: true, vendorId: true, role: true, status: true, membershipGeneration: true },
     });
     if (
       !membership ||
@@ -1930,48 +2082,29 @@ export async function decideEmployeePublicMediaConsent(input: {
       membership.status !== "ACTIVE"
     ) throw new Error("EMPLOYEE_PUBLIC_MEDIA_CONSENT_FORBIDDEN");
 
-    let alreadyPublicAffected = false;
-    if (decision === "DENY") {
-      const evidence = await tx.serviceVideoStageEvidence.findMany({
-        where: { employeeMembershipId: membership.id },
-        select: { id: true },
-      });
-      const publicationStages = evidence.length
-        ? await tx.serviceVideoPublicationStage.findMany({
-            where: { stageEvidenceId: { in: evidence.map((row: any) => row.id) } },
-            select: { id: true },
-          })
-        : [];
-      const activePublic = publicationStages.length
-        ? await tx.publicServiceVideoEligibility.findFirst({
-            where: {
-              stageId: { in: publicationStages.map((row: any) => row.id) },
-              status: "ACTIVE",
-              invalidatedAt: null,
-            },
-            select: { id: true },
-          })
-        : null;
-      alreadyPublicAffected = Boolean(activePublic);
-    }
-
     const current = await tx.employeePublicMediaConsentDecision.findFirst({
       where: { membershipId: membership.id, isCurrent: true },
       orderBy: { version: "desc" },
     });
-    if (
-      current?.decision === decision &&
-      current.userId === membership.userId &&
-      current.vendorId === membership.vendorId &&
-      current.membershipId === membership.id &&
-      standingConsentEvidenceHashValid(current)
-    ) return { decision: current, idempotent: true, publishedProposalIds: [], alreadyPublicAffected };
     const latest = await tx.employeePublicMediaConsentDecision.findFirst({
       where: { membershipId: membership.id },
       orderBy: { version: "desc" },
     });
     const now = new Date();
     const version = Number(latest?.version || 0) + 1;
+    const id = randomUUID();
+    const verifiedSession = await consumeEmployeeDecisionSession({
+      tx,
+      secret: input.sessionSecret,
+      context: currentContext,
+      consumedByType: "EMPLOYEE_STANDING_PUBLIC_MEDIA_DECISION",
+      consumedById: id,
+      now,
+    });
+    const consentTextSnapshot = EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_TEXT[
+      decision as "ALLOW" | "DENY"
+    ];
+    const consentTextHash = hashOpaqueSecret(consentTextSnapshot);
     const document = standingConsentEvidenceDocument({
       userId: membership.userId,
       vendorId: membership.vendorId,
@@ -1980,10 +2113,17 @@ export async function decideEmployeePublicMediaConsent(input: {
       coversLikeness: decision === "ALLOW",
       coversAudio: decision === "ALLOW",
       effectScope: EMPLOYEE_PUBLIC_MEDIA_CONSENT_EFFECT_SCOPE,
-      policyVersion: EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION,
-      contractVersion: 1,
-      consentTextSnapshot: EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT,
-      verificationMethod: input.verificationMethod,
+      policyVersion: EMPLOYEE_PUBLIC_MEDIA_CONSENT_V2_POLICY_VERSION,
+      contractVersion: 2,
+      consentTextSnapshot,
+      verificationMethod: `${verifiedSession.verifiedChannel}_otp`,
+      membershipGeneration: currentContext.membershipGeneration,
+      verificationSessionId: verifiedSession.id,
+      verifiedContactHash: verifiedSession.verifiedContactHash,
+      verifiedChannel: verifiedSession.verifiedChannel,
+      consentTextHash,
+      ipAddress: input.ipAddress || null,
+      userAgent: input.userAgent || null,
       version,
       decidedAt: now,
     });
@@ -1995,6 +2135,7 @@ export async function decideEmployeePublicMediaConsent(input: {
     }
     const created = await tx.employeePublicMediaConsentDecision.create({
       data: {
+        id,
         ...document,
         decisionHash: sha256(stableJson(document)),
         isCurrent: true,
@@ -2002,6 +2143,86 @@ export async function decideEmployeePublicMediaConsent(input: {
     });
 
     const publishedProposalIds: string[] = [];
+    let alreadyPublicAffected = false;
+    if (decision === "DENY") {
+      const dependentDecisionIds = (
+        await tx.employeePublicMediaConsentDecision.findMany({
+          where: { membershipId: membership.id, id: { not: created.id } },
+          select: { id: true },
+        })
+      ).map((row: any) => row.id);
+      const activeEligibility = await tx.publicServiceVideoEligibility.findMany({
+        where: {
+          vendorId: membership.vendorId,
+          status: "ACTIVE",
+          invalidatedAt: null,
+          standingConsentDecisionIdsJson: { not: null },
+        },
+      });
+      const dependentEligibility = activeEligibility.filter((row: any) => {
+        const ids = parseJson<string[]>(row.standingConsentDecisionIdsJson, []);
+        return ids.some((id) => dependentDecisionIds.includes(id));
+      });
+      alreadyPublicAffected = dependentEligibility.length > 0;
+      if (dependentEligibility.length) {
+        const eligibilityIds = dependentEligibility.map((row: any) => row.id);
+        const proposalIds = Array.from(new Set(
+          dependentEligibility.map((row: any) => String(row.proposalId)),
+        ));
+        const assetIds = Array.from(new Set(
+          dependentEligibility.map((row: any) => String(row.mediaAssetId)),
+        ));
+        await tx.publicServiceVideoEligibility.updateMany({
+          where: { id: { in: eligibilityIds } },
+          data: {
+            status: "INVALIDATED",
+            invalidatedAt: now,
+            invalidationReason: "EMPLOYEE_STANDING_PUBLIC_MEDIA_DENIED_V2",
+          },
+        });
+        await tx.mediaAsset.updateMany({
+          where: { id: { in: assetIds } },
+          data: { visibilityStatus: "customer_only", publicEligible: false },
+        });
+        const proposals = await tx.serviceVideoPublicationProposal.findMany({
+          where: { id: { in: proposalIds } },
+          select: { id: true, bookingId: true, vendorId: true, packageVisibilityDecisionId: true },
+        });
+        await tx.serviceVideoPublicationProposal.updateMany({
+          where: { id: { in: proposalIds } },
+          data: {
+            status: PUBLICATION_STATUSES.DECLINED_PRIVATE,
+            isCurrent: false,
+            supersededAt: now,
+          },
+        });
+        const visibilityIds = proposals
+          .map((row: any) => row.packageVisibilityDecisionId)
+          .filter(Boolean);
+        if (visibilityIds.length) {
+          await tx.serviceVideoPackageVisibilityDecision.updateMany({
+            where: { id: { in: visibilityIds }, isCurrent: true },
+            data: { isCurrent: false, supersededAt: now },
+          });
+        }
+        for (const proposal of proposals) {
+          await writeAudit(tx, {
+            proposalId: proposal.id,
+            bookingId: proposal.bookingId,
+            vendorId: proposal.vendorId,
+            actorUserId: membership.userId,
+            actorRole: "EMPLOYEE",
+            eventType: "EMPLOYEE_STANDING_PUBLIC_MEDIA_DENIED_V2",
+            metadata: {
+              membershipId: membership.id,
+              decisionId: created.id,
+              privateProofPreserved: true,
+              freshCustomerShareRequired: true,
+            },
+          });
+        }
+      }
+    }
     if (decision === "ALLOW") {
       const evidence = await tx.serviceVideoStageEvidence.findMany({
         where: { employeeMembershipId: membership.id },
