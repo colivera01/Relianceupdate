@@ -12,6 +12,10 @@ const db = vi.hoisted(() => ({
   packageFindFirst: vi.fn(),
   managerDecisionFindFirst: vi.fn(),
   metricCreate: vi.fn(),
+  lifecycleRestrictionFindMany: vi.fn(),
+  lifecycleDeletionFindMany: vi.fn(),
+  lifecycleHoldFindMany: vi.fn(),
+  lifecycleCaseFindFirst: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -26,6 +30,10 @@ vi.mock("@/server/db", () => ({
     serviceVideoPackageEvidence: { findFirst: db.packageFindFirst },
     serviceVideoManagerDecisionEvidence: { findFirst: db.managerDecisionFindFirst },
     recordingGateMetric: { create: db.metricCreate },
+    mediaLifecycleRestriction: { findMany: db.lifecycleRestrictionFindMany },
+    mediaDeletionRequest: { findMany: db.lifecycleDeletionFindMany },
+    mediaEvidenceHold: { findMany: db.lifecycleHoldFindMany },
+    mediaLifecycleCase: { findFirst: db.lifecycleCaseFindFirst },
   },
 }));
 
@@ -347,6 +355,10 @@ describe("database-backed canonical recording gate", () => {
     db.packageFindFirst.mockResolvedValue(null);
     db.managerDecisionFindFirst.mockResolvedValue(null);
     db.metricCreate.mockResolvedValue({ id: "metric-1" });
+    db.lifecycleRestrictionFindMany.mockResolvedValue([]);
+    db.lifecycleDeletionFindMany.mockResolvedValue([]);
+    db.lifecycleHoldFindMany.mockResolvedValue([]);
+    db.lifecycleCaseFindFirst.mockResolvedValue(null);
   });
 
   it("fails closed with an actionable assessment block", async () => {

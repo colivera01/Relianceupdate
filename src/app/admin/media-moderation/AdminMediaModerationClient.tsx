@@ -495,7 +495,7 @@ export default function AdminMediaModerationClient({
   const [auditConfirmationAction, setAuditConfirmationAction] = useState<PackageModerationAction | null>(null);
   const [auditConfirmationReason, setAuditConfirmationReason] = useState('');
   const [auditConfirmationCategory, setAuditConfirmationCategory] = useState('CONTENT_QUALITY');
-  const [auditPublicEligibility, setAuditPublicEligibility] = useState<PublicDisplayEligibility>('PUBLIC_DISPLAY_ELIGIBLE');
+  const [auditPublicEligibility, setAuditPublicEligibility] = useState<PublicDisplayEligibility | null>(null);
   const [auditPublicEligibilityReason, setAuditPublicEligibilityReason] = useState('');
   const [assetPlaybackUrl, setAssetPlaybackUrl] = useState('');
   const [assetPlaybackLoading, setAssetPlaybackLoading] = useState(false);
@@ -929,6 +929,7 @@ export default function AdminMediaModerationClient({
 
   const confirmAuditDecision = async () => {
     if (!auditConfirmationTarget || !auditConfirmationAction) return;
+    if (auditConfirmationAction === 'pass' && !auditPublicEligibility) return;
     if (
       auditConfirmationAction === 'pass' &&
       auditPublicEligibility === 'PRIVATE_ONLY' &&
@@ -939,14 +940,14 @@ export default function AdminMediaModerationClient({
       auditConfirmationAction,
       auditConfirmationAction === 'reject' ? auditConfirmationReason : undefined,
       auditConfirmationAction === 'reject' ? auditConfirmationCategory : undefined,
-      auditConfirmationAction === 'pass' ? auditPublicEligibility : undefined,
+      auditConfirmationAction === 'pass' ? auditPublicEligibility || undefined : undefined,
       auditConfirmationAction === 'pass' ? auditPublicEligibilityReason.trim() : undefined,
     );
     setAuditConfirmationTarget(null);
     setAuditConfirmationAction(null);
     setAuditConfirmationReason('');
     setAuditConfirmationCategory('CONTENT_QUALITY');
-    setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+    setAuditPublicEligibility(null);
     setAuditPublicEligibilityReason('');
     resetModerationReasonModal();
   };
@@ -1335,7 +1336,7 @@ export default function AdminMediaModerationClient({
                           onClick={() => {
                             setAuditConfirmationTarget(pack);
                             setAuditConfirmationAction('pass');
-                            setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+                            setAuditPublicEligibility(null);
                             setAuditPublicEligibilityReason('');
                           }}
                         >
@@ -1657,7 +1658,7 @@ export default function AdminMediaModerationClient({
             setAuditConfirmationAction(null);
             setAuditConfirmationReason('');
             setAuditConfirmationCategory('CONTENT_QUALITY');
-            setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+            setAuditPublicEligibility(null);
             setAuditPublicEligibilityReason('');
             if (!moderationReasonModalOpen) resetModerationReasonModal();
           }
@@ -1737,14 +1738,14 @@ export default function AdminMediaModerationClient({
               setAuditConfirmationAction(null);
               setAuditConfirmationReason('');
               setAuditConfirmationCategory('CONTENT_QUALITY');
-              setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+              setAuditPublicEligibility(null);
               setAuditPublicEligibilityReason('');
             }}>
               Go Back
             </Button>
             <Button
               className={auditConfirmationAction === 'reject' ? 'bg-red-700 text-white hover:bg-red-800' : undefined}
-              disabled={Boolean(packageActionLoadingId) || (auditConfirmationAction === 'pass' && auditPublicEligibility === 'PRIVATE_ONLY' && !auditPublicEligibilityReason.trim())}
+              disabled={Boolean(packageActionLoadingId) || (auditConfirmationAction === 'pass' && (!auditPublicEligibility || (auditPublicEligibility === 'PRIVATE_ONLY' && !auditPublicEligibilityReason.trim())))}
               onClick={confirmAuditDecision}
             >
               {auditConfirmationAction === 'pass' ? 'Confirm PASS and Release Private Proof' : 'Confirm Terminal REJECT'}

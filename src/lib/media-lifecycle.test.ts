@@ -36,8 +36,10 @@ vi.mock("@/lib/azure-blob-storage", () => ({
 import {
   applyMediaWithdrawal,
   leastExposureOutcome,
+  MEDIA_LIFECYCLE_STATE_UNAVAILABLE,
   processDueRetentionSchedules,
   processMediaDeletionJobs,
+  requestMediaDeletion,
   resolveCanonicalMediaLifecycle,
 } from "./media-lifecycle";
 
@@ -60,6 +62,74 @@ describe("canonical media lifecycle", () => {
     expect(leastExposureOutcome(["PUBLIC", "DELETED", "PRIVATE"])).toBe(
       "DELETED",
     );
+  });
+
+  it("preserves valid Public behavior when every lifecycle model is available", async () => {
+    await expect(resolveCanonicalMediaLifecycle({
+      bookingId: "booking-1",
+      mediaAssetId: "asset-1",
+      intendedAudience: "PUBLIC",
+    })).resolves.toMatchObject({
+      stateAvailable: true,
+      outcome: "PUBLIC",
+      publicAllowed: true,
+    });
+  });
+
+  it("fails closed for Public and recording when lifecycle models are unavailable", async () => {
+    const findFirst = hoisted.prisma.mediaLifecycleCase.findFirst;
+    hoisted.prisma.mediaLifecycleCase.findFirst = undefined;
+    try {
+      await expect(resolveCanonicalMediaLifecycle({
+        bookingId: "booking-1",
+        mediaAssetId: "asset-1",
+        intendedAudience: "PUBLIC",
+      })).resolves.toMatchObject({
+        stateAvailable: false,
+        outcome: "RESTRICTED",
+        publicAllowed: false,
+        recordingAllowed: false,
+        blockReason: MEDIA_LIFECYCLE_STATE_UNAVAILABLE,
+      });
+    } finally {
+      hoisted.prisma.mediaLifecycleCase.findFirst = findFirst;
+    }
+  });
+
+  it("preserves independently authorized Private access when lifecycle models are unavailable", async () => {
+    const findFirst = hoisted.prisma.mediaLifecycleCase.findFirst;
+    hoisted.prisma.mediaLifecycleCase.findFirst = undefined;
+    try {
+      await expect(resolveCanonicalMediaLifecycle({
+        bookingId: "booking-1",
+        mediaAssetId: "asset-1",
+        intendedAudience: "PRIVATE",
+      })).resolves.toMatchObject({
+        stateAvailable: false,
+        privateAllowed: true,
+        publicAllowed: false,
+        recordingAllowed: false,
+      });
+    } finally {
+      hoisted.prisma.mediaLifecycleCase.findFirst = findFirst;
+    }
+  });
+
+  it("blocks irreversible lifecycle mutations when lifecycle state is unavailable", async () => {
+    const findFirst = hoisted.prisma.mediaLifecycleCase.findFirst;
+    hoisted.prisma.mediaLifecycleCase.findFirst = undefined;
+    try {
+      await expect(requestMediaDeletion({
+        bookingId: "booking-1",
+        vendorId: "vendor-1",
+        mediaAssetId: "asset-1",
+        actorUserId: "customer-1",
+        actorRole: "CUSTOMER",
+      })).rejects.toThrow(MEDIA_LIFECYCLE_STATE_UNAVAILABLE);
+      expect(hoisted.prisma.mediaDeletionRequest.create).not.toHaveBeenCalled();
+    } finally {
+      hoisted.prisma.mediaLifecycleCase.findFirst = findFirst;
+    }
   });
 
   it("restricts Public access without destroying valid Private proof", async () => {

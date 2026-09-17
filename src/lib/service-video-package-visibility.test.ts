@@ -17,7 +17,10 @@ const hoisted = vi.hoisted(() => {
     mediaAsset: { findFirst: vi.fn(), updateMany: vi.fn() },
     recordingScopeAssessment: { findFirst: vi.fn() },
     vendorMembership: { findUnique: vi.fn() },
-    mediaLifecycleRestriction: { findFirst: vi.fn() },
+    mediaLifecycleRestriction: { findFirst: vi.fn(), findMany: vi.fn() },
+    mediaDeletionRequest: { findMany: vi.fn() },
+    mediaEvidenceHold: { findMany: vi.fn() },
+    mediaLifecycleCase: { findFirst: vi.fn() },
     serviceVideoPackageVisibilityDecision: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -169,6 +172,10 @@ describe("package-level customer Service Video visibility", () => {
     hoisted.prisma.publicServiceVideoEligibility.findMany.mockResolvedValue([]);
     hoisted.prisma.mediaAsset.updateMany.mockResolvedValue({ count: 3 });
     hoisted.prisma.mediaLifecycleRestriction.findFirst.mockResolvedValue(null);
+    hoisted.prisma.mediaLifecycleRestriction.findMany.mockResolvedValue([]);
+    hoisted.prisma.mediaDeletionRequest.findMany.mockResolvedValue([]);
+    hoisted.prisma.mediaEvidenceHold.findMany.mockResolvedValue([]);
+    hoisted.prisma.mediaLifecycleCase.findFirst.mockResolvedValue(null);
     hoisted.prisma.serviceVideoPackageVisibilityDecision.create.mockImplementation(({ data }: any) => {
       const created = { id: "visibility-1", ...data };
       hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst.mockResolvedValue(created);
@@ -180,6 +187,7 @@ describe("package-level customer Service Video visibility", () => {
       id: `pub-${stage.stage}`,
       proposalId: "proposal-1",
       ...stage,
+      containsCustomerLikeness: false,
       containsEmployeeLikeness: false,
       includesAudio: false,
     })));
@@ -390,6 +398,39 @@ describe("package-level customer Service Video visibility", () => {
     });
   });
 
+  it("blocks a new legacy-contract Public activation when exact stages contain sensitive likeness", async () => {
+    const { decidePackageVisibility, moderatePublicationProposal } = await import("./service-video-publication");
+    const authorized = await decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    });
+    hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst.mockResolvedValue(authorized.decision);
+    hoisted.prisma.serviceVideoPublicationProposal.findUnique.mockResolvedValue(authorized.proposal);
+    hoisted.prisma.serviceVideoPublicationStage.findMany.mockResolvedValue(packageStages.map((stage) => ({
+      id: `pub-${stage.stage}`,
+      proposalId: "proposal-1",
+      ...stage,
+      containsCustomerLikeness: true,
+      containsEmployeeLikeness: false,
+      includesAudio: false,
+      containsMinor: false,
+      containsBystander: false,
+      presentationHash: `presentation-${stage.stage}`,
+    })));
+
+    await expect(moderatePublicationProposal({
+      proposalId: "proposal-1",
+      adminUserId: "admin-1",
+      decision: "APPROVED",
+    })).rejects.toThrow("PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED");
+    expect(hoisted.prisma.publicServiceVideoEligibility.create).not.toHaveBeenCalled();
+    expect(hoisted.prisma.mediaAsset.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { visibilityStatus: "public" } }),
+    );
+  });
+
   it("publishes the complete exact package immediately when the single Reliance Audit marked it eligible", async () => {
     installImmediateAudit();
     const { decidePackageVisibility } = await import("./service-video-publication");
@@ -561,7 +602,12 @@ describe("package-level customer Service Video visibility", () => {
 
   it("fails closed when a current Public restriction exists", async () => {
     installImmediateAudit();
-    hoisted.prisma.mediaLifecycleRestriction.findFirst.mockResolvedValue({ id: "restriction-1" });
+    hoisted.prisma.mediaLifecycleRestriction.findMany.mockResolvedValue([{
+      id: "restriction-1",
+      scope: "PUBLIC",
+      outcome: "RESTRICTED",
+      reasonCode: "PUBLICATION_WITHDRAWN",
+    }]);
     const { decidePackageVisibility } = await import("./service-video-publication");
 
     await expect(decidePackageVisibility({
@@ -574,7 +620,60 @@ describe("package-level customer Service Video visibility", () => {
     expect(hoisted.prisma.serviceVideoPublicationProposal.create).not.toHaveBeenCalled();
   });
 
-  it("publishes automatically when an active standing Employee consent already covers likeness and audio", async () => {
+  it("fails closed before publication when lifecycle security models are unavailable", async () => {
+    installImmediateAudit();
+    const findFirst = hoisted.prisma.mediaLifecycleCase.findFirst;
+    hoisted.prisma.mediaLifecycleCase.findFirst = undefined;
+    const { decidePackageVisibility } = await import("./service-video-publication");
+
+    try {
+      await expect(decidePackageVisibility({
+        bookingId: "booking-1",
+        customerUserId: "customer-1",
+        decision: "SHARE_PUBLICLY",
+        verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+      })).rejects.toThrow("PUBLICATION_LIFECYCLE_STATE_UNAVAILABLE");
+      expect(hoisted.prisma.publicServiceVideoEligibility.create).not.toHaveBeenCalled();
+    } finally {
+      hoisted.prisma.mediaLifecycleCase.findFirst = findFirst;
+    }
+  });
+
+  it("preserves Share preference but blocks new Public activation for Customer likeness", async () => {
+    installImmediateAudit();
+    hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
+      peopleScope: "customer",
+      subjectJson: "{}",
+      scopeJson: JSON.stringify({ schemaVersion: "historical-recording-scope" }),
+      audioAllowed: false,
+    });
+    hoisted.prisma.serviceVideoPublicationStage.findMany.mockResolvedValue(packageStages.map((stage) => ({
+      id: `pub-${stage.stage}`,
+      proposalId: "proposal-1",
+      ...stage,
+      containsCustomerLikeness: true,
+      containsEmployeeLikeness: false,
+      includesAudio: false,
+      containsMinor: false,
+      containsBystander: false,
+      presentationHash: `presentation-${stage.stage}`,
+    })));
+    const { decidePackageVisibility } = await import("./service-video-publication");
+
+    await expect(decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    })).resolves.toMatchObject({
+      decision: { decision: "SHARE_PUBLICLY" },
+      proposal: { status: "AWAITING_STANDING_EMPLOYEE_CONSENT" },
+      authorizationRequiredReason: "PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED",
+    });
+    expect(hoisted.prisma.publicServiceVideoEligibility.create).not.toHaveBeenCalled();
+  });
+
+  it("preserves Share preference but blocks new Public activation for Employee likeness and audio under consent v1", async () => {
     installImmediateAudit();
     hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
       peopleScope: "employee",
@@ -631,13 +730,20 @@ describe("package-level customer Service Video visibility", () => {
       customerUserId: "customer-1",
       decision: "SHARE_PUBLICLY",
       verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
-    })).resolves.toMatchObject({ proposal: { status: "PUBLIC", contractVersion: 4 } });
+    })).resolves.toMatchObject({
+      proposal: { status: "AWAITING_STANDING_EMPLOYEE_CONSENT", contractVersion: 4 },
+      authorizationRequiredReason: "PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED",
+    });
+    expect(hoisted.prisma.serviceVideoPackageVisibilityDecision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ decision: "SHARE_PUBLICLY" }),
+    });
+    expect(hoisted.prisma.publicServiceVideoEligibility.create).not.toHaveBeenCalled();
     expect(hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert).not.toHaveBeenCalled();
     expect(hoisted.prisma.serviceVideoPublicationAdminDecision.create).not.toHaveBeenCalled();
-    expect(hoisted.prisma.employeePublicMediaNotification.upsert).toHaveBeenCalledTimes(1);
+    expect(hoisted.prisma.employeePublicMediaNotification.upsert).not.toHaveBeenCalled();
   });
 
-  it("publishes after one active standing Employee consent without per-package or second Admin approval", async () => {
+  it("does not let a new standing consent v1 decision activate sensitive Public media", async () => {
     installImmediateAudit();
     hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
       peopleScope: "employee",
@@ -693,7 +799,7 @@ describe("package-level customer Service Video visibility", () => {
       membershipId: "employee-membership-1",
       decision: "ALLOW",
       verificationMethod: "SIGNED_IN_EMPLOYEE_SESSION",
-    })).resolves.toMatchObject({ idempotent: false, publishedProposalIds: ["proposal-1"] });
+    })).resolves.toMatchObject({ idempotent: false, publishedProposalIds: [] });
     expect(consentRows).toHaveLength(1);
     expect(consentRows[0]).toMatchObject({
       decision: "ALLOW",
@@ -703,9 +809,9 @@ describe("package-level customer Service Video visibility", () => {
       effectScope: "CURRENT_PENDING_AND_FUTURE_ELIGIBLE_SERVICE_VIDEOS",
     });
     expect(hoisted.prisma.serviceVideoPublicationAdminDecision.create).not.toHaveBeenCalled();
-    expect(hoisted.prisma.publicServiceVideoEligibility.create).toHaveBeenCalledTimes(3);
+    expect(hoisted.prisma.publicServiceVideoEligibility.create).not.toHaveBeenCalled();
     expect(hoisted.prisma.serviceVideoPublicationParticipantDecision.upsert).not.toHaveBeenCalled();
-    expect(hoisted.prisma.employeePublicMediaNotification.upsert).toHaveBeenCalledTimes(1);
+    expect(hoisted.prisma.employeePublicMediaNotification.upsert).not.toHaveBeenCalled();
   });
 
   it("resolves signed-in and secure-link access to the same canonical standing-consent record", async () => {

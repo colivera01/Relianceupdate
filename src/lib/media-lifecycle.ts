@@ -5,6 +5,7 @@ import { deleteBlob, getBlobProperties } from "@/lib/azure-blob-storage";
 
 export const EXPOSURE_ORDER = ["PUBLIC", "PRIVATE", "RESTRICTED", "HELD", "DELETED"] as const;
 export type MediaExposureOutcome = (typeof EXPOSURE_ORDER)[number];
+export const MEDIA_LIFECYCLE_STATE_UNAVAILABLE = "MEDIA_LIFECYCLE_STATE_UNAVAILABLE";
 
 const ACTIVE_CASE_STATUSES = ["SUBMITTED", "RESTRICTED", "UNDER_REVIEW", "INFORMATION_NEEDED", "APPEALED"];
 const ACTIVE_DELETION_STATUSES = [
@@ -44,7 +45,16 @@ export function leastExposureOutcome(outcomes: Array<MediaExposureOutcome | stri
 }
 
 export function lifecycleModelsAvailable(db: any = prisma): boolean {
-  return Boolean(db?.mediaLifecycleRestriction?.findMany && db?.mediaDeletionRequest?.findMany && db?.mediaEvidenceHold?.findMany);
+  return Boolean(
+    db?.mediaLifecycleRestriction?.findMany &&
+    db?.mediaDeletionRequest?.findMany &&
+    db?.mediaEvidenceHold?.findMany &&
+    db?.mediaLifecycleCase?.findFirst,
+  );
+}
+
+export function assertLifecycleModelsAvailable(db: any = prisma): void {
+  if (!lifecycleModelsAvailable(db)) throw new Error(MEDIA_LIFECYCLE_STATE_UNAVAILABLE);
 }
 
 function activeScopeWhere(bookingId: string, mediaAssetId?: string | null) {
@@ -64,14 +74,17 @@ export async function resolveCanonicalMediaLifecycle(input: {
   const db = input.db || (prisma as any);
   if (!lifecycleModelsAvailable(db)) {
     return {
-      outcome: input.intendedAudience || "PRIVATE",
-      publicAllowed: input.intendedAudience === "PUBLIC",
+      stateAvailable: false,
+      outcome: "RESTRICTED" as MediaExposureOutcome,
+      publicAllowed: false,
       privateAllowed: true,
-      recordingAllowed: true,
+      recordingAllowed: false,
       deletionStatus: null,
-      blockReason: null,
-      responsibleParticipant: null,
-      nextAction: null,
+      holdStatus: null,
+      caseStatus: null,
+      blockReason: MEDIA_LIFECYCLE_STATE_UNAVAILABLE,
+      responsibleParticipant: "ADMIN",
+      nextAction: "Reliance cannot verify the media lifecycle state. Try again after the security state is available.",
     };
   }
 
@@ -119,6 +132,7 @@ export async function resolveCanonicalMediaLifecycle(input: {
   const recordingRestriction = restrictions.find((item: any) => ["RECORDING", "ALL"].includes(String(item.scope).toUpperCase()));
 
   return {
+    stateAvailable: true,
     outcome,
     publicAllowed: outcome === "PUBLIC",
     privateAllowed: outcome === "PUBLIC" || outcome === "PRIVATE",
@@ -193,6 +207,7 @@ export async function applyMediaWithdrawal(input: {
 }) {
   const now = new Date();
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const document = { ...input, request: undefined, appliedAt: now.toISOString() };
     const evidenceHash = sha256(document);
     const existing = await tx.mediaWithdrawalEvidence.findFirst({
@@ -225,6 +240,7 @@ export async function openMediaLifecycleCaseInTransaction(tx: any, input: {
   reasonDetail?: string | null; packageId?: string | null; proposalId?: string | null; mediaAssetId?: string | null;
   contentReportId?: string | null; request?: Request | null; forcePublicRestriction?: boolean;
 }) {
+  assertLifecycleModelsAvailable(tx);
   const category = String(input.category).trim().toUpperCase();
   const restrict = input.forcePublicRestriction === true || IMMEDIATE_RESTRICTION_CATEGORIES.has(category);
   const now = new Date();
@@ -270,6 +286,7 @@ export async function releaseContentReportPublicHold(input: {
   request?: Request | null;
 }) {
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const lifecycleCase = await tx.mediaLifecycleCase.findUnique({ where: { id: input.lifecycleCaseId } });
     if (!lifecycleCase) throw new Error("REPORT_PUBLIC_HOLD_NOT_FOUND");
     const now = new Date();
@@ -316,6 +333,7 @@ export async function requestMediaDeletion(input: {
 }) {
   const now = new Date();
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const current = await tx.mediaDeletionRequest.findFirst({
       where: { mediaAssetId: input.mediaAssetId, status: { in: [...ACTIVE_DELETION_STATUSES, "COMPLETED"] } },
       orderBy: { requestedAt: "desc" },
@@ -344,6 +362,7 @@ export async function createEvidenceHold(input: {
   actorUserId: string; purpose: string; authority: string; reviewDueAt: Date; scope: Record<string, unknown>; request?: Request | null;
 }) {
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const scopeJson = stableJson(input.scope);
     const hold = await tx.mediaEvidenceHold.create({
       data: {
@@ -369,6 +388,7 @@ export async function createEvidenceHold(input: {
 
 export async function releaseEvidenceHold(input: { holdId: string; actorUserId: string; reason: string; request?: Request | null }) {
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const hold = await tx.mediaEvidenceHold.findUnique({ where: { id: input.holdId } });
     if (!hold || !["ACTIVE", "REVIEW_DUE", "EXTENDED"].includes(hold.status)) throw new Error("Active evidence hold not found");
     const now = new Date();
@@ -381,6 +401,7 @@ export async function releaseEvidenceHold(input: { holdId: string; actorUserId: 
 
 export async function decideDeletionRequest(input: { deletionRequestId: string; actorUserId: string; decision: "APPROVE" | "DENY"; reason: string; request?: Request | null }) {
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const deletion = await tx.mediaDeletionRequest.findUnique({ where: { id: input.deletionRequestId } });
     if (!deletion) throw new Error("Deletion request not found");
     if (["COMPLETED", "DENIED"].includes(deletion.status)) return deletion;
@@ -406,6 +427,7 @@ export async function decideDeletionRequest(input: { deletionRequestId: string; 
 }
 
 export async function createLifecycleAppeal(input: { caseId: string; actorUserId: string; actorRole: string; reason: string; request?: Request | null }) {
+  assertLifecycleModelsAvailable(prisma as any);
   const lifecycleCase = await (prisma as any).mediaLifecycleCase.findUnique({ where: { id: input.caseId } });
   if (!lifecycleCase || !["DECIDED", "FINAL"].includes(lifecycleCase.status)) throw new Error("A decided case is required before appeal");
   return (prisma as any).$transaction(async (tx: any) => {
@@ -419,6 +441,7 @@ export async function createLifecycleAppeal(input: { caseId: string; actorUserId
 
 export async function decideLifecycleCase(input: { caseId: string; actorUserId: string; decision: string; reason: string; final?: boolean; request?: Request | null }) {
   return (prisma as any).$transaction(async (tx: any) => {
+    assertLifecycleModelsAvailable(tx);
     const lifecycleCase = await tx.mediaLifecycleCase.findUnique({ where: { id: input.caseId } });
     if (!lifecycleCase) throw new Error("Lifecycle case not found");
     const status = input.final ? "FINAL" : "DECIDED";
@@ -471,6 +494,7 @@ export async function ensureRetentionSchedulesForBooking(bookingId: string) {
 
 export async function processDueRetentionSchedules(limit = 25) {
   const db = prisma as any;
+  assertLifecycleModelsAvailable(db);
   const now = new Date();
   const schedules = await db.mediaRetentionSchedule.findMany({ where: { status: "ACTIVE", approvalActive: false, retainUntil: { lte: now } }, orderBy: { retainUntil: "asc" }, take: Math.max(1, Math.min(limit, 50)) });
   const results: Array<Record<string, unknown>> = [];
@@ -506,6 +530,7 @@ export async function processDueRetentionSchedules(limit = 25) {
 
 export async function processMediaDeletionJobs(limit = 10) {
   const db = prisma as any;
+  assertLifecycleModelsAvailable(db);
   const now = new Date();
   const candidates = await db.mediaDeletionJob.findMany({
     where: { status: { in: ["QUEUED", "RETRY_REQUIRED"] }, OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },

@@ -22,6 +22,10 @@ const hoisted = vi.hoisted(() => {
     serviceVideoPublicationAuditEvent: { create: vi.fn() },
     publicServiceVideoEligibility: { findMany: vi.fn(), updateMany: vi.fn() },
     vendorMembership: { findUnique: vi.fn() },
+    mediaLifecycleRestriction: { findMany: vi.fn() },
+    mediaDeletionRequest: { findMany: vi.fn() },
+    mediaEvidenceHold: { findMany: vi.fn() },
+    mediaLifecycleCase: { findFirst: vi.fn() },
   };
   return { prisma };
 });
@@ -83,6 +87,10 @@ describe("exact-media Public Service Video evidence", () => {
     vi.clearAllMocks();
     hoisted.prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(hoisted.prisma));
     setPrivateFoundation();
+    hoisted.prisma.mediaLifecycleRestriction.findMany.mockResolvedValue([]);
+    hoisted.prisma.mediaDeletionRequest.findMany.mockResolvedValue([]);
+    hoisted.prisma.mediaEvidenceHold.findMany.mockResolvedValue([]);
+    hoisted.prisma.mediaLifecycleCase.findFirst.mockResolvedValue(null);
   });
 
   it("creates a proposal for Final Result only by default", async () => {

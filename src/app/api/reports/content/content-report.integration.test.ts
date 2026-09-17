@@ -5,8 +5,10 @@ const h = vi.hoisted(() => {
     contentReport: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), count: vi.fn() },
     contentReportRequest: { findUnique: vi.fn(), create: vi.fn() },
     contentReportCaseEvent: { create: vi.fn() },
-    mediaLifecycleCase: { create: vi.fn() },
-    mediaLifecycleRestriction: { create: vi.fn() },
+    mediaLifecycleCase: { create: vi.fn(), findFirst: vi.fn() },
+    mediaLifecycleRestriction: { create: vi.fn(), findMany: vi.fn() },
+    mediaDeletionRequest: { findMany: vi.fn() },
+    mediaEvidenceHold: { findMany: vi.fn() },
     mediaLifecycleAuditEvent: { create: vi.fn() },
     publicServiceVideoEligibility: { findMany: vi.fn(), updateMany: vi.fn() },
     mediaAsset: { updateMany: vi.fn() },
@@ -71,6 +73,10 @@ describe("Service Video content reports", () => {
     h.tx.contentReport.update.mockImplementation(async ({ data }: any) => reportRow(data));
     h.tx.contentReportCaseEvent.create.mockResolvedValue({ id: "event-1" });
     h.tx.contentReportRequest.create.mockResolvedValue({ id: "request-row-1" });
+    h.tx.mediaLifecycleRestriction.findMany.mockResolvedValue([]);
+    h.tx.mediaDeletionRequest.findMany.mockResolvedValue([]);
+    h.tx.mediaEvidenceHold.findMany.mockResolvedValue([]);
+    h.tx.mediaLifecycleCase.findFirst.mockResolvedValue(null);
     h.prisma.contentReport.update.mockResolvedValue(reportRow());
     h.notify.mockResolvedValue({ notification: { id: "notification-1" }, emailSent: true });
   });

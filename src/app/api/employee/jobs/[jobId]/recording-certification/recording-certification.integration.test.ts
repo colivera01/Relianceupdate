@@ -15,6 +15,10 @@ const db = vi.hoisted(() => ({
   metricCreate: vi.fn(),
   packageFindFirst: vi.fn(),
   managerDecisionFindFirst: vi.fn(),
+  lifecycleRestrictionFindMany: vi.fn(),
+  deletionRequestFindMany: vi.fn(),
+  evidenceHoldFindMany: vi.fn(),
+  lifecycleCaseFindFirst: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -37,6 +41,10 @@ vi.mock("@/server/db", () => {
     recordingGateMetric: { create: db.metricCreate },
     serviceVideoPackageEvidence: { findFirst: db.packageFindFirst },
     serviceVideoManagerDecisionEvidence: { findFirst: db.managerDecisionFindFirst },
+    mediaLifecycleRestriction: { findMany: db.lifecycleRestrictionFindMany },
+    mediaDeletionRequest: { findMany: db.deletionRequestFindMany },
+    mediaEvidenceHold: { findMany: db.evidenceHoldFindMany },
+    mediaLifecycleCase: { findFirst: db.lifecycleCaseFindFirst },
     recordingAuthorityRequirement: { updateMany: db.authorityUpdateMany },
   };
   prisma.$transaction = db.transaction;
@@ -126,6 +134,10 @@ describe("employee recording certification", () => {
     db.metricCreate.mockResolvedValue({ id: "metric-1" });
     db.packageFindFirst.mockResolvedValue(null);
     db.managerDecisionFindFirst.mockResolvedValue(null);
+    db.lifecycleRestrictionFindMany.mockResolvedValue([]);
+    db.deletionRequestFindMany.mockResolvedValue([]);
+    db.evidenceHoldFindMany.mockResolvedValue([]);
+    db.lifecycleCaseFindFirst.mockResolvedValue(null);
     db.transaction.mockImplementation(async (callback: (tx: any) => unknown) =>
       callback({
         employeeRecordingCertification: {
@@ -133,6 +145,10 @@ describe("employee recording certification", () => {
           create: db.certificationCreate,
         },
         recordingAuthorityRequirement: { updateMany: db.authorityUpdateMany },
+        mediaLifecycleRestriction: { findMany: db.lifecycleRestrictionFindMany },
+        mediaDeletionRequest: { findMany: db.deletionRequestFindMany },
+        mediaEvidenceHold: { findMany: db.evidenceHoldFindMany },
+        mediaLifecycleCase: { findFirst: db.lifecycleCaseFindFirst },
       }),
     );
   });

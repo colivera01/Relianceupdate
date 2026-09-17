@@ -18,6 +18,10 @@ const hoisted = vi.hoisted(() => {
   const recordingGateDecisionEvidenceCreate = vi.fn();
   const serviceVideoPackageEvidenceFindFirst = vi.fn();
   const serviceVideoManagerDecisionEvidenceFindFirst = vi.fn();
+  const mediaLifecycleRestrictionFindMany = vi.fn();
+  const mediaDeletionRequestFindMany = vi.fn();
+  const mediaEvidenceHoldFindMany = vi.fn();
+  const mediaLifecycleCaseFindFirst = vi.fn();
   const transaction = vi.fn();
   const geocodeAddress = vi.fn();
 
@@ -47,6 +51,10 @@ const hoisted = vi.hoisted(() => {
     recordingGateDecisionEvidence: { create: recordingGateDecisionEvidenceCreate },
     serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
     serviceVideoManagerDecisionEvidence: { findFirst: serviceVideoManagerDecisionEvidenceFindFirst },
+    mediaLifecycleRestriction: { findMany: mediaLifecycleRestrictionFindMany },
+    mediaDeletionRequest: { findMany: mediaDeletionRequestFindMany },
+    mediaEvidenceHold: { findMany: mediaEvidenceHoldFindMany },
+    mediaLifecycleCase: { findFirst: mediaLifecycleCaseFindFirst },
     $transaction: transaction,
   };
 
@@ -67,6 +75,10 @@ const hoisted = vi.hoisted(() => {
     recordingGateDecisionEvidenceCreate,
     serviceVideoPackageEvidenceFindFirst,
     serviceVideoManagerDecisionEvidenceFindFirst,
+    mediaLifecycleRestrictionFindMany,
+    mediaDeletionRequestFindMany,
+    mediaEvidenceHoldFindMany,
+    mediaLifecycleCaseFindFirst,
     transaction,
     geocodeAddress,
   };
@@ -188,6 +200,14 @@ describe("vendor media sessions consent enforcement integration", () => {
     hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
     hoisted.serviceVideoManagerDecisionEvidenceFindFirst.mockReset();
     hoisted.serviceVideoManagerDecisionEvidenceFindFirst.mockResolvedValue(null);
+    hoisted.mediaLifecycleRestrictionFindMany.mockReset();
+    hoisted.mediaLifecycleRestrictionFindMany.mockResolvedValue([]);
+    hoisted.mediaDeletionRequestFindMany.mockReset();
+    hoisted.mediaDeletionRequestFindMany.mockResolvedValue([]);
+    hoisted.mediaEvidenceHoldFindMany.mockReset();
+    hoisted.mediaEvidenceHoldFindMany.mockResolvedValue([]);
+    hoisted.mediaLifecycleCaseFindFirst.mockReset();
+    hoisted.mediaLifecycleCaseFindFirst.mockResolvedValue(null);
     hoisted.transaction.mockReset();
     hoisted.transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => callback(hoisted.prisma));
 

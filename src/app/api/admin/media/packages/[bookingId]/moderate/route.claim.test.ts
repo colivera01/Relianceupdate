@@ -145,6 +145,18 @@ describe("core Admin Service Video audit route", () => {
     expect(hoisted.decide).not.toHaveBeenCalled();
   });
 
+  it("rejects a tampered Public-display eligibility value at the API boundary", async () => {
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "PASS", publicDisplayEligibility: "ELIGIBLE_BY_DEFAULT" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
+
+    expect(response.status).toBe(422);
+    expect(hoisted.decide).not.toHaveBeenCalled();
+  });
+
   it("rejects a free-text or unknown category at the API boundary", async () => {
     const { PATCH } = await import("./route");
     const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {

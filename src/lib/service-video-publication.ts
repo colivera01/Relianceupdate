@@ -1,6 +1,9 @@
 import { createHash } from "crypto";
 import { prisma } from "@/server/db";
-import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
+import {
+  MEDIA_LIFECYCLE_STATE_UNAVAILABLE,
+  resolveCanonicalMediaLifecycle,
+} from "@/lib/media-lifecycle";
 import {
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
@@ -35,6 +38,8 @@ const IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE_IMM
 const STANDING_CONSENT_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE_STANDING_EMPLOYEE_CONSENT";
 const PUBLIC_DISPLAY_ELIGIBLE = "PUBLIC_DISPLAY_ELIGIBLE";
 const PRIVATE_ONLY = "PRIVATE_ONLY";
+export const PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED =
+  "PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED";
 
 export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_POLICY_VERSION = "employee-public-media-consent-v1";
 export const EMPLOYEE_PUBLIC_MEDIA_CONSENT_TEXT =
@@ -627,8 +632,10 @@ export async function decidePackageVisibility(input: {
     const standingCoverage = immediatePublicationContract
       ? await loadStandingConsentCoverage(tx, proposal, stages)
       : null;
+    const correctedAuthorizationRequired = immediatePublicationContract &&
+      requiresCorrectedParticipantAuthorization(stages);
     const nextStatus = immediatePublicationContract
-      ? standingCoverage?.complete
+      ? standingCoverage?.complete && !correctedAuthorizationRequired
         ? PUBLICATION_STATUSES.PUBLIC
         : PUBLICATION_STATUSES.AWAITING_STANDING_CONSENT
       : participantRequirements.length
@@ -660,12 +667,18 @@ export async function decidePackageVisibility(input: {
         status: nextStatus,
         immediatePublication: immediatePublicationContract,
         standingEmployeeConsent: immediatePublicationContract,
+        authorizationRequiredReason: correctedAuthorizationRequired
+          ? PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED
+          : null,
       },
     });
     return {
       decision: { ...visibilityDecision, publicationProposalId: proposal.id },
       proposal: { ...proposal, status: nextStatus },
       idempotent: false,
+      authorizationRequiredReason: correctedAuthorizationRequired
+        ? PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED
+        : null,
     };
   }, { isolationLevel: "Serializable" });
 }
@@ -1103,18 +1116,30 @@ async function assertStandingConsentCoverage(db: any, proposal: any, stages: any
 }
 
 async function assertNoActivePublicRestriction(db: any, bookingId: string) {
-  const restriction = db.mediaLifecycleRestriction?.findFirst
-    ? await db.mediaLifecycleRestriction.findFirst({
-        where: {
-          bookingId,
-          active: true,
-          scope: { in: ["PUBLIC", "ALL"] },
-          outcome: { in: ["RESTRICTED", "HELD"] },
-        },
-        select: { id: true },
-      })
-    : null;
-  if (restriction) throw new Error("PUBLICATION_ACTIVE_RESTRICTION");
+  const lifecycle = await resolveCanonicalMediaLifecycle({
+    bookingId,
+    intendedAudience: "PUBLIC",
+    db,
+  });
+  if (lifecycle.publicAllowed) return;
+  if (lifecycle.blockReason === MEDIA_LIFECYCLE_STATE_UNAVAILABLE) {
+    throw new Error("PUBLICATION_LIFECYCLE_STATE_UNAVAILABLE");
+  }
+  throw new Error("PUBLICATION_ACTIVE_RESTRICTION");
+}
+
+function requiresCorrectedParticipantAuthorization(stages: any[]): boolean {
+  return stages.some((stage) =>
+    stage.containsEmployeeLikeness === true ||
+    stage.containsCustomerLikeness === true ||
+    stage.includesAudio === true,
+  );
+}
+
+function assertCorrectedParticipantAuthorizationAvailable(stages: any[]): void {
+  if (requiresCorrectedParticipantAuthorization(stages)) {
+    throw new Error(PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED);
+  }
 }
 
 async function activateImmediatePublicVisibility(
@@ -1152,6 +1177,7 @@ async function activateImmediatePublicVisibility(
   ) {
     throw new Error("PUBLICATION_CUSTOMER_APPROVAL_INCOMPLETE");
   }
+  assertCorrectedParticipantAuthorizationAvailable(stages);
   await assertNoActivePublicRestriction(tx, proposal.bookingId);
   const standingCoverage = isStandingConsentProposal(proposal)
     ? await assertStandingConsentCoverage(tx, proposal, stages)
@@ -1660,6 +1686,10 @@ export async function moderatePublicationProposal(input: {
       }
       await loadExactStage(tx, foundation, packaged);
     }
+    if (input.decision === "APPROVED") {
+      assertCorrectedParticipantAuthorizationAvailable(stages);
+      await assertNoActivePublicRestriction(tx, proposal.bookingId);
+    }
     const decisionHash = sha256(`${proposal.proposalHash}:${input.adminUserId}:${input.decision}:${input.reason || ""}`);
     const adminDecision = await tx.serviceVideoPublicationAdminDecision.create({
       data: {
@@ -1781,6 +1811,13 @@ async function reevaluateStandingConsentPublication(tx: any, proposalId: string)
     },
   });
   if (!visibilityDecision) return { status: proposal.status, published: false };
+  if (requiresCorrectedParticipantAuthorization(stages)) {
+    return {
+      status: proposal.status,
+      published: false,
+      reason: PUBLICATION_CORRECTED_PARTICIPANT_AUTHORIZATION_REQUIRED,
+    };
+  }
   const coverage = await loadStandingConsentCoverage(tx, proposal, stages);
   if (!coverage.complete) return { status: proposal.status, published: false };
   const foundation = await loadPrivateFoundation(tx, proposal.bookingId, proposal.vendorId);
