@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { parseAssignmentMetadata, parseCustomerMetadata } from "@/lib/job-assignment";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
@@ -34,6 +35,19 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     select: { id: true, vendorId: true, customerMetadata: true },
   });
   if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  try {
+    await assertV2EmployeeServiceOrderEntry({
+      db: prisma,
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      tokenAccess,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Open the current secure Service Order link before confirming this recording scope." },
+      { status: 403 },
+    );
+  }
 
   const memberships = tokenAccess
     ? [{ id: tokenAccess.membershipId, vendorId: tokenAccess.vendorId, userId: tokenAccess.userId }]

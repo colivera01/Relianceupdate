@@ -213,7 +213,12 @@ export async function releaseEmployeeServiceOrderWhenReady(
 
     const employeeJobLink = appendEmployeeCaptureToken(
       `${input.baseUrl.replace(/\/+$/, "")}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
-      createEmployeeCaptureToken({ vendorId: input.vendorId, bookingId: booking.id, membershipId: member.id }),
+      createEmployeeCaptureToken({
+        vendorId: input.vendorId,
+        bookingId: booking.id,
+        membershipId: member.id,
+        context: releaseContext,
+      }),
     );
     const delivery = await sendJobAssignmentNotification({
       bookingId: booking.id,

@@ -12,8 +12,29 @@ import { parseAssignmentMetadata, parseRecordingComplianceMetadata } from "@/lib
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import {
+  EMPLOYEE_DECISION_PURPOSES,
+  loadEmployeeDecisionContext,
+} from "@/lib/employee-decision-verification";
+import {
+  buildEmployeeV2ServiceOrderView,
+} from "@/lib/recording/employee-v2-service-order";
+import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
+
+function hasEmployeeServiceOrderCredential(request: Request): boolean {
+  if (request.headers.get("x-employee-capture-token")?.trim()) return true;
+  if ((request.headers.get("authorization") || "").toLowerCase().startsWith("employee-capture ")) {
+    return true;
+  }
+  try {
+    const url = new URL(request.url);
+    return Boolean(url.searchParams.get("captureToken")?.trim() || url.searchParams.get("ct")?.trim());
+  } catch {
+    return false;
+  }
+}
 
 function emptyStageProgress() {
   return {
@@ -26,7 +47,18 @@ function emptyStageProgress() {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
+    const serviceOrderTokenPresented = hasEmployeeServiceOrderCredential(request);
     const tokenAccess = await resolveEmployeeCaptureAccess(request);
+    if (serviceOrderTokenPresented && !tokenAccess) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EMPLOYEE_SERVICE_ORDER_LINK_INVALID",
+          error: "This Service Order link is expired or no longer current. Ask the Vendor Manager for the current link.",
+        },
+        { status: 401 },
+      );
+    }
     if (!userId && !tokenAccess) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -130,6 +162,34 @@ export async function GET(request: Request): Promise<NextResponse> {
         capability: "record",
         actorKind: "EMPLOYEE",
       });
+      const isV2 =
+        permissionGate.assessmentContractVersion ===
+        RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+      // V2 is accountless-Service-Order only. It must not appear in the
+      // signed-in legacy employee work list.
+      if (isV2 && !tokenAccess) return null;
+      let v2ServiceOrder = null;
+      if (isV2 && tokenAccess && membershipId && permissionGate.employeeParticipation) {
+        const assessment = await prisma.recordingScopeAssessment.findUnique({
+          where: { id: permissionGate.assessmentId! },
+        });
+        const decisionContext = await loadEmployeeDecisionContext({
+          db: prisma as any,
+          purpose: EMPLOYEE_DECISION_PURPOSES.RECORDING,
+          userId: tokenAccess.userId,
+          membershipId,
+          bookingId: booking.id,
+        });
+        v2ServiceOrder = buildEmployeeV2ServiceOrderView({
+          assessment,
+          decisionContext,
+          participation: permissionGate.employeeParticipation,
+          membershipId,
+          serviceLocation: recordingCompliance.addressSnapshot?.formattedAddress || null,
+          serviceOrderCurrent: decisionContext.serviceOrderCurrent === true,
+          blockCode: permissionGate.blockCode,
+        });
+      }
       const stageRecordingAccess = Object.fromEntries(
         await Promise.all(
           (["INTRO", "IN_PROGRESS", "COMPLETED"] as StageKey[]).map(async (stage) => {
@@ -174,7 +234,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         title: booking.title || booking.service?.name || "Assigned Job",
         status: booking.status,
         service: booking.service || null,
-        customer,
+        customer: isV2 ? { ...customer, email: null } : customer,
         bookingDate: booking.scheduledFor || booking.date || null,
         rejectionReason: (booking as any).rejectionReason || null,
         rejectedAt: (booking as any).rejectedAt || null,
@@ -199,6 +259,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           correctionRequestedStages: permissionGate.correctionRequestedStages,
           stageRecordingAccess,
           employeeParticipation: permissionGate.employeeParticipation || null,
+          v2ServiceOrder,
         },
         stageProgress,
         canMarkComplete,
@@ -206,7 +267,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }));
 
     return NextResponse.json({
-      jobs,
+      jobs: jobs.filter(Boolean),
       membership: activeVendorMemberships[0],
       placeholderData: false,
     });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import {
   parseRecordingLocationProof,
@@ -43,6 +44,12 @@ export async function POST(request: Request, context: RouteContext) {
     const tokenAccess = await resolveEmployeeCaptureAccess(request, {
       vendorId: booking.vendorId,
       bookingId: booking.id,
+    });
+    await assertV2EmployeeServiceOrderEntry({
+      db: prisma,
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      tokenAccess,
     });
     const membership = tokenAccess || (await requireVendorMembership(request, booking.vendorId));
     const assignment = parseAssignmentMetadata(booking.customerMetadata);
@@ -123,6 +130,12 @@ export async function POST(request: Request, context: RouteContext) {
       recordingGate,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED") {
+      return NextResponse.json(
+        { success: false, code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED", message: "Open the current secure Service Order link before verifying location." },
+        { status: 403 },
+      );
+    }
     console.error("[employee/jobs/verify-location] POST error", error);
     return NextResponse.json(
       { success: false, code: "LOCATION_VERIFICATION_FAILED", message: "Location verification could not be completed. Try again." },

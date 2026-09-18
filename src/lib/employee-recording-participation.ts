@@ -457,6 +457,7 @@ export async function decideEmployeeRecordingParticipation(input: {
   bookingId: string;
   decision: EmployeeRecordingParticipationDecisionValue;
   sessionSecret: string;
+  expectedContextHash?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
   now?: Date;
@@ -473,6 +474,18 @@ export async function decideEmployeeRecordingParticipation(input: {
     membershipId: input.membershipId,
     bookingId: input.bookingId,
   });
+  if (
+    context.assessmentContractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+    (!input.expectedContextHash || input.expectedContextHash !== context.contextHash)
+  ) {
+    throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE");
+  }
+  if (
+    context.assessmentContractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+    !context.serviceOrderCurrent
+  ) {
+    throw new Error("EMPLOYEE_V2_SERVICE_ORDER_RELEASE_STALE");
+  }
   const now = input.now || new Date();
   const run = () => input.db.$transaction(async (tx: any) => {
     const currentContext = await loadEmployeeDecisionContext({
@@ -483,6 +496,14 @@ export async function decideEmployeeRecordingParticipation(input: {
       bookingId: input.bookingId,
     });
     if (currentContext.contextHash !== context.contextHash) {
+      throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE");
+    }
+    if (
+      currentContext.assessmentContractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+      (!input.expectedContextHash ||
+        input.expectedContextHash !== currentContext.contextHash ||
+        !currentContext.serviceOrderCurrent)
+    ) {
       throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE");
     }
     const priorSession = await tx.employeeVerifiedDecisionSession.findUnique({

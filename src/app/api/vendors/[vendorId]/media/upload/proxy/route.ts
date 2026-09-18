@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { deleteBlob, uploadBlobBuffer } from "@/lib/azure-blob-storage";
 import { prisma } from "@/server/db";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
@@ -98,6 +99,22 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       });
       if (!booking) {
         return { errorResponse: NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 }) };
+      }
+      try {
+        await assertV2EmployeeServiceOrderEntry({
+          db: prisma,
+          bookingId: booking.id,
+          vendorId,
+          tokenAccess,
+          employeeActor,
+        });
+      } catch {
+        return {
+          errorResponse: NextResponse.json(
+            { code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED", error: "Open the current secure Service Order link before uploading." },
+            { status: 403 },
+          ),
+        };
       }
       if (uploadAttempt) {
         try {

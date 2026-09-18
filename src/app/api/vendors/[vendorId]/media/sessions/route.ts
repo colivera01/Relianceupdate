@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
 import {
   parseRecordingLocationProof,
@@ -16,6 +17,8 @@ import {
   persistAllowedRecordingGateDecision,
   ServiceVideoMutationBlockedError,
 } from "@/lib/service-video-evidence";
+import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
+import { resolveCurrentV2RecordingAuthorization } from "@/lib/recording/recording-authorization-v2";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -122,6 +125,22 @@ export async function POST(
       validBookingId = booking?.id ?? null;
       validBookingMetadata = booking?.customerMetadata ?? null;
       validBookingVendorLocation = booking?.vendor ?? null;
+      if (booking && employeeActor) {
+        try {
+          await assertV2EmployeeServiceOrderEntry({
+            db: prisma,
+            bookingId: booking.id,
+            vendorId,
+            tokenAccess,
+            employeeActor,
+          });
+        } catch {
+          return NextResponse.json(
+            { code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED", error: "Open the current secure Service Order link before recording." },
+            { status: 403 },
+          );
+        }
+      }
     }
 
     if (status && !ALLOWED_STATUSES.has(status)) {
@@ -260,6 +279,26 @@ export async function POST(
           { status: 409 },
         );
       }
+      if (
+        employeeActor &&
+        permissionGate.assessmentContractVersion ===
+          RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+      ) {
+        const v2Authorization = await resolveCurrentV2RecordingAuthorization({
+          db: prisma as any,
+          bookingId: validBookingId,
+          vendorId,
+          membershipId,
+          stage: normalizedStage,
+          surface: "media_session",
+        });
+        if (!v2Authorization.authorized) {
+          return NextResponse.json(
+            { success: false, ...recordingGateErrorBody(v2Authorization.runtimeGate) },
+            { status: 409 },
+          );
+        }
+      }
       stagedPermissionGate = permissionGate;
       stagedMembershipId = membershipId;
       stagedActorKind = actorKind;
@@ -331,6 +370,26 @@ export async function POST(
             throw new ServiceVideoMutationBlockedError(
               transactionalGate.blockCode || "RECORDING_GATE_UNAVAILABLE",
             );
+          }
+          if (
+            employeeActor &&
+            transactionalGate.assessmentContractVersion ===
+              RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+          ) {
+            const v2Authorization = await resolveCurrentV2RecordingAuthorization({
+              db: tx,
+              bookingId: validBookingId!,
+              vendorId,
+              membershipId: stagedMembershipId!,
+              stage: normalizedStage!,
+              surface: "media_session",
+            });
+            if (!v2Authorization.authorized) {
+              throw new ServiceVideoMutationBlockedError(
+                v2Authorization.runtimeGate.blockCode ||
+                  "V2_RECORDING_AUTHORIZATION_REQUIRED",
+              );
+            }
           }
           const conflicting = await tx.mediaSession.findFirst({
             where: {

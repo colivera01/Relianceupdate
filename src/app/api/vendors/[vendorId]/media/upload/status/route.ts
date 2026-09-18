@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { setUploadAttemptState } from "@/lib/service-video-evidence";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
@@ -44,6 +45,20 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       select: { id: true, customerMetadata: true },
     });
     if (!booking) return NextResponse.json({ error: "Work record not found" }, { status: 404 });
+    try {
+      await assertV2EmployeeServiceOrderEntry({
+        db: prisma,
+        bookingId: booking.id,
+        vendorId,
+        tokenAccess,
+        employeeActor: Boolean(tokenAccess) || String((membership as any).role || "").toUpperCase() === "EMPLOYEE",
+      });
+    } catch {
+      return NextResponse.json(
+        { code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED", error: "Open the current secure Service Order link before updating this upload." },
+        { status: 403 },
+      );
+    }
     const gate = await loadRecordingPermissionGate({
       bookingId,
       vendorId,

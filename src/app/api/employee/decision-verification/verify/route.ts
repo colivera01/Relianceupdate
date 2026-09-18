@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { resolveEmployeeDecisionActor } from "@/lib/employee-decision-entry";
 import {
+  assertEmployeeDecisionDisplayContext,
   EMPLOYEE_DECISION_COOKIE,
   EMPLOYEE_DECISION_PURPOSES,
   employeeDecisionCookieOptions,
@@ -9,6 +10,7 @@ import {
   verifyEmployeeDecisionOtp,
   type EmployeeDecisionPurpose,
 } from "@/lib/employee-decision-verification";
+import { getEmployeeDecisionErrorResponse } from "@/lib/employee-runtime-errors";
 import { prisma } from "@/server/db";
 
 const PURPOSES = new Set(Object.values(EMPLOYEE_DECISION_PURPOSES));
@@ -31,6 +33,11 @@ export async function POST(request: Request) {
       membershipId: actor.membershipId,
       bookingId: actor.bookingId,
     });
+    assertEmployeeDecisionDisplayContext({
+      context,
+      entryMethod: actor.entryMethod,
+      displayedContextHash: body?.contextHash,
+    });
     const result = await verifyEmployeeDecisionOtp({
       db: prisma as any,
       challengeId: String(body?.challengeId || "").trim(),
@@ -45,8 +52,10 @@ export async function POST(request: Request) {
     );
     return response;
   } catch (error) {
-    const code = error instanceof Error ? error.message : "EMPLOYEE_DECISION_VERIFICATION_FAILED";
-    const status = code === "Unauthorized" ? 401 : code.includes("FORBIDDEN") ? 403 : 422;
-    return NextResponse.json({ success: false, code, error: "Verification was not completed." }, { status });
+    console.error("[employee/decision-verification/verify] rejected", {
+      code: error instanceof Error ? error.message : "EMPLOYEE_DECISION_VERIFICATION_FAILED",
+    });
+    const failure = getEmployeeDecisionErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
 }

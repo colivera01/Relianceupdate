@@ -22,6 +22,7 @@ export function EmployeeVerifiedDecision(props: {
   purpose: Purpose;
   membershipId: string;
   bookingId?: string | null;
+  contextHash?: string | null;
   decision: "ALLOW" | "DECLINE" | "DENY";
   title: string;
   decisionText: string;
@@ -37,17 +38,25 @@ export function EmployeeVerifiedDecision(props: {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const [staleContext, setStaleContext] = useState(false);
 
   const contextBody = {
     purpose: props.purpose,
     membershipId: props.membershipId,
     ...(props.bookingId ? { bookingId: props.bookingId } : {}),
+    ...(props.contextHash ? { contextHash: props.contextHash } : {}),
   };
+
+  function responseError(body: any, fallback: string) {
+    setStaleContext(body?.staleContext === true || body?.code === "EMPLOYEE_SERVICE_ORDER_CONTEXT_CHANGED");
+    return new Error(body?.error || fallback);
+  }
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError("");
+    setStaleContext(false);
     void fetch("/api/employee/decision-verification/start", {
       method: "POST",
       credentials: "include",
@@ -57,7 +66,7 @@ export function EmployeeVerifiedDecision(props: {
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok || body?.success === false) {
-          throw new Error(body?.error || "Identity verification is unavailable.");
+          throw responseError(body, "Identity verification is unavailable.");
         }
         if (active) setView(body as VerificationView);
       })
@@ -68,11 +77,12 @@ export function EmployeeVerifiedDecision(props: {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [props.bookingId, props.membershipId, props.purpose]);
+  }, [props.bookingId, props.contextHash, props.membershipId, props.purpose]);
 
   async function sendCode(nextChannel: "email" | "sms") {
     setWorking(true);
     setError("");
+    setStaleContext(false);
     try {
       const response = await fetch("/api/employee/decision-verification/start", {
         method: "POST",
@@ -82,7 +92,7 @@ export function EmployeeVerifiedDecision(props: {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.success === false || !body?.challengeId) {
-        throw new Error(body?.error || "The verification code could not be sent.");
+        throw responseError(body, "The verification code could not be sent.");
       }
       setChannel(nextChannel);
       setChallengeId(String(body.challengeId));
@@ -100,6 +110,7 @@ export function EmployeeVerifiedDecision(props: {
     }
     setWorking(true);
     setError("");
+    setStaleContext(false);
     try {
       const verifyResponse = await fetch("/api/employee/decision-verification/verify", {
         method: "POST",
@@ -109,7 +120,7 @@ export function EmployeeVerifiedDecision(props: {
       });
       const verified = await verifyResponse.json().catch(() => ({}));
       if (!verifyResponse.ok || verified?.success === false) {
-        throw new Error(verified?.error || "Verification was not completed.");
+        throw responseError(verified, "Verification was not completed.");
       }
       const decisionResponse = await fetch(props.submitUrl, {
         method: "POST",
@@ -119,7 +130,7 @@ export function EmployeeVerifiedDecision(props: {
       });
       const decisionBody = await decisionResponse.json().catch(() => ({}));
       if (!decisionResponse.ok || decisionBody?.success === false) {
-        throw new Error(decisionBody?.error || "Your choice could not be saved.");
+        throw responseError(decisionBody, "Your choice could not be saved.");
       }
       await props.onComplete(decisionBody);
     } catch (nextError) {
@@ -188,6 +199,15 @@ export function EmployeeVerifiedDecision(props: {
         <Button variant="outline" className="mt-3 border-slate-500 bg-transparent text-white" disabled={working} onClick={props.onCancel}>Cancel</Button>
       )}
       {error ? <p role="alert" className="mt-3 text-sm text-red-200">{error}</p> : null}
+      {staleContext ? (
+        <Button
+          variant="outline"
+          className="mt-3 border-amber-300 bg-transparent text-amber-100"
+          onClick={() => window.location.reload()}
+        >
+          Reload current Service Order
+        </Button>
+      ) : null}
     </div>
   );
 }

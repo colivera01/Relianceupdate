@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { hashOtp } from "@/lib/consent/otp";
 import { hashOpaqueSecret } from "@/lib/consent/token";
 import {
+  assertEmployeeDecisionDisplayContext,
   EMPLOYEE_DECISION_MAX_STARTS_PER_HOUR,
   EMPLOYEE_DECISION_PURPOSES,
   consumeEmployeeDecisionSession,
@@ -46,6 +47,48 @@ function context(
 }
 
 describe("Employee verified decision security", () => {
+  it("requires the exact displayed V2 context through the current Service Order entry", () => {
+    const v2 = context({
+      assessmentContractVersion: "recording-assessment-v4-multiscope-safety-v1",
+      serviceOrderCurrent: true,
+    });
+    expect(() => assertEmployeeDecisionDisplayContext({
+      context: v2,
+      entryMethod: "SERVICE_ORDER_ENTRY",
+      displayedContextHash: v2.contextHash,
+    })).not.toThrow();
+    expect(() => assertEmployeeDecisionDisplayContext({
+      context: v2,
+      entryMethod: "SIGNED_IN_ACCOUNT",
+      displayedContextHash: v2.contextHash,
+    })).toThrow("EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED");
+    expect(() => assertEmployeeDecisionDisplayContext({
+      context: v2,
+      entryMethod: "SERVICE_ORDER_ENTRY",
+      displayedContextHash: "stale-context",
+    })).toThrow("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE");
+  });
+
+  it("rejects a V2 decision when the contextual Service Order release is stale", () => {
+    const v2 = context({
+      assessmentContractVersion: "recording-assessment-v4-multiscope-safety-v1",
+      serviceOrderCurrent: false,
+    });
+    expect(() => assertEmployeeDecisionDisplayContext({
+      context: v2,
+      entryMethod: "SERVICE_ORDER_ENTRY",
+      displayedContextHash: v2.contextHash,
+    })).toThrow("EMPLOYEE_V2_SERVICE_ORDER_RELEASE_STALE");
+  });
+
+  it("preserves the historical decision flow outside V2", () => {
+    expect(() => assertEmployeeDecisionDisplayContext({
+      context: context(),
+      entryMethod: "SIGNED_IN_ACCOUNT",
+      displayedContextHash: null,
+    })).not.toThrow();
+  });
+
   it("creates a hashed six-digit OTP with a ten-minute expiry", async () => {
     const now = new Date("2026-09-17T12:00:00.000Z");
     let deliveredCode = "";

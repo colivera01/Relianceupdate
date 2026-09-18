@@ -8,6 +8,7 @@ import {
   ensureVendorAccountCanOperate,
 } from "@/lib/account-status";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
@@ -48,6 +49,12 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       select: { id: true, vendorId: true, status: true, customerMetadata: true },
     });
     if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    await assertV2EmployeeServiceOrderEntry({
+      db: prisma,
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      tokenAccess,
+    });
     await ensureVendorAccountCanOperate(booking.vendorId);
 
     const vendorMembershipIds = memberships.filter((m) => m.vendorId === booking.vendorId).map((m) => m.id);
@@ -166,6 +173,12 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       job: stageResult.updated,
     });
   } catch (error: any) {
+    if (error?.message === "EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED") {
+      return NextResponse.json(
+        { error: "Open the current secure Service Order link before saving a recording stage." },
+        { status: 403 },
+      );
+    }
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { downloadBlobToBuffer, getBlobProperties } from "@/lib/azure-blob-storage";
 import { STAGE_VIDEO_MAX_DURATION_SECONDS } from "@/lib/stage-video-guidance";
@@ -210,6 +211,24 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           { ...recordingGateErrorBody(permissionGate), uploadState: attempt.state },
           { status: 409 }
         );
+      }
+      try {
+        await assertV2EmployeeServiceOrderEntry({
+          db: prisma,
+          bookingId: booking.id,
+          vendorId,
+          tokenAccess,
+          employeeActor,
+        });
+      } catch {
+        return failStagedUpload({
+          assetId,
+          vendorId,
+          state: "REJECTED",
+          code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED",
+          message: "Open the current secure Service Order link before completing this upload.",
+          status: 403,
+        });
       }
       if (Boolean(session.audioExpected) !== Boolean(permissionGate.audioAllowed)) {
         return failStagedUpload({

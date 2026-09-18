@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { generateUploadUrl } from "@/lib/azure-blob-storage";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
@@ -100,6 +101,20 @@ export async function POST(
       });
       if (permissionGate.blockCode) {
         return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
+      }
+      try {
+        await assertV2EmployeeServiceOrderEntry({
+          db: prisma,
+          bookingId: booking.id,
+          vendorId,
+          tokenAccess,
+          employeeActor,
+        });
+      } catch {
+        return NextResponse.json(
+          { code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED", error: "Open the current secure Service Order link before uploading." },
+          { status: 403 },
+        );
       }
       if (Boolean(mediaSession.audioExpected) !== Boolean(permissionGate.audioAllowed)) {
         return NextResponse.json(

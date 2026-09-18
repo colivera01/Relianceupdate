@@ -6,6 +6,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { ARCHIVE_ACTIVE } from "@/lib/media-visibility";
 import { requestMediaDeletion } from "@/lib/media-lifecycle";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import {
   assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed,
@@ -187,6 +188,13 @@ export async function PATCH(
         select: { id: true, customerMetadata: true },
       });
       if (!booking) return NextResponse.json({ error: "Work record not found" }, { status: 404 });
+      await assertV2EmployeeServiceOrderEntry({
+        db: prisma,
+        bookingId: booking.id,
+        vendorId,
+        tokenAccess: null,
+        employeeActor: true,
+      });
       const gate = await loadRecordingPermissionGate({
         bookingId: booking.id,
         vendorId,
@@ -223,6 +231,13 @@ export async function PATCH(
             vendorId,
           });
           if (employeeServiceVideoRestore) {
+            await assertV2EmployeeServiceOrderEntry({
+              db: tx,
+              bookingId: asset.mediaSession!.bookingId!,
+              vendorId,
+              tokenAccess: null,
+              employeeActor: true,
+            });
             await assertServiceVideoStageMutationAllowed(tx, {
               bookingId: asset.mediaSession!.bookingId!,
               vendorId,
@@ -254,6 +269,15 @@ export async function PATCH(
     });
   } catch (error: any) {
     console.error("[media] PATCH error:", error);
+    if (error?.message === "EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED") {
+      return NextResponse.json(
+        {
+          code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED",
+          error: "Open the current secure Service Order link before changing this Service Video.",
+        },
+        { status: 403 },
+      );
+    }
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }

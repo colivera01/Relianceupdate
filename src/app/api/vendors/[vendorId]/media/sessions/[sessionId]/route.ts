@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import {
   assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed,
@@ -154,6 +155,13 @@ export async function PATCH(
         select: { id: true, customerMetadata: true },
       });
       if (!booking) return NextResponse.json({ error: "Work record not found" }, { status: 404 });
+      await assertV2EmployeeServiceOrderEntry({
+        db: prisma,
+        bookingId: booking.id,
+        vendorId,
+        tokenAccess: null,
+        employeeActor: true,
+      });
       const gate = await loadRecordingPermissionGate({
         bookingId: booking.id,
         vendorId,
@@ -188,6 +196,13 @@ export async function PATCH(
             vendorId,
           });
           if (stagedEmployeeSession) {
+            await assertV2EmployeeServiceOrderEntry({
+              db: tx,
+              bookingId: existing.bookingId!,
+              vendorId,
+              tokenAccess: null,
+              employeeActor: true,
+            });
             await assertServiceVideoStageMutationAllowed(tx, {
               bookingId: existing.bookingId!,
               vendorId,
@@ -212,6 +227,15 @@ export async function PATCH(
     return NextResponse.json({ session: serializeSession(session) });
   } catch (error: any) {
     console.error("[media/sessions/:id] PATCH error:", error);
+    if (error?.message === "EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED") {
+      return NextResponse.json(
+        {
+          code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED",
+          error: "Open the current secure Service Order link before changing this recording session.",
+        },
+        { status: 403 },
+      );
+    }
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }

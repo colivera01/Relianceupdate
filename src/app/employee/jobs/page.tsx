@@ -30,6 +30,8 @@ import {
 } from "@/lib/service-video-audio-capture";
 import { tutorialGuides } from "@/lib/user-guidance";
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
+import { EmployeeV2ServiceOrderPanel } from "@/components/employee/EmployeeV2ServiceOrderPanel";
+import type { EmployeeV2ServiceOrderView } from "@/lib/recording/employee-v2-service-order";
 
 type EmployeeJob = {
   id: string;
@@ -103,6 +105,7 @@ type RecordingComplianceState = {
     status: "NOT_REQUIRED" | "ALLOWED" | "REQUIRED" | "DECLINED" | "STALE";
     requiredMembershipIds: string[];
   } | null;
+  v2ServiceOrder?: EmployeeV2ServiceOrderView | null;
 };
 
 type StageFeedbackState = {
@@ -1407,6 +1410,15 @@ export default function EmployeeJobsPage() {
     const correctionRequested = isCorrectionRequested(job);
     const recordingBlocked = !job.recordingCompliance?.recordingUnlocked;
     const canonicalBlock = job.recordingCompliance?.canonicalBlock || null;
+    const v2ParticipationDecisionBlock = Boolean(
+      job.recordingCompliance?.v2ServiceOrder &&
+      canonicalBlock &&
+      [
+        "EMPLOYEE_RECORDING_PARTICIPATION_REQUIRED",
+        "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED",
+        "EMPLOYEE_RECORDING_PARTICIPATION_STALE",
+      ].includes(canonicalBlock.code),
+    );
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
     const helperText = historyMode ? null : submitHelperText(job);
     const selectedStageKey =
@@ -1676,6 +1688,32 @@ export default function EmployeeJobsPage() {
           ) : null}
         </div>
 
+        {!historyMode && job.membershipId && job.recordingCompliance?.v2ServiceOrder ? (
+          <EmployeeV2ServiceOrderPanel
+            view={job.recordingCompliance.v2ServiceOrder}
+            membershipId={job.membershipId}
+            bookingId={job.id}
+            headers={employeeRequestHeaders(false)}
+            choice={
+              participationChoice?.jobId === job.id
+                ? participationChoice.decision
+                : null
+            }
+            onChoice={(decision) => setParticipationChoice({ jobId: job.id, decision })}
+            onCancel={() => setParticipationChoice(null)}
+            onComplete={async (body) => {
+              setParticipationChoice(null);
+              setActionMessage(
+                body?.v2Authorization?.nextState?.detail ||
+                  (body?.decision?.decision === "ALLOW"
+                    ? "Your verified recording-participation choice was saved for this Service Order."
+                    : "Recording participation was declined. Recording remains locked, but the underlying service may continue."),
+              );
+              await loadJobs();
+            }}
+          />
+        ) : null}
+
         {awaitingManagerReview ? (
           <div className="mt-3 rounded-xl border border-emerald-300/35 bg-emerald-950/35 px-4 py-3 text-emerald-50">
             <p className="text-sm font-bold">Service Videos submitted</p>
@@ -1687,7 +1725,7 @@ export default function EmployeeJobsPage() {
               If a correction is requested, only the requested stage will reopen.
             </p>
           </div>
-        ) : recordingBlocked && canonicalBlock && !correctionRequested ? (
+        ) : recordingBlocked && canonicalBlock && !correctionRequested && !v2ParticipationDecisionBlock ? (
           <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
             <p className="text-sm font-bold">
               {canonicalBlock.code === "SERVICE_ORDER_CANCELED" || canonicalBlock.code === "ADMIN_AUDIT_REJECTED_TERMINAL"
@@ -1713,7 +1751,7 @@ export default function EmployeeJobsPage() {
                 Confirm Recording Scope
               </button>
             ) : null}
-            {job.membershipId && [
+            {!job.recordingCompliance?.v2ServiceOrder && job.membershipId && [
               "EMPLOYEE_RECORDING_PARTICIPATION_REQUIRED",
               "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED",
               "EMPLOYEE_RECORDING_PARTICIPATION_STALE",
@@ -1768,7 +1806,7 @@ export default function EmployeeJobsPage() {
           </div>
         ) : null}
 
-        {!historyMode && job.recordingCompliance?.scopeSummary ? (
+        {!historyMode && !job.recordingCompliance?.v2ServiceOrder && job.recordingCompliance?.scopeSummary ? (
           <div className="mt-3 rounded-xl border border-blue-300/30 bg-blue-950/40 px-4 py-3 text-blue-50">
             <p className="text-sm font-bold">Approved recording scope</p>
             <p className="mt-1 text-sm leading-5">

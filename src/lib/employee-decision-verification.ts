@@ -13,8 +13,13 @@ import {
   hashPermissionContact,
 } from "@/lib/consent/recipient";
 import { createOpaqueSecret, hashOpaqueSecret } from "@/lib/consent/token";
-import { parseAssignmentMetadata, parseCustomerMetadata } from "@/lib/job-assignment";
+import {
+  isServiceOrderReleasedForCurrentContext,
+  parseAssignmentMetadata,
+  parseCustomerMetadata,
+} from "@/lib/job-assignment";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
 
 export const EMPLOYEE_DECISION_PURPOSES = {
   RECORDING: "EMPLOYEE_RECORDING_PARTICIPATION",
@@ -48,6 +53,8 @@ export type EmployeeDecisionContext = {
   vendorName: string;
   serviceName: string | null;
   recipient: ReturnType<typeof buildPermissionRecipient>;
+  assessmentContractVersion?: string | null;
+  serviceOrderCurrent?: boolean;
 };
 
 function canonicalContextDocument(
@@ -148,6 +155,8 @@ export async function loadEmployeeDecisionContext(input: {
     recordingBoundary: null as string | null,
     participantPlan: null as string | null,
     serviceName: null as string | null,
+    assessmentContractVersion: null as string | null,
+    serviceOrderCurrent: false,
   };
 
   if (input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING) {
@@ -197,6 +206,17 @@ export async function loadEmployeeDecisionContext(input: {
       recordingBoundary: assessmentContext.recordingBoundary,
       participantPlan: assessmentContext.participantPlan,
       serviceName: String(booking.service?.name || booking.title || "Service"),
+      assessmentContractVersion: String(assessment.contractVersion || "").trim() || null,
+      serviceOrderCurrent: isServiceOrderReleasedForCurrentContext(
+        booking.customerMetadata,
+        {
+          membershipId: membership.id,
+          assignmentGeneration,
+          assessmentId: assessment.id,
+          assessmentGeneration: Number(assessment.generation),
+          scopeHash: String(assessment.scopeHash),
+        },
+      ),
     };
   }
 
@@ -224,7 +244,34 @@ export async function loadEmployeeDecisionContext(input: {
     ),
     serviceName: recordingFields.serviceName,
     recipient: buildPermissionRecipient(membership.user || {}),
+    assessmentContractVersion: recordingFields.assessmentContractVersion,
+    serviceOrderCurrent: recordingFields.serviceOrderCurrent,
   };
+}
+
+export function assertEmployeeDecisionDisplayContext(input: {
+  context: EmployeeDecisionContext;
+  entryMethod: string;
+  displayedContextHash?: string | null;
+}) {
+  if (
+    input.context.assessmentContractVersion !==
+    RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+  ) {
+    return;
+  }
+  if (input.entryMethod !== "SERVICE_ORDER_ENTRY") {
+    throw new Error("EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED");
+  }
+  if (!input.context.serviceOrderCurrent) {
+    throw new Error("EMPLOYEE_V2_SERVICE_ORDER_RELEASE_STALE");
+  }
+  if (
+    !input.displayedContextHash ||
+    input.displayedContextHash !== input.context.contextHash
+  ) {
+    throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE");
+  }
 }
 
 export function employeeDecisionCookieOptions() {

@@ -1,6 +1,11 @@
 import { prisma } from "@/server/db";
-import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import {
+  isServiceOrderReleasedForCurrentContext,
+  parseAssignmentMetadata,
+  parseCustomerMetadata,
+} from "@/lib/job-assignment";
 import { normalizeAccountStatus } from "@/lib/account-status-shared";
+import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
 import {
   createSignedEmployeeAccessToken,
   verifySignedEmployeeAccessToken,
@@ -8,8 +13,9 @@ import {
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14;
 const TOKEN_VERSION = 1;
+const CONTEXTUAL_TOKEN_VERSION = 2;
 
-export type EmployeeCaptureClaims = {
+export type EmployeeCaptureClaimsV1 = {
   vendorId: string;
   bookingId: string;
   membershipId: string;
@@ -17,6 +23,16 @@ export type EmployeeCaptureClaims = {
   expiresAt: number;
   version: 1;
 };
+
+export type EmployeeCaptureClaimsV2 = Omit<EmployeeCaptureClaimsV1, "version"> & {
+  version: 2;
+  assignmentGeneration: number;
+  assessmentId: string | null;
+  assessmentGeneration: number | null;
+  scopeHash: string | null;
+};
+
+export type EmployeeCaptureClaims = EmployeeCaptureClaimsV1 | EmployeeCaptureClaimsV2;
 
 export type EmployeeCaptureAccess = {
   vendorId: string;
@@ -34,18 +50,39 @@ export function createEmployeeCaptureToken(input: {
   bookingId: string;
   membershipId: string;
   ttlSeconds?: number;
+  context?: {
+    assignmentGeneration: number;
+    assessmentId: string | null;
+    assessmentGeneration: number | null;
+    scopeHash: string | null;
+  };
 }): string {
   const now = Math.floor(Date.now() / 1000);
-  const claims: EmployeeCaptureClaims = {
+  const base = {
     vendorId: String(input.vendorId || "").trim(),
     bookingId: String(input.bookingId || "").trim(),
     membershipId: String(input.membershipId || "").trim(),
     issuedAt: now,
     expiresAt: now + Math.max(60, input.ttlSeconds || TOKEN_TTL_SECONDS),
-    version: TOKEN_VERSION,
   };
+  const claims: EmployeeCaptureClaims = input.context
+    ? {
+        ...base,
+        version: CONTEXTUAL_TOKEN_VERSION,
+        assignmentGeneration: Number(input.context.assignmentGeneration),
+        assessmentId: input.context.assessmentId,
+        assessmentGeneration: input.context.assessmentGeneration,
+        scopeHash: input.context.scopeHash,
+      }
+    : { ...base, version: TOKEN_VERSION };
   if (!claims.vendorId || !claims.bookingId || !claims.membershipId) {
     throw new Error("Missing employee capture token fields");
+  }
+  if (
+    claims.version === CONTEXTUAL_TOKEN_VERSION &&
+    (!Number.isInteger(claims.assignmentGeneration) || claims.assignmentGeneration < 1)
+  ) {
+    throw new Error("Invalid employee capture token context");
   }
   return createSignedEmployeeAccessToken(claims);
 }
@@ -67,9 +104,15 @@ export function readEmployeeCaptureToken(request: Request): string | null {
 
 export function verifyEmployeeCaptureToken(token: string | null | undefined): EmployeeCaptureClaims | null {
   const claims = verifySignedEmployeeAccessToken<EmployeeCaptureClaims>(token);
-  if (!claims || claims.version !== TOKEN_VERSION) return null;
+  if (!claims || ![TOKEN_VERSION, CONTEXTUAL_TOKEN_VERSION].includes(Number(claims.version))) return null;
   if (!claims.vendorId || !claims.bookingId || !claims.membershipId) return null;
   if (claims.expiresAt <= Math.floor(Date.now() / 1000)) return null;
+  if (
+    claims.version === CONTEXTUAL_TOKEN_VERSION &&
+    (!Number.isInteger(claims.assignmentGeneration) || claims.assignmentGeneration < 1)
+  ) {
+    return null;
+  }
   return claims;
 }
 
@@ -109,6 +152,44 @@ export async function resolveEmployeeCaptureAccess(
   if (["CANCELED", "CANCELLED"].includes(String(booking.status || "").trim().toUpperCase())) return null;
   const assigned = parseAssignmentMetadata(booking.customerMetadata);
   if (!assigned.assignedMembershipIds.includes(claims.membershipId)) return null;
+
+  const assessmentModel = (prisma as any).recordingScopeAssessment;
+  if (!assessmentModel?.findFirst && process.env.NODE_ENV !== "test") return null;
+  const currentAssessment = await assessmentModel?.findFirst?.({
+    where: {
+      bookingId: claims.bookingId,
+      vendorId: claims.vendorId,
+      isCurrent: true,
+    },
+    select: {
+      id: true,
+      generation: true,
+      scopeHash: true,
+      contractVersion: true,
+    },
+  });
+  if (currentAssessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
+    if (claims.version !== CONTEXTUAL_TOKEN_VERSION) return null;
+    const metadata = parseCustomerMetadata(booking.customerMetadata);
+    const assignmentGeneration = Number(metadata.vendor_job_assignment_generation || 1);
+    const exactContext =
+      claims.assignmentGeneration === assignmentGeneration &&
+      claims.assessmentId === currentAssessment.id &&
+      claims.assessmentGeneration === Number(currentAssessment.generation) &&
+      claims.scopeHash === currentAssessment.scopeHash;
+    if (!exactContext) return null;
+    if (
+      !isServiceOrderReleasedForCurrentContext(booking.customerMetadata, {
+        membershipId: claims.membershipId,
+        assignmentGeneration,
+        assessmentId: currentAssessment.id,
+        assessmentGeneration: Number(currentAssessment.generation),
+        scopeHash: currentAssessment.scopeHash,
+      })
+    ) {
+      return null;
+    }
+  }
 
   return {
     vendorId: claims.vendorId,

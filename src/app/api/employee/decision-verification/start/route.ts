@@ -2,22 +2,18 @@ import { NextResponse } from "next/server";
 
 import { resolveEmployeeDecisionActor } from "@/lib/employee-decision-entry";
 import {
+  assertEmployeeDecisionDisplayContext,
   EMPLOYEE_DECISION_PURPOSES,
   loadEmployeeDecisionContext,
   requestIpHash,
   startEmployeeDecisionVerification,
   type EmployeeDecisionPurpose,
 } from "@/lib/employee-decision-verification";
+import { getEmployeeDecisionErrorResponse } from "@/lib/employee-runtime-errors";
 import { sendEmployeeDecisionOtp } from "@/lib/notifications/send-employee-decision-otp";
 import { prisma } from "@/server/db";
 
 const PURPOSES = new Set(Object.values(EMPLOYEE_DECISION_PURPOSES));
-
-function fail(error: unknown) {
-  const code = error instanceof Error ? error.message : "EMPLOYEE_DECISION_VERIFICATION_FAILED";
-  const status = code === "Unauthorized" ? 401 : code.includes("FORBIDDEN") ? 403 : 422;
-  return NextResponse.json({ success: false, code, error: "Verification could not be started." }, { status });
-}
 
 export async function POST(request: Request) {
   try {
@@ -36,6 +32,11 @@ export async function POST(request: Request) {
       userId: actor.userId,
       membershipId: actor.membershipId,
       bookingId: actor.bookingId,
+    });
+    assertEmployeeDecisionDisplayContext({
+      context,
+      entryMethod: actor.entryMethod,
+      displayedContextHash: body?.contextHash,
     });
     const channel = String(body?.channel || "").trim().toLowerCase();
     if (!channel) {
@@ -66,6 +67,10 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    return fail(error);
+    console.error("[employee/decision-verification/start] rejected", {
+      code: error instanceof Error ? error.message : "EMPLOYEE_DECISION_VERIFICATION_FAILED",
+    });
+    const failure = getEmployeeDecisionErrorResponse(error);
+    return NextResponse.json(failure.body, { status: failure.status });
   }
 }

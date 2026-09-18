@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getEmployeeDecisionErrorResponse,
   getEmployeeRuntimeErrorResponse,
   isPausedEmployeeDatabaseError,
 } from "@/lib/employee-runtime-errors";
@@ -32,6 +33,20 @@ describe("employee runtime errors", () => {
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBe("Failed to prepare employee phone");
-    expect(response.body.details).toBe("Unexpected null membership");
+    expect(response.body).not.toHaveProperty("details");
+  });
+
+  it("maps stale V2 decision context to a safe reload response", () => {
+    const response = getEmployeeDecisionErrorResponse(
+      new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE"),
+    );
+    expect(response).toMatchObject({
+      status: 409,
+      body: {
+        code: "EMPLOYEE_SERVICE_ORDER_CONTEXT_CHANGED",
+        staleContext: true,
+      },
+    });
+    expect(response.body.error).not.toContain("PARTICIPATION_CONTEXT_STALE");
   });
 });

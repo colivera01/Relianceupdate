@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
@@ -29,6 +30,12 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       select: { id: true, vendorId: true, status: true, customerMetadata: true },
     });
     if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    await assertV2EmployeeServiceOrderEntry({
+      db: prisma,
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      tokenAccess,
+    });
     const vendorMembershipIds = memberships.filter((m) => m.vendorId === booking.vendorId).map((m) => m.id);
     if (vendorMembershipIds.length === 0) {
       return NextResponse.json({ error: "Forbidden: active employee membership required" }, { status: 403 });
@@ -117,6 +124,12 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     return NextResponse.json({ success: true, job: updated });
   } catch (error: any) {
+    if (error?.message === "EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED") {
+      return NextResponse.json(
+        { error: "Open the current secure Service Order link before starting this work record." },
+        { status: 403 },
+      );
+    }
     if (error?.recordingGate) {
       return NextResponse.json(recordingGateErrorBody(error.recordingGate), { status: 409 });
     }

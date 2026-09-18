@@ -1,6 +1,7 @@
 import { ensureUserAccountCanAct } from "@/lib/account-status";
 import { getUserIdFromRequest } from "@/lib/auth";
 import {
+  readEmployeeCaptureToken,
   resolveEmployeeCaptureAccess,
 } from "@/lib/employee-capture-token";
 import {
@@ -35,6 +36,13 @@ export async function resolveEmployeeDecisionActor(input: {
         ? input.requestedBookingId
         : null,
   });
+  if (
+    input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING &&
+    readEmployeeCaptureToken(input.request) &&
+    !capture
+  ) {
+    throw new Error("EMPLOYEE_SERVICE_ORDER_LINK_INVALID");
+  }
   if (capture) {
     if (
       input.requestedMembershipId &&
