@@ -13,6 +13,7 @@ import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-ass
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import {
+  assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed,
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
@@ -73,6 +74,11 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     const stageResult = await prisma.$transaction(async (tx: any) => {
+      const currentBooking = await tx.booking.findFirst({
+        where: { id: booking.id, vendorId: booking.vendorId },
+        select: { customerMetadata: true },
+      });
+      if (!currentBooking) throw new Error("JOB_NOT_FOUND");
       await assertServiceVideoStageMutationAllowed(tx, {
         bookingId: booking.id,
         vendorId: booking.vendorId,
@@ -88,6 +94,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         },
         select: {
           id: true,
+          capturedByMembershipId: true,
           mediaAssets: { where: { deletedAt: null, uploadState: "SAVED" }, select: { id: true }, take: 1 },
         },
         orderBy: { createdAt: "desc" },
@@ -95,6 +102,19 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       if (!matchingSession || !Array.isArray(matchingSession.mediaAssets) || matchingSession.mediaAssets.length === 0) {
         throw new Error(`STAGE_VIDEO_REQUIRED:${stage}`);
       }
+      const sessionMembershipId = String(matchingSession.capturedByMembershipId || "");
+      if (!sessionMembershipId) {
+        throw new Error("EMPLOYEE_ASSIGNMENT_STALE");
+      }
+      await assertMediaSessionAuthorizationCurrent(tx, {
+        mediaSessionId: matchingSession.id,
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        membershipId: sessionMembershipId,
+        stage: stage as ServiceVideoStage,
+        surface: "employee_stage",
+        actorKind: "EMPLOYEE",
+      });
       const sessions = await tx.mediaSession.findMany({
         where: { bookingId: booking.id, vendorId: booking.vendorId, sessionType: "JOB_SERVICE_VIDEO" },
         select: {
@@ -115,7 +135,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       const updated = await tx.booking.update({
         where: { id: booking.id },
         data: {
-          customerMetadata: setStageProgressMetadata(booking.customerMetadata, stage as any),
+          customerMetadata: setStageProgressMetadata(currentBooking.customerMetadata, stage as any),
         },
         select: { id: true, status: true, customerMetadata: true, updatedAt: true },
       });

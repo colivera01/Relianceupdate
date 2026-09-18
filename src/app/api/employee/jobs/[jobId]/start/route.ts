@@ -64,12 +64,43 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
-    const nextStatus = "CONFIRMED";
-    const updated = await prisma.booking.update({
-      where: { id: booking.id },
-      data: { status: nextStatus || "CONFIRMED" },
-      select: { id: true, status: true },
-    });
+    const updated = await prisma.$transaction(async (tx: any) => {
+      const currentBooking = await tx.booking.findFirst({
+        where: { id: booking.id, vendorId: booking.vendorId },
+        select: { id: true, status: true, customerMetadata: true },
+      });
+      if (!currentBooking) throw new Error("JOB_NOT_FOUND");
+      const currentAssignment = parseAssignmentMetadata(currentBooking.customerMetadata);
+      if (!currentAssignment.assignedMembershipIds.includes(membershipId)) {
+        throw new Error("EMPLOYEE_ASSIGNMENT_STALE");
+      }
+      const currentGate = await loadRecordingPermissionGate({
+        bookingId: currentBooking.id,
+        vendorId: booking.vendorId,
+        customerMetadata: currentBooking.customerMetadata,
+        membershipId,
+        surface: "employee_start",
+        capability: "record",
+        actorKind: "EMPLOYEE",
+        db: tx,
+      });
+      if (currentGate.blockCode) {
+        const error = new Error(currentGate.blockCode);
+        (error as any).recordingGate = currentGate;
+        throw error;
+      }
+      const currentStatus = String(currentBooking.status || "").toUpperCase();
+      if (currentStatus !== "PENDING") {
+        const error = new Error("INVALID_START_STATUS");
+        (error as any).currentStatus = currentStatus || "UNKNOWN";
+        throw error;
+      }
+      return tx.booking.update({
+        where: { id: currentBooking.id },
+        data: { status: "CONFIRMED" },
+        select: { id: true, status: true },
+      });
+    }, { isolationLevel: "Serializable" });
 
     await recordLifecycleAudit({
       actionType: "job_started",
@@ -86,6 +117,19 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     return NextResponse.json({ success: true, job: updated });
   } catch (error: any) {
+    if (error?.recordingGate) {
+      return NextResponse.json(recordingGateErrorBody(error.recordingGate), { status: 409 });
+    }
+    if (error?.message === "INVALID_START_STATUS") {
+      return NextResponse.json(
+        {
+          error: "Only pending jobs can be started.",
+          code: "INVALID_START_STATUS",
+          status: error.currentStatus || "UNKNOWN",
+        },
+        { status: 409 },
+      );
+    }
     const runtimeError = getEmployeeRuntimeErrorResponse("start", error);
     return NextResponse.json(runtimeError.body, { status: runtimeError.status });
   }

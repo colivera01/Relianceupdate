@@ -7,6 +7,7 @@ import { ARCHIVE_ACTIVE } from "@/lib/media-visibility";
 import { requestMediaDeletion } from "@/lib/media-lifecycle";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import {
+  assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed,
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
@@ -131,6 +132,7 @@ export async function PATCH(
         deletedAt: true,
         mediaSession: {
           select: {
+            id: true,
             bookingId: true,
             sessionType: true,
             vendorJobVideoStage: true,
@@ -159,6 +161,13 @@ export async function PATCH(
     }
 
     const stage = String(asset.mediaSession?.vendorJobVideoStage || "").trim().toUpperCase();
+    const stagedWorkRecordAsset = Boolean(
+      asset.mediaSession?.id &&
+        asset.mediaSession.bookingId &&
+        asset.mediaSession.capturedByMembershipId &&
+        String(asset.mediaSession.sessionType || "").toUpperCase() === "JOB_SERVICE_VIDEO" &&
+        REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage),
+    );
     const employeeServiceVideoRestore =
       String(membership.role || "").toUpperCase() === "EMPLOYEE" &&
       String(asset.mediaSession?.sessionType || "").toUpperCase() === "JOB_SERVICE_VIDEO";
@@ -214,11 +223,22 @@ export async function PATCH(
             vendorId,
           });
           if (employeeServiceVideoRestore) {
-          await assertServiceVideoStageMutationAllowed(tx, {
-            bookingId: asset.mediaSession!.bookingId!,
-            vendorId,
-            stage: stage as ServiceVideoStage,
-          });
+            await assertServiceVideoStageMutationAllowed(tx, {
+              bookingId: asset.mediaSession!.bookingId!,
+              vendorId,
+              stage: stage as ServiceVideoStage,
+            });
+          }
+          if (stagedWorkRecordAsset) {
+            await assertMediaSessionAuthorizationCurrent(tx, {
+              mediaSessionId: String(asset.mediaSession!.id),
+              bookingId: asset.mediaSession!.bookingId!,
+              vendorId,
+              membershipId: String(asset.mediaSession!.capturedByMembershipId),
+              stage: stage as ServiceVideoStage,
+              surface: "upload_status",
+              actorKind: "EMPLOYEE",
+            });
           }
           return restoreAsset(tx);
         }, { isolationLevel: "Serializable" })

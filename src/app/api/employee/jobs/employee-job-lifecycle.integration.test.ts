@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => {
   const vendorMembershipFindMany = vi.fn();
   const bookingFindMany = vi.fn();
   const bookingFindUnique = vi.fn();
+  const bookingFindFirst = vi.fn();
   const bookingUpdate = vi.fn();
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionFindMany = vi.fn();
@@ -13,6 +14,7 @@ const hoisted = vi.hoisted(() => {
   const consentRecordFindFirst = vi.fn();
   const prismaTransaction = vi.fn();
   const assertServiceVideoStageMutationAllowed = vi.fn();
+  const assertMediaSessionAuthorizationCurrent = vi.fn();
   const resolveEmployeeCaptureAccess = vi.fn();
   const sendJobCorrectionReadyNotification = vi.fn();
   const submitServiceVideoPackage = vi.fn();
@@ -20,6 +22,7 @@ const hoisted = vi.hoisted(() => {
     vendorMembershipFindMany,
     bookingFindMany,
     bookingFindUnique,
+    bookingFindFirst,
     bookingUpdate,
     mediaSessionFindFirst,
     mediaSessionFindMany,
@@ -27,6 +30,7 @@ const hoisted = vi.hoisted(() => {
     consentRecordFindFirst,
     prismaTransaction,
     assertServiceVideoStageMutationAllowed,
+    assertMediaSessionAuthorizationCurrent,
     resolveEmployeeCaptureAccess,
     sendJobCorrectionReadyNotification,
     submitServiceVideoPackage,
@@ -41,6 +45,7 @@ vi.mock("@/server/db", () => ({
     booking: {
       findMany: hoisted.bookingFindMany,
       findUnique: hoisted.bookingFindUnique,
+      findFirst: hoisted.bookingFindFirst,
       update: hoisted.bookingUpdate,
     },
     mediaSession: {
@@ -96,6 +101,7 @@ vi.mock("@/lib/notifications/send-job-correction-ready", () => ({
 }));
 
 vi.mock("@/lib/service-video-evidence", () => ({
+  assertMediaSessionAuthorizationCurrent: hoisted.assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed: hoisted.assertServiceVideoStageMutationAllowed,
   submitServiceVideoPackage: hoisted.submitServiceVideoPackage,
 }));
@@ -126,6 +132,7 @@ describe("employee job lifecycle routes", () => {
     hoisted.vendorMembershipFindMany.mockReset();
     hoisted.bookingFindMany.mockReset();
     hoisted.bookingFindUnique.mockReset();
+    hoisted.bookingFindFirst.mockReset();
     hoisted.bookingUpdate.mockReset();
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
@@ -133,14 +140,17 @@ describe("employee job lifecycle routes", () => {
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.prismaTransaction.mockReset();
     hoisted.assertServiceVideoStageMutationAllowed.mockReset();
+    hoisted.assertMediaSessionAuthorizationCurrent.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockReset();
     hoisted.sendJobCorrectionReadyNotification.mockReset();
     hoisted.submitServiceVideoPackage.mockReset();
     hoisted.submitServiceVideoPackage.mockResolvedValue({ id: "package-1", version: 1 });
     hoisted.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
+    hoisted.assertMediaSessionAuthorizationCurrent.mockResolvedValue(undefined);
     hoisted.prismaTransaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
       callback({
         booking: {
+          findFirst: hoisted.bookingFindFirst,
           update: hoisted.bookingUpdate,
         },
         mediaSession: {
@@ -150,6 +160,7 @@ describe("employee job lifecycle routes", () => {
       }),
     );
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job-1", customerMetadata: "{}" });
     hoisted.consentRecordFindMany.mockResolvedValue([]);
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
     hoisted.sendJobCorrectionReadyNotification.mockResolvedValue({
@@ -473,6 +484,7 @@ describe("employee job lifecycle routes", () => {
     });
     hoisted.mediaSessionFindFirst.mockResolvedValue({
       id: "session-1",
+      capturedByMembershipId: "membership-1",
       mediaAssets: [{ id: "asset-1" }],
     });
     hoisted.mediaSessionFindMany.mockResolvedValue([
@@ -519,6 +531,7 @@ describe("employee job lifecycle routes", () => {
     });
     hoisted.mediaSessionFindFirst.mockResolvedValue({
       id: "session-3",
+      capturedByMembershipId: "membership-1",
       mediaAssets: [{ id: "asset-3" }],
     });
     hoisted.mediaSessionFindMany.mockResolvedValue([
@@ -680,22 +693,13 @@ describe("employee job lifecycle routes", () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(
+    expect(hoisted.submitServiceVideoPackage).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "job-1" },
-        data: expect.objectContaining({
-          status: "AWAITING_REVIEW",
-          customerMetadata: expect.any(String),
-          rejectionReason: null,
-          rejectedAt: null,
-          rejectedBy: null,
-        }),
-        select: { id: true, status: true, date: true },
-      })
+        bookingId: "job-1",
+        vendorId: "vendor-1",
+        advanceBookingToManagerReview: true,
+      }),
     );
-    expect(JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata)).toMatchObject({
-      reliance_ops: { operational_phase: "AWAITING_VENDOR_REVIEW" },
-    });
     expect(json.notifications).toMatchObject({
       managerReviewReady: true,
       sentCount: 1,

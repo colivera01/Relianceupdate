@@ -11,6 +11,7 @@ import {
 } from "@/lib/job-recording-location";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import {
+  assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed,
   persistAllowedRecordingGateDecision,
   ServiceVideoMutationBlockedError,
@@ -262,40 +263,6 @@ export async function POST(
       stagedPermissionGate = permissionGate;
       stagedMembershipId = membershipId;
       stagedActorKind = actorKind;
-
-      const conflicting = await (prisma as any).mediaSession.findFirst({
-        where: {
-          vendorId,
-          bookingId: validBookingId,
-          vendorJobVideoStage: normalizedStage,
-          status: { notIn: ["FAILED", "CANCELLED", "ARCHIVED"] },
-        },
-        select: { id: true },
-      });
-
-      if (conflicting?.id) {
-        const allowReplace = Boolean(replaceExisting);
-        if (!allowReplace) {
-          if (process.env.NODE_ENV !== "production") {
-            console.info("[media/sessions][POST] conflict:reusing_existing", {
-              reason: "same_booking_same_stage_active_session_exists",
-              vendorId,
-              bookingId: validBookingId,
-              stage: normalizedStage,
-              existingSessionId: String(conflicting.id),
-            });
-          }
-          const existingSession = await (prisma as any).mediaSession.findUnique({
-            where: { id: String(conflicting.id) },
-          });
-          return NextResponse.json({
-            session: existingSession,
-            reused: true,
-            reason: "JOB_VIDEO_STAGE_OCCUPIED_REUSED",
-            existingSessionId: String(conflicting.id),
-          });
-        }
-      }
     }
 
     const createSessionData = {
@@ -340,6 +307,7 @@ export async function POST(
     }
 
     let session: any;
+    let reusedSessionId: string | null = null;
     try {
       if (useEvidenceTransaction) {
         session = await prisma.$transaction(async (tx: any) => {
@@ -363,6 +331,27 @@ export async function POST(
             throw new ServiceVideoMutationBlockedError(
               transactionalGate.blockCode || "RECORDING_GATE_UNAVAILABLE",
             );
+          }
+          const conflicting = await tx.mediaSession.findFirst({
+            where: {
+              vendorId,
+              bookingId: validBookingId!,
+              vendorJobVideoStage: normalizedStage!,
+              status: { notIn: ["FAILED", "CANCELLED", "ARCHIVED"] },
+            },
+          });
+          if (conflicting?.id && !Boolean(replaceExisting)) {
+            await assertMediaSessionAuthorizationCurrent(tx, {
+              mediaSessionId: String(conflicting.id),
+              bookingId: validBookingId!,
+              vendorId,
+              membershipId: stagedMembershipId!,
+              stage: normalizedStage!,
+              surface: "media_session",
+              actorKind: stagedActorKind || "VENDOR_MEMBER",
+            });
+            reusedSessionId = String(conflicting.id);
+            return conflicting;
           }
           const gateEvidence = await persistAllowedRecordingGateDecision({
             bookingId: validBookingId!,
@@ -408,7 +397,16 @@ export async function POST(
       return NextResponse.json(mapped.body, { status: mapped.status });
     }
 
-    return NextResponse.json({ session });
+    return NextResponse.json({
+      session,
+      ...(reusedSessionId
+        ? {
+            reused: true,
+            reason: "JOB_VIDEO_STAGE_OCCUPIED_REUSED",
+            existingSessionId: reusedSessionId,
+          }
+        : {}),
+    });
   } catch (error: any) {
     console.error("[media/sessions] POST error:", error);
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {

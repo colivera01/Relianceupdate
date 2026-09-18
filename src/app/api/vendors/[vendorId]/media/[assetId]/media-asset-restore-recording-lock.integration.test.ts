@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PATCH } from "./route";
+import { ServiceVideoMutationBlockedError } from "@/lib/service-video-evidence";
 
 const mocks = vi.hoisted(() => ({
   requireVendorMembership: vi.fn(),
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   mediaDeletionRequestFindFirst: vi.fn(),
   bookingFindFirst: vi.fn(),
   loadRecordingPermissionGate: vi.fn(),
+  assertMediaSessionAuthorizationCurrent: vi.fn(),
   assertServiceVideoStageMutationAllowed: vi.fn(),
   transaction: vi.fn(),
   corePackageFindFirst: vi.fn(),
@@ -35,7 +37,11 @@ vi.mock("@/lib/consent/recording-gate", () => ({
 }));
 vi.mock("@/lib/service-video-evidence", async () => {
   const actual = await vi.importActual<typeof import("@/lib/service-video-evidence")>("@/lib/service-video-evidence");
-  return { ...actual, assertServiceVideoStageMutationAllowed: mocks.assertServiceVideoStageMutationAllowed };
+  return {
+    ...actual,
+    assertMediaSessionAuthorizationCurrent: mocks.assertMediaSessionAuthorizationCurrent,
+    assertServiceVideoStageMutationAllowed: mocks.assertServiceVideoStageMutationAllowed,
+  };
 });
 
 describe("employee Service Video restore recording lock", () => {
@@ -51,6 +57,7 @@ describe("employee Service Video restore recording lock", () => {
       vendorId: "vendor-1",
       deletedAt: new Date("2026-08-12T00:00:00.000Z"),
       mediaSession: {
+        id: "session-1",
         bookingId: "booking-1",
         sessionType: "JOB_SERVICE_VIDEO",
         vendorJobVideoStage: "INTRO",
@@ -64,6 +71,7 @@ describe("employee Service Video restore recording lock", () => {
       serviceVideoPackageEvidence: { findFirst: mocks.corePackageFindFirst },
     }));
     mocks.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
+    mocks.assertMediaSessionAuthorizationCurrent.mockResolvedValue(undefined);
     mocks.corePackageFindFirst.mockResolvedValue(null);
     mocks.mediaAssetUpdate.mockResolvedValue({ id: "asset-1", deletedAt: null });
   });
@@ -101,6 +109,27 @@ describe("employee Service Video restore recording lock", () => {
       { params: Promise.resolve({ vendorId: "vendor-1", assetId: "asset-1" }) },
     );
     expect(response.status).toBe(409);
+    expect(mocks.mediaAssetUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects restore when the archived asset belongs to a stale recording session", async () => {
+    mocks.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true });
+    mocks.assertMediaSessionAuthorizationCurrent.mockRejectedValue(
+      new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE"),
+    );
+
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/media/asset-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESTORE" }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", assetId: "asset-1" }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.code).toBe("RECORDING_AUTHORIZATION_STALE");
     expect(mocks.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 });

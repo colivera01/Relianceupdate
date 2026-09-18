@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import {
+  assertMediaSessionAuthorizationCurrent,
   assertServiceVideoStageMutationAllowed,
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
@@ -126,10 +127,15 @@ export async function PATCH(
 
     const employeeActor = String(membership.role || "").toUpperCase() === "EMPLOYEE";
     const stage = String(existing.vendorJobVideoStage || "").trim().toUpperCase();
+    const stagedWorkRecordSession = Boolean(
+      existing.bookingId &&
+        existing.capturedByMembershipId &&
+        String(existing.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO" &&
+        REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage),
+    );
     const stagedEmployeeSession =
       employeeActor &&
-      String(existing.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO" &&
-      REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage);
+      stagedWorkRecordSession;
     if (employeeActor && !stagedEmployeeSession) {
       return NextResponse.json(
         { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED", error: "Employee session updates require an assigned Service Video stage." },
@@ -182,11 +188,22 @@ export async function PATCH(
             vendorId,
           });
           if (stagedEmployeeSession) {
-          await assertServiceVideoStageMutationAllowed(tx, {
-            bookingId: existing.bookingId!,
-            vendorId,
-            stage: stage as ServiceVideoStage,
-          });
+            await assertServiceVideoStageMutationAllowed(tx, {
+              bookingId: existing.bookingId!,
+              vendorId,
+              stage: stage as ServiceVideoStage,
+            });
+          }
+          if (stagedWorkRecordSession) {
+            await assertMediaSessionAuthorizationCurrent(tx, {
+              mediaSessionId: existing.id,
+              bookingId: existing.bookingId!,
+              vendorId,
+              membershipId: String(existing.capturedByMembershipId),
+              stage: stage as ServiceVideoStage,
+              surface: "media_session",
+              actorKind: "EMPLOYEE",
+            });
           }
           return updateSession(tx);
         }, { isolationLevel: "Serializable" })

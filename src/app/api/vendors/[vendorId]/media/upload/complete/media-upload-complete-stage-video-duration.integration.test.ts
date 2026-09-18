@@ -548,10 +548,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingId: "booking-1",
-        bookingMetadataAfterSave: JSON.stringify({
-          vendor_job_recording_location: "business",
-          reliance_ops: { operational_phase: "IN_PROGRESS" },
-        }),
+        operationalPhaseAfterSave: "IN_PROGRESS",
       }),
     );
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();

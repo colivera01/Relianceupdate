@@ -10,6 +10,17 @@ import {
 import { SERVICE_VIDEO_AUDIO_CONTRACT_VERSION } from "@/lib/recording/scope-assessment";
 import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
 import {
+  parseAssignmentMetadata,
+  parseCustomerMetadata,
+  validateRecordingLocationSnapshot,
+} from "@/lib/job-assignment";
+import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
+import {
+  requiredSafetyCheckForStage,
+  resolveV2StageSafetyReadiness,
+  type StoredEmployeeRecordingSafetyEvidence,
+} from "@/lib/recording/employee-safety";
+import {
   assertEmployeeParticipationEvidenceCurrent,
   employeeRecordingParticipationContractEnabled,
 } from "@/lib/employee-recording-participation";
@@ -165,6 +176,11 @@ export async function persistAllowedRecordingGateDecision(input: {
   const employeeParticipationEvidenceJson = employeeParticipationRequired
     ? stableJson(gate.employeeParticipation!.evidence)
     : null;
+  const evidenceVersion = v2
+    ? V2_RECORDING_GATE_EVIDENCE_VERSION
+    : employeeParticipationRequired
+      ? EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION
+      : null;
   if (
     v2 &&
     (!gate.v2Safety?.ready ||
@@ -198,9 +214,7 @@ export async function persistAllowedRecordingGateDecision(input: {
     audioContractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
     ...(v2 || employeeParticipationRequired
       ? {
-          evidenceVersion: employeeParticipationRequired
-            ? EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION
-            : V2_RECORDING_GATE_EVIDENCE_VERSION,
+          evidenceVersion,
           stage: input.stage,
           ...(v2
             ? {
@@ -239,11 +253,7 @@ export async function persistAllowedRecordingGateDecision(input: {
       safetyEvidenceId: v2 ? gate.v2Safety!.evidenceId : null,
       safetyEvidenceHash: v2 ? gate.v2Safety!.evidenceHash : null,
       stage: v2 || employeeParticipationRequired ? input.stage : null,
-      evidenceVersion: employeeParticipationRequired
-        ? EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION
-        : v2
-          ? V2_RECORDING_GATE_EVIDENCE_VERSION
-          : null,
+      evidenceVersion,
       employeeParticipationEvidenceJson,
       surface: input.surface,
       actorKind: input.actorKind,
@@ -309,11 +319,13 @@ export async function assertRecordingAuthorizationCurrent(
   const staleAuthorizationCode = employeeParticipationRequired
     ? "RECORDING_AUTHORIZATION_STALE"
     : "V2_RECORDING_AUTHORIZATION_STALE";
+  const expectedEvidenceVersion = v2
+    ? V2_RECORDING_GATE_EVIDENCE_VERSION
+    : employeeParticipationRequired
+      ? EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION
+      : null;
   if (
-    (v2 && !employeeParticipationRequired &&
-      evidence.evidenceVersion !== V2_RECORDING_GATE_EVIDENCE_VERSION) ||
-    (employeeParticipationRequired &&
-      evidence.evidenceVersion !== EMPLOYEE_PARTICIPATION_GATE_EVIDENCE_VERSION) ||
+    evidence.evidenceVersion !== expectedEvidenceVersion ||
     evidence.stage !== input.stage ||
     (v2 &&
       (!evidence.safetyEvidenceId ||
@@ -566,7 +578,7 @@ export async function saveVerifiedServiceVideoStage(input: {
   audioCodec?: string | null;
   audioDetectionMethod?: string;
   audioEvidenceVersion?: number;
-  bookingMetadataAfterSave?: string;
+  operationalPhaseAfterSave?: "IN_PROGRESS";
 }) {
   const contentHash = sha256(input.videoBuffer);
   return prisma.$transaction(async (tx: any) => {
@@ -709,10 +721,22 @@ export async function saveVerifiedServiceVideoStage(input: {
       },
     });
     await tx.mediaSession.update({ where: { id: input.mediaSessionId }, data: { status: "COMPLETED", endedAt: new Date() } });
-    if (input.bookingMetadataAfterSave !== undefined) {
+    if (input.operationalPhaseAfterSave) {
+      const currentBooking = await tx.booking.findFirst({
+        where: { id: input.bookingId, vendorId: input.vendorId },
+        select: { customerMetadata: true },
+      });
+      if (!currentBooking) {
+        throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE");
+      }
       await tx.booking.update({
         where: { id: input.bookingId },
-        data: { customerMetadata: input.bookingMetadataAfterSave },
+        data: {
+          customerMetadata: setOperationalPhaseOnMetadataJson(
+            currentBooking.customerMetadata,
+            input.operationalPhaseAfterSave,
+          ),
+        },
       });
     }
     return { asset, stageEvidence };
@@ -720,6 +744,34 @@ export async function saveVerifiedServiceVideoStage(input: {
 }
 
 async function loadCompleteCurrentStageEvidence(db: any, bookingId: string, vendorId: string) {
+  const [currentAssessment, booking] = await Promise.all([
+    db.recordingScopeAssessment?.findFirst
+      ? db.recordingScopeAssessment.findFirst({
+          where: { bookingId, vendorId, isCurrent: true },
+          orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+        })
+      : Promise.resolve(null),
+    db.booking?.findFirst ? db.booking.findFirst({
+      where: { id: bookingId, vendorId },
+      select: { customerMetadata: true },
+    }) : Promise.resolve(null),
+  ]);
+  const hardenedContext = Boolean(
+    currentAssessment &&
+      booking &&
+      (currentAssessment.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION ||
+        employeeRecordingParticipationContractEnabled(booking.customerMetadata)),
+  );
+  const assignment = parseAssignmentMetadata(booking?.customerMetadata);
+  const metadata = parseCustomerMetadata(booking?.customerMetadata);
+  const assignmentGeneration = Number(metadata.vendor_job_assignment_generation || 1);
+  const v2 = currentAssessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+  const location = v2 && currentAssessment?.locationType
+    ? validateRecordingLocationSnapshot(
+        booking?.customerMetadata,
+        currentAssessment.locationType,
+      )
+    : null;
   const stages: any[] = await db.serviceVideoStageEvidence.findMany({
     where: { bookingId, vendorId, isCurrent: true, uploadState: "SAVED" },
     orderBy: [{ stage: "asc" }, { stageVersion: "desc" }],
@@ -764,6 +816,100 @@ async function loadCompleteCurrentStageEvidence(db: any, bookingId: string, vend
       },
     });
     if (!gate || !asset || !session) throw new Error("SERVICE_VIDEO_EVIDENCE_CHAIN_INCOMPLETE");
+    if (hardenedContext) {
+      const currentGate = await loadRecordingPermissionGate({
+        bookingId,
+        vendorId,
+        customerMetadata: booking!.customerMetadata,
+        membershipId: row.employeeMembershipId,
+        surface: "employee_stage",
+        capability: "observe",
+        actorKind: "EMPLOYEE",
+        recordingStage: row.stage,
+        db,
+      });
+      if (
+        currentGate.blockCode ||
+        currentGate.assessmentId !== currentAssessment!.id ||
+        Number(currentGate.assessmentGeneration) !== Number(currentAssessment!.generation) ||
+        currentGate.scopeHash !== currentAssessment!.scopeHash ||
+        row.assessmentId !== currentAssessment!.id ||
+        Number(row.assessmentGeneration) !== Number(currentAssessment!.generation) ||
+        gate.assessmentId !== currentAssessment!.id ||
+        Number(gate.assessmentGeneration) !== Number(currentAssessment!.generation) ||
+        gate.scopeHash !== currentAssessment!.scopeHash ||
+        gate.assignmentGeneration !== assignmentGeneration ||
+        currentGate.assignmentGeneration !== assignmentGeneration ||
+        gate.certificationId !== currentGate.certificationId ||
+        (currentGate.permissionRequired &&
+          gate.permissionEvidenceId !== currentGate.permissionDecisionEvidenceId) ||
+        !assignment.assignedMembershipIds.includes(row.employeeMembershipId) ||
+        (gate.stage && gate.stage !== row.stage)
+      ) {
+        throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE");
+      }
+      if (
+        employeeRecordingParticipationContractEnabled(booking!.customerMetadata) &&
+        !gate.employeeParticipationEvidenceJson
+      ) {
+        throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_EVIDENCE_INVALID");
+      }
+      if (employeeRecordingParticipationContractEnabled(booking!.customerMetadata)) {
+        try {
+          await assertEmployeeParticipationEvidenceCurrent({
+            db,
+            bookingId,
+            vendorId,
+            customerMetadata: booking!.customerMetadata,
+            assessment: currentAssessment,
+            storedEvidenceJson: gate.employeeParticipationEvidenceJson,
+          });
+        } catch {
+          throw new ServiceVideoMutationBlockedError("EMPLOYEE_RECORDING_PARTICIPATION_STALE");
+        }
+      }
+      if (v2) {
+        const requirement = requiredSafetyCheckForStage(row.stage);
+        if (!requirement || !location?.ok || !location.snapshot.snapshotEvidenceHash) {
+          throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE");
+        }
+        const safetyRows = (await db.employeeRecordingSafetyEvidence.findMany({
+          where: {
+            bookingId,
+            vendorId,
+            assessmentId: currentAssessment!.id,
+            assessmentGeneration: currentAssessment!.generation,
+            membershipId: row.employeeMembershipId,
+            assignmentGeneration,
+            checkType: requirement.checkType,
+            stage: requirement.stage,
+          },
+          orderBy: [{ sequence: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        })) as StoredEmployeeRecordingSafetyEvidence[];
+        const readiness = resolveV2StageSafetyReadiness({
+          bookingId,
+          vendorId,
+          assessment: currentAssessment,
+          membershipId: row.employeeMembershipId,
+          assignmentGeneration,
+          locationSnapshotEvidenceHash: location.snapshot.snapshotEvidenceHash,
+          recordingStage: row.stage,
+          evidence: safetyRows,
+        });
+        const gateBoundSafety = safetyRows.find(
+          (candidate) =>
+            candidate.id === gate.safetyEvidenceId &&
+            candidate.evidenceHash === gate.safetyEvidenceHash &&
+            candidate.locationAttemptId === gate.locationAttemptId &&
+            candidate.locationAttemptEvidenceHash === gate.locationAttemptEvidenceHash,
+        );
+        if (!readiness.ready || !gateBoundSafety) {
+          throw new ServiceVideoMutationBlockedError(
+            readiness.code || "RECORDING_AUTHORIZATION_EVIDENCE_INVALID",
+          );
+        }
+      }
+    }
     assertServiceVideoAudioEvidenceConforms(row);
     assertServiceVideoAudioEvidenceConforms(asset);
     if (
@@ -786,6 +932,7 @@ export async function submitServiceVideoPackage(input: {
   vendorId: string;
   submittedByUserId?: string | null;
   submittedByMembershipId: string;
+  advanceBookingToManagerReview?: boolean;
 }) {
   return prisma.$transaction(async (tx: any) => {
     const stages = await loadCompleteCurrentStageEvidence(tx, input.bookingId, input.vendorId);
@@ -838,30 +985,53 @@ export async function submitServiceVideoPackage(input: {
         throw new ServiceVideoMutationBlockedError("CORRECTION_PACKAGE_INCOMPLETE");
       }
     }
-    if (current?.status === "AWAITING_MANAGER_REVIEW" && current.packageHash === packageHash) {
-      return current;
+    let packageEvidence = current;
+    if (!(current?.status === "AWAITING_MANAGER_REVIEW" && current.packageHash === packageHash)) {
+      const previous = await tx.serviceVideoPackageEvidence.findFirst({
+        where: { bookingId: input.bookingId },
+        orderBy: { version: "desc" },
+      });
+      await tx.serviceVideoPackageEvidence.updateMany({ where: { bookingId: input.bookingId, isCurrent: true }, data: { isCurrent: false } });
+      packageEvidence = await tx.serviceVideoPackageEvidence.create({
+        data: {
+          bookingId: input.bookingId,
+          vendorId: input.vendorId,
+          version: Number(previous?.version || 0) + 1,
+          isCurrent: true,
+          status: "AWAITING_MANAGER_REVIEW",
+          stageEvidenceJson,
+          packageHash,
+          audioExpected: stages.some((row: any) => Boolean(row.audioExpected)),
+          audioConformance: "CONFORMING",
+          audioEvidenceVersion: Math.max(...stages.map((row: any) => Number(row.audioEvidenceVersion || 1))),
+          submittedByUserId: input.submittedByUserId || null,
+          submittedByMembershipId: input.submittedByMembershipId,
+        },
+      });
     }
-    const previous = await tx.serviceVideoPackageEvidence.findFirst({
-      where: { bookingId: input.bookingId },
-      orderBy: { version: "desc" },
-    });
-    await tx.serviceVideoPackageEvidence.updateMany({ where: { bookingId: input.bookingId, isCurrent: true }, data: { isCurrent: false } });
-    return tx.serviceVideoPackageEvidence.create({
-      data: {
-        bookingId: input.bookingId,
-        vendorId: input.vendorId,
-        version: Number(previous?.version || 0) + 1,
-        isCurrent: true,
-        status: "AWAITING_MANAGER_REVIEW",
-        stageEvidenceJson,
-        packageHash,
-        audioExpected: stages.some((row: any) => Boolean(row.audioExpected)),
-        audioConformance: "CONFORMING",
-        audioEvidenceVersion: Math.max(...stages.map((row: any) => Number(row.audioEvidenceVersion || 1))),
-        submittedByUserId: input.submittedByUserId || null,
-        submittedByMembershipId: input.submittedByMembershipId,
-      },
-    });
+    if (input.advanceBookingToManagerReview) {
+      const currentBooking = await tx.booking.findFirst({
+        where: { id: input.bookingId, vendorId: input.vendorId },
+        select: { customerMetadata: true },
+      });
+      if (!currentBooking) {
+        throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE");
+      }
+      await tx.booking.update({
+        where: { id: input.bookingId },
+        data: {
+          status: "AWAITING_REVIEW",
+          customerMetadata: setOperationalPhaseOnMetadataJson(
+            currentBooking.customerMetadata,
+            "AWAITING_VENDOR_REVIEW",
+          ),
+          rejectionReason: null,
+          rejectedAt: null,
+          rejectedBy: null,
+        },
+      });
+    }
+    return packageEvidence;
   }, { isolationLevel: "Serializable" });
 }
 

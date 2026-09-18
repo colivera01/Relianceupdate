@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { ServiceVideoMutationBlockedError } from "@/lib/service-video-evidence";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
@@ -24,6 +25,7 @@ const hoisted = vi.hoisted(() => {
   const mediaLifecycleCaseFindFirst = vi.fn();
   const transaction = vi.fn();
   const geocodeAddress = vi.fn();
+  const assertMediaSessionAuthorizationCurrent = vi.fn();
 
   const prisma = {
     vendor: {
@@ -81,6 +83,7 @@ const hoisted = vi.hoisted(() => {
     mediaLifecycleCaseFindFirst,
     transaction,
     geocodeAddress,
+    assertMediaSessionAuthorizationCurrent,
   };
 });
 
@@ -97,6 +100,16 @@ vi.mock("@/lib/geocoding", async () => {
   return {
     ...actual,
     geocodeAddress: hoisted.geocodeAddress,
+  };
+});
+
+vi.mock("@/lib/service-video-evidence", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/service-video-evidence")>(
+    "@/lib/service-video-evidence",
+  );
+  return {
+    ...actual,
+    assertMediaSessionAuthorizationCurrent: hoisted.assertMediaSessionAuthorizationCurrent,
   };
 });
 
@@ -210,6 +223,8 @@ describe("vendor media sessions consent enforcement integration", () => {
     hoisted.mediaLifecycleCaseFindFirst.mockResolvedValue(null);
     hoisted.transaction.mockReset();
     hoisted.transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => callback(hoisted.prisma));
+    hoisted.assertMediaSessionAuthorizationCurrent.mockReset();
+    hoisted.assertMediaSessionAuthorizationCurrent.mockResolvedValue(undefined);
 
     mockBookingLocation("residence");
     hoisted.bookingFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
@@ -512,6 +527,37 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect((json.session as any)?.id).toBe("session-1");
     expect(hoisted.consentRecordFindFirst).toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reuse an occupied stage session whose authorization is stale", async () => {
+    mockBookingLocation("business");
+    hoisted.mediaSessionFindFirst.mockResolvedValue({
+      id: "session-stale",
+      vendorId: VENDOR_ID,
+      bookingId: BOOKING_ID,
+      capturedByMembershipId: "membership-1",
+      vendorJobVideoStage: "INTRO",
+      recordingGateDecisionId: "gate-stale",
+      status: "CREATED",
+    });
+    hoisted.assertMediaSessionAuthorizationCurrent.mockRejectedValue(
+      new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE"),
+    );
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: {
+        latitude: 28.53831,
+        longitude: -81.37919,
+        accuracyMeters: 20,
+      },
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("RECORDING_AUTHORIZATION_STALE");
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
   it("re-evaluates authority inside the serializable transaction and denies a raced lifecycle change", async () => {

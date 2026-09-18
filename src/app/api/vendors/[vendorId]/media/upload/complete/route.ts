@@ -4,7 +4,6 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { downloadBlobToBuffer, getBlobProperties } from "@/lib/azure-blob-storage";
-import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { STAGE_VIDEO_MAX_DURATION_SECONDS } from "@/lib/stage-video-guidance";
 import { probeVideoDurationSecondsFromBuffer } from "@/lib/server-video-duration";
 import {
@@ -356,10 +355,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         audioCodec: audioProbe.codec,
         audioDetectionMethod: audioProbe.detectionMethod,
         audioEvidenceVersion: SERVICE_VIDEO_AUDIO_EVIDENCE_VERSION,
-        bookingMetadataAfterSave: setOperationalPhaseOnMetadataJson(
-          booking.customerMetadata,
-          "IN_PROGRESS",
-        ),
+        operationalPhaseAfterSave: "IN_PROGRESS",
       });
       const updatedUsage = await calculateStorageUsage(vendorId);
       await checkAndCreateStorageAlerts(vendorId, updatedUsage);

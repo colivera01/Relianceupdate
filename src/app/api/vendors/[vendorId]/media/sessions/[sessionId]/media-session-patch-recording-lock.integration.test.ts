@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PATCH } from "./route";
+import { ServiceVideoMutationBlockedError } from "@/lib/service-video-evidence";
 
 const mocks = vi.hoisted(() => {
   const requireVendorMembership = vi.fn();
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
   const loadRecordingPermissionGate = vi.fn();
   const assertServiceVideoStageMutationAllowed = vi.fn();
+  const assertMediaSessionAuthorizationCurrent = vi.fn();
   const corePackageFindFirst = vi.fn();
   const transaction = vi.fn();
   const prisma = {
@@ -23,6 +25,7 @@ const mocks = vi.hoisted(() => {
     bookingFindFirst,
     loadRecordingPermissionGate,
     assertServiceVideoStageMutationAllowed,
+    assertMediaSessionAuthorizationCurrent,
     corePackageFindFirst,
     transaction,
     prisma,
@@ -37,7 +40,11 @@ vi.mock("@/lib/consent/recording-gate", () => ({
 }));
 vi.mock("@/lib/service-video-evidence", async () => {
   const actual = await vi.importActual<typeof import("@/lib/service-video-evidence")>("@/lib/service-video-evidence");
-  return { ...actual, assertServiceVideoStageMutationAllowed: mocks.assertServiceVideoStageMutationAllowed };
+  return {
+    ...actual,
+    assertMediaSessionAuthorizationCurrent: mocks.assertMediaSessionAuthorizationCurrent,
+    assertServiceVideoStageMutationAllowed: mocks.assertServiceVideoStageMutationAllowed,
+  };
 });
 
 describe("employee media-session PATCH manager-review lock", () => {
@@ -58,6 +65,7 @@ describe("employee media-session PATCH manager-review lock", () => {
     mocks.bookingFindFirst.mockResolvedValue({ id: "booking-1", customerMetadata: "{}" });
     mocks.transaction.mockImplementation(async (callback: (tx: any) => unknown) => callback(mocks.prisma));
     mocks.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
+    mocks.assertMediaSessionAuthorizationCurrent.mockResolvedValue(undefined);
     mocks.corePackageFindFirst.mockResolvedValue(null);
     mocks.mediaSessionUpdate.mockResolvedValue({ id: "session-1", status: "UPLOADING", mediaAssets: [] });
   });
@@ -100,7 +108,32 @@ describe("employee media-session PATCH manager-review lock", () => {
       mocks.prisma,
       { bookingId: "booking-1", vendorId: "vendor-1", stage: "INTRO" },
     );
+    expect(mocks.assertMediaSessionAuthorizationCurrent).toHaveBeenCalledWith(
+      mocks.prisma,
+      expect.objectContaining({ mediaSessionId: "session-1", stage: "INTRO" }),
+    );
     expect(mocks.mediaSessionUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a session update when scope changes after the initial gate check", async () => {
+    mocks.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true });
+    mocks.assertMediaSessionAuthorizationCurrent.mockRejectedValue(
+      new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE"),
+    );
+
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/media/sessions/session-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "UPLOADING" }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", sessionId: "session-1" }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.code).toBe("RECORDING_AUTHORIZATION_STALE");
+    expect(mocks.mediaSessionUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects a manager session PATCH after Admin PASS before durable mutation", async () => {

@@ -4,7 +4,12 @@ import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { deleteBlob, uploadBlobBuffer } from "@/lib/azure-blob-storage";
 import { prisma } from "@/server/db";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
-import { setUploadAttemptState } from "@/lib/service-video-evidence";
+import {
+  assertMediaSessionAuthorizationCurrent,
+  ServiceVideoMutationBlockedError,
+  setUploadAttemptState,
+  type ServiceVideoStage,
+} from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -93,6 +98,29 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       });
       if (!booking) {
         return { errorResponse: NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 }) };
+      }
+      if (uploadAttempt) {
+        try {
+          await assertMediaSessionAuthorizationCurrent(prisma as any, {
+            mediaSessionId: String(uploadAttempt.mediaSessionId),
+            bookingId,
+            vendorId,
+            membershipId,
+            stage: String(uploadAttempt.stage || "").trim().toUpperCase() as ServiceVideoStage,
+            surface: "upload_proxy",
+            actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+          });
+        } catch (error) {
+          if (error instanceof ServiceVideoMutationBlockedError) {
+            return {
+              errorResponse: NextResponse.json(
+                { code: error.code, error: "This upload no longer matches the current recording authorization." },
+                { status: 409 },
+              ),
+            };
+          }
+          throw error;
+        }
       }
       const permissionGate = await loadRecordingPermissionGate({
         bookingId: booking.id,

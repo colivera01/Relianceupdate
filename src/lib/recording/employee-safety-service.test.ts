@@ -452,6 +452,25 @@ describe("employee runtime-safety append service", () => {
     expect(db.safetyCreate).toHaveBeenCalledTimes(2);
   });
 
+  it("retries a SQL serialization conflict without creating duplicate evidence", async () => {
+    let attempts = 0;
+    db.transaction.mockImplementation(async (callback) => {
+      attempts += 1;
+      if (attempts === 1) {
+        const conflict: any = new Error("write conflict");
+        conflict.code = "P2034";
+        throw conflict;
+      }
+      return callback(tx);
+    });
+
+    const created = await append();
+
+    expect(created.id).toBe("safety-created");
+    expect(db.transaction).toHaveBeenCalledTimes(2);
+    expect(db.safetyCreate).toHaveBeenCalledOnce();
+  });
+
   it("serializes a concurrent READY versus BLOCKED race so the newer server event wins", async () => {
     const rows: any[] = [];
     let initialReads = 0;

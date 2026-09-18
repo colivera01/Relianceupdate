@@ -9,7 +9,14 @@ const hoisted = vi.hoisted(() => ({
   consentRecordFindFirst: vi.fn(),
   mediaUploadAttemptFindFirst: vi.fn(),
   setUploadAttemptState: vi.fn(),
+  assertMediaSessionAuthorizationCurrent: vi.fn(),
   loadRecordingPermissionGate: vi.fn(),
+  ServiceVideoMutationBlockedError: class ServiceVideoMutationBlockedError extends Error {
+    constructor(public readonly code: string) {
+      super(code);
+      this.name = "ServiceVideoMutationBlockedError";
+    }
+  },
 }));
 
 vi.mock("@/server/db", () => ({
@@ -34,6 +41,8 @@ vi.mock("@/lib/azure-blob-storage", () => ({
 }));
 
 vi.mock("@/lib/service-video-evidence", () => ({
+  assertMediaSessionAuthorizationCurrent: hoisted.assertMediaSessionAuthorizationCurrent,
+  ServiceVideoMutationBlockedError: hoisted.ServiceVideoMutationBlockedError,
   setUploadAttemptState: hoisted.setUploadAttemptState,
 }));
 
@@ -80,7 +89,14 @@ describe("employee media upload proxy", () => {
     hoisted.bookingFindFirst.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.mediaUploadAttemptFindFirst.mockReset();
-    hoisted.mediaUploadAttemptFindFirst.mockResolvedValue({ id: "attempt-1", state: "UPLOADING" });
+    hoisted.mediaUploadAttemptFindFirst.mockResolvedValue({
+      id: "attempt-1",
+      state: "UPLOADING",
+      mediaSessionId: "session-1",
+      stage: "INTRO",
+    });
+    hoisted.assertMediaSessionAuthorizationCurrent.mockReset();
+    hoisted.assertMediaSessionAuthorizationCurrent.mockResolvedValue({ id: "gate-1" });
     hoisted.setUploadAttemptState.mockReset();
     hoisted.setUploadAttemptState.mockResolvedValue({ count: 1 });
     hoisted.loadRecordingPermissionGate.mockReset();
@@ -238,6 +254,20 @@ describe("employee media upload proxy", () => {
     expect(hoisted.setUploadAttemptState).not.toHaveBeenCalled();
   });
 
+  it("rejects stale session evidence before any bytes reach Blob Storage", async () => {
+    hoisted.assertMediaSessionAuthorizationCurrent.mockRejectedValue(
+      new hoisted.ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE"),
+    );
+
+    const res = await POST(buildRequest(), context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("RECORDING_AUTHORIZATION_STALE");
+    expect(uploadBlobBuffer).not.toHaveBeenCalled();
+    expect(hoisted.loadRecordingPermissionGate).not.toHaveBeenCalled();
+  });
+
   it("removes an unaccepted candidate when manager review begins during Blob upload", async () => {
     hoisted.loadRecordingPermissionGate
       .mockResolvedValueOnce({ recordingUnlocked: true, blockCode: null })
@@ -257,5 +287,22 @@ describe("employee media upload proxy", () => {
     expect(uploadBlobBuffer).toHaveBeenCalledTimes(1);
     expect(deleteBlob).toHaveBeenCalledWith(VALID_BLOB_KEY);
     expect(hoisted.setUploadAttemptState).not.toHaveBeenCalled();
+  });
+
+  it("removes an unaccepted candidate when exact session evidence becomes stale during upload", async () => {
+    hoisted.assertMediaSessionAuthorizationCurrent
+      .mockResolvedValueOnce({ id: "gate-1" })
+      .mockResolvedValueOnce({ id: "gate-1" })
+      .mockRejectedValueOnce(
+        new hoisted.ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE"),
+      );
+
+    const res = await POST(buildRequest(), context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("RECORDING_AUTHORIZATION_STALE");
+    expect(uploadBlobBuffer).toHaveBeenCalledTimes(1);
+    expect(deleteBlob).toHaveBeenCalledWith(VALID_BLOB_KEY);
   });
 });

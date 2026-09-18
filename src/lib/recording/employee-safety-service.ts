@@ -347,10 +347,13 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
     { isolationLevel: "Serializable" },
   );
 
-  try {
-    return await run();
-  } catch (error: any) {
-    if (String(error?.code || "").toUpperCase() !== "P2002") throw error;
-    return run();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await run();
+    } catch (error: any) {
+      const code = String(error?.code || "").toUpperCase();
+      if (!(["P2002", "P2034"].includes(code)) || attempt === 2) throw error;
+    }
   }
+  return fail("V2_SAFETY_CONCURRENCY_RETRY_EXHAUSTED", "The safety evidence could not be serialized.");
 }

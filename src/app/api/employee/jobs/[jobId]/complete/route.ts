@@ -11,7 +11,6 @@ import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { sendJobCorrectionReadyNotification } from "@/lib/notifications/send-job-correction-ready";
-import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { submitServiceVideoPackage } from "@/lib/service-video-evidence";
 
 interface RouteParams {
@@ -99,6 +98,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         vendorId: booking.vendorId,
         submittedByUserId: tokenAccess?.userId || userId || null,
         submittedByMembershipId: submittingMembershipId,
+        advanceBookingToManagerReview: true,
       });
     } catch (packageError: any) {
       return NextResponse.json(
@@ -112,20 +112,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
-    const updated = await (prisma as any).booking.update({
+    const updated = await (prisma as any).booking.findUnique({
       where: { id: booking.id },
-      data: {
-        status: "AWAITING_REVIEW",
-        customerMetadata: setOperationalPhaseOnMetadataJson(
-          booking.customerMetadata,
-          "AWAITING_VENDOR_REVIEW"
-        ),
-        rejectionReason: null,
-        rejectedAt: null,
-        rejectedBy: null,
-      },
       select: { id: true, status: true, date: true },
     });
+    if (!updated) {
+      return NextResponse.json({ error: "Job not found after submission" }, { status: 404 });
+    }
 
     const notificationResults = [];
     const managers = await prisma.vendorMembership.findMany({
