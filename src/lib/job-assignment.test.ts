@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { parseAssignmentMetadata, validateRecordingLocationSnapshot } from "@/lib/job-assignment";
+import {
+  isServiceOrderReleasedForCurrentContext,
+  parseAssignmentMetadata,
+  validateRecordingLocationSnapshot,
+} from "@/lib/job-assignment";
 import { buildRecordingLocationSnapshot } from "@/lib/recording-location-snapshot";
 import type { GeocodeEvidence } from "@/lib/geocoding";
 
@@ -42,6 +46,61 @@ describe("parseAssignmentMetadata", () => {
       primaryMembershipId: null,
       primaryEmployeeName: null,
     });
+  });
+});
+
+describe("isServiceOrderReleasedForCurrentContext", () => {
+  const exactContext = {
+    membershipId: "member-1",
+    assignmentGeneration: 2,
+    assessmentId: "assessment-2",
+    assessmentGeneration: 2,
+    scopeHash: "scope-hash-2",
+  };
+  const metadata = JSON.stringify({
+    vendor_job_service_order_released_membership_ids: ["member-1"],
+    vendor_job_service_order_release_contexts: {
+      "member-1": {
+        version: 2,
+        assignmentGeneration: 2,
+        assessmentId: "assessment-2",
+        assessmentGeneration: 2,
+        scopeHash: "scope-hash-2",
+        notificationKind: "current-kind",
+        releasedAt: "2026-09-17T20:00:00.000Z",
+      },
+    },
+  });
+
+  it("accepts only the exact contextual release evidence", () => {
+    expect(isServiceOrderReleasedForCurrentContext(metadata, exactContext)).toBe(true);
+    expect(
+      isServiceOrderReleasedForCurrentContext(metadata, {
+        ...exactContext,
+        assessmentGeneration: 3,
+      }),
+    ).toBe(false);
+    expect(
+      isServiceOrderReleasedForCurrentContext(metadata, {
+        ...exactContext,
+        assignmentGeneration: 3,
+      }),
+    ).toBe(false);
+    expect(
+      isServiceOrderReleasedForCurrentContext(metadata, {
+        ...exactContext,
+        scopeHash: "changed-scope",
+      }),
+    ).toBe(false);
+  });
+
+  it("preserves historical release markers until an established invalidation clears them", () => {
+    expect(
+      isServiceOrderReleasedForCurrentContext(
+        JSON.stringify({ vendor_job_service_order_released_membership_ids: ["member-1"] }),
+        exactContext,
+      ),
+    ).toBe(true);
   });
 });
 

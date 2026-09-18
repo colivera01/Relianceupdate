@@ -938,6 +938,44 @@ describe("vendor job actions integration", () => {
     );
   });
 
+  it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER reports a concurrent delivery as in progress", async () => {
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: true,
+      alreadyReleased: false,
+      deliveryInProgress: true,
+      sentCount: 0,
+      releasedMembershipIds: [],
+      results: [{ membershipId: "member-1", deliveryInProgress: true }],
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: JSON.stringify({ vendor_job_assigned_membership_ids: ["member-1"] }),
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: null,
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "RELEASE_EMPLOYEE_SERVICE_ORDER",
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(202);
+    expect(json.success).toBe(true);
+    expect(json.notifications).toMatchObject({ deliveryInProgress: true, alreadyReleased: false });
+    expect(json.message).toBe("Employee Service Order delivery is already in progress.");
+    expect(recordLifecycleAudit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: "employee_service_order_released" }),
+    );
+  });
+
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER blocks a declined residence request despite mutable business metadata", async () => {
     vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
       ready: false,

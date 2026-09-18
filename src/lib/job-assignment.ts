@@ -357,6 +357,56 @@ export function isServiceOrderReleasedForMembership(
   return compliance.releasedMembershipIds.includes(normalizedMembershipId);
 }
 
+export type ServiceOrderReleaseContext = {
+  version: 2;
+  assignmentGeneration: number;
+  assessmentId: string | null;
+  assessmentGeneration: number | null;
+  scopeHash: string | null;
+  notificationKind: string | null;
+  releasedAt: string;
+};
+
+export function isServiceOrderReleasedForCurrentContext(
+  value: string | null | undefined,
+  input: {
+    membershipId: string | null | undefined;
+    assignmentGeneration: number;
+    assessmentId: string | null;
+    assessmentGeneration: number | null;
+    scopeHash: string | null;
+  },
+): boolean {
+  const membershipId = String(input.membershipId || "").trim();
+  if (!isServiceOrderReleasedForMembership(value, membershipId)) return false;
+
+  const metadata = parseCustomerMetadata(value);
+  const contexts = metadata.vendor_job_service_order_release_contexts;
+  if (!contexts || typeof contexts !== "object" || Array.isArray(contexts)) {
+    // Historical releases predate contextual evidence. Their existing release
+    // marker remains valid until an established invalidation path clears it.
+    return true;
+  }
+  const stored = (contexts as Record<string, unknown>)[membershipId];
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return false;
+  const context = stored as Record<string, unknown>;
+  if (Number(context.version) !== 2) return false;
+  const storedAssessmentGeneration =
+    context.assessmentGeneration === null ||
+    context.assessmentGeneration === undefined ||
+    context.assessmentGeneration === ""
+      ? null
+      : Number.isFinite(Number(context.assessmentGeneration))
+        ? Number(context.assessmentGeneration)
+        : null;
+  return (
+    Number(context.assignmentGeneration) === input.assignmentGeneration &&
+    (String(context.assessmentId || "").trim() || null) === input.assessmentId &&
+    storedAssessmentGeneration === input.assessmentGeneration &&
+    (String(context.scopeHash || "").trim() || null) === input.scopeHash
+  );
+}
+
 export function setStageProgressMetadata(
   value: string | null | undefined,
   stage: "INTRO" | "IN_PROGRESS" | "COMPLETED"

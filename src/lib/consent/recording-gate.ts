@@ -4,6 +4,7 @@ import {
   parseAssignmentMetadata,
   parseCustomerMetadata,
   parseRecordingComplianceMetadata,
+  isServiceOrderReleasedForCurrentContext,
   validateRecordingLocationSnapshot,
   type RecordingLocationChoice,
 } from "@/lib/job-assignment";
@@ -455,7 +456,13 @@ export async function loadCanonicalRecordingGate(input: {
     ? assignment.assignedMembershipIds.includes(input.membershipId)
     : assignment.assignedMembershipIds.length > 0;
   const released = input.membershipId
-    ? facts.compliance.releasedMembershipIds.includes(input.membershipId)
+    ? isServiceOrderReleasedForCurrentContext(authoritativeMetadata, {
+        membershipId: input.membershipId,
+        assignmentGeneration,
+        assessmentId: assessment?.id || null,
+        assessmentGeneration: assessment?.generation || null,
+        scopeHash: assessment?.scopeHash || null,
+      })
     : Boolean(facts.compliance.serviceOrderReleasedAt);
   const certification = assessment && input.membershipId
     ? await db.employeeRecordingCertification.findFirst({

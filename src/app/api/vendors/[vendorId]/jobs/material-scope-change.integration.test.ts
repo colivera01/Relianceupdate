@@ -137,6 +137,15 @@ describe("material recording scope change", () => {
         vendor_job_recording_location_snapshot: locationEvidence.snapshot,
         vendor_job_service_order_released_at: "2026-08-04T10:00:00.000Z",
         vendor_job_service_order_released_membership_ids: ["membership-1"],
+        vendor_job_service_order_release_contexts: {
+          "membership-1": {
+            version: 2,
+            assignmentGeneration: 1,
+            assessmentId: "assessment-1",
+            assessmentGeneration: 1,
+            scopeHash: "old-scope-hash",
+          },
+        },
         vendor_job_consent_accepted: true,
         vendor_job_consent_verified: true,
       }),
@@ -255,6 +264,7 @@ describe("material recording scope change", () => {
     const savedMetadata = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
     expect(savedMetadata.vendor_job_service_order_released_at).toBeUndefined();
     expect(savedMetadata.vendor_job_service_order_released_membership_ids).toBeUndefined();
+    expect(savedMetadata.vendor_job_service_order_release_contexts).toBeUndefined();
     expect(savedMetadata.vendor_job_consent_accepted).toBeUndefined();
     expect(createVerifiedPermissionRequest).toHaveBeenCalledWith(
       expect.objectContaining({ bookingId: "job-1", mediaSessionId: "permission-session-2" }),

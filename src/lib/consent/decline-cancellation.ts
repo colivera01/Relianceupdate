@@ -51,6 +51,7 @@ export async function cancelSimplifiedV1WorkRecordAfterDecline(input: {
   delete metadata.vendor_job_consent_token;
   delete metadata.vendor_job_service_order_released_membership_ids;
   delete metadata.vendor_job_service_order_released_at;
+  delete metadata.vendor_job_service_order_release_contexts;
   metadata.vendor_job_cancellation = {
     status: "CANCELED",
     canceled_at: input.decidedAt.toISOString(),

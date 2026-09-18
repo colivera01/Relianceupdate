@@ -276,6 +276,7 @@ export async function completePermissionDecision(input: {
       if (!accepted) {
         delete currentMetadata.vendor_job_service_order_released_membership_ids;
         delete currentMetadata.vendor_job_service_order_released_at;
+        delete currentMetadata.vendor_job_service_order_release_contexts;
       }
       await tx.booking.update({
         where: { id: record.bookingId },

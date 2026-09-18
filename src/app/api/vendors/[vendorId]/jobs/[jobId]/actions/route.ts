@@ -732,6 +732,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         metadata.essential_private_recording = nextAssessment.essentialPrivateRecording;
         delete metadata.vendor_job_service_order_released_membership_ids;
         delete metadata.vendor_job_service_order_released_at;
+        delete metadata.vendor_job_service_order_release_contexts;
         delete metadata.vendor_job_consent_accepted;
         delete metadata.vendor_job_consent_verified;
         delete metadata.vendor_job_consent_decided_at;
@@ -1006,6 +1007,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         } else {
           delete metadata.vendor_job_service_order_released_membership_ids;
           delete metadata.vendor_job_service_order_released_at;
+          delete metadata.vendor_job_service_order_release_contexts;
         }
       }
       const bookingUpper = normalizeBookingStatus(existing?.status);
@@ -1313,6 +1315,23 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         );
       }
       if (release.sentCount === 0 && !release.alreadyReleased) {
+        if (release.deliveryInProgress) {
+          return NextResponse.json(
+            {
+              success: true,
+              action,
+              notifications: {
+                sentCount: 0,
+                alreadyReleased: false,
+                deliveryInProgress: true,
+                forceResend,
+                results: release.results,
+              },
+              message: "Employee Service Order delivery is already in progress.",
+            },
+            { status: 202 },
+          );
+        }
         return NextResponse.json(
           apiResponse(false, "SERVICE_ORDER_NOTIFICATION_FAILED", "The Service Order link could not be delivered.", {
             notifications: release.results,
