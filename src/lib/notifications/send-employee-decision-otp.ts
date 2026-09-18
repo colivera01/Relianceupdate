@@ -4,6 +4,9 @@ import {
   escapeRelianceEmailHtml,
 } from "@/lib/email/reliance-template";
 import { readNotificationEnv } from "@/lib/env/notification-config";
+import {
+  getEmployeeDecisionChannelAvailability,
+} from "@/lib/employee-decision-channel-availability";
 import type { EmployeeDecisionPurpose } from "@/lib/employee-decision-verification";
 import { sendSms } from "@/lib/sms/twilio";
 
@@ -17,12 +20,13 @@ export async function sendEmployeeDecisionOtp(input: {
   purpose: EmployeeDecisionPurpose;
 }) {
   const env = readNotificationEnv();
+  const availability = getEmployeeDecisionChannelAvailability({ env });
   const isRecording = input.purpose === "EMPLOYEE_RECORDING_PARTICIPATION";
   const action = isRecording
     ? `recording participation for ${input.serviceName || "this service"}`
     : `Public Service Video participation for ${input.vendorName}`;
   if (input.channel === "email") {
-    if (!env.emailEnabled) {
+    if (!availability.email) {
       return { ok: false, errorCode: "EMAIL_DISABLED", errorMessage: "email_disabled" };
     }
     const result = await sendEmail({
@@ -52,7 +56,7 @@ export async function sendEmployeeDecisionOtp(input: {
       errorMessage: result.errorMessage,
     };
   }
-  if (!env.smsEnabled) {
+  if (!availability.sms) {
     return { ok: false, errorCode: "SMS_DISABLED", errorMessage: "sms_disabled" };
   }
   const result = await sendSms({

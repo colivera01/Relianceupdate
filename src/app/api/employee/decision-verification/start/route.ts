@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 import { resolveEmployeeDecisionActor } from "@/lib/employee-decision-entry";
 import {
+  assertEmployeeDecisionChannelAvailable,
+  availableEmployeeDecisionContacts,
+  getEmployeeDecisionChannelAvailability,
+} from "@/lib/employee-decision-channel-availability";
+import {
   assertEmployeeDecisionDisplayContext,
   EMPLOYEE_DECISION_PURPOSES,
   loadEmployeeDecisionContext,
@@ -39,6 +44,7 @@ export async function POST(request: Request) {
       displayedContextHash: body?.contextHash,
     });
     const channel = String(body?.channel || "").trim().toLowerCase();
+    const channelAvailability = getEmployeeDecisionChannelAvailability();
     if (!channel) {
       return NextResponse.json({
         success: true,
@@ -49,15 +55,17 @@ export async function POST(request: Request) {
           membershipId: context.membershipId,
           bookingId: context.bookingId,
         },
-        channels: {
-          email: context.recipient.emailMasked,
-          sms: context.recipient.phoneMasked,
-        },
+        channels: availableEmployeeDecisionContacts({
+          emailMasked: context.recipient.emailMasked,
+          phoneMasked: context.recipient.phoneMasked,
+          availability: channelAvailability,
+        }),
       });
     }
     if (channel !== "email" && channel !== "sms") {
       throw new Error("EMPLOYEE_DECISION_CHANNEL_INVALID");
     }
+    assertEmployeeDecisionChannelAvailable(channel, channelAvailability);
     const result = await startEmployeeDecisionVerification({
       db: prisma as any,
       context,
@@ -70,7 +78,7 @@ export async function POST(request: Request) {
     console.error("[employee/decision-verification/start] rejected", {
       code: error instanceof Error ? error.message : "EMPLOYEE_DECISION_VERIFICATION_FAILED",
     });
-    const failure = getEmployeeDecisionErrorResponse(error);
+    const failure = getEmployeeDecisionErrorResponse(error, "verification");
     return NextResponse.json(failure.body, { status: failure.status });
   }
 }

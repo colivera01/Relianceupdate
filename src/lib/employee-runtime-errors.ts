@@ -72,7 +72,10 @@ export function getEmployeeRuntimeErrorResponse(
   };
 }
 
-export function getEmployeeDecisionErrorResponse(error: unknown): {
+export function getEmployeeDecisionErrorResponse(
+  error: unknown,
+  phase: "verification" | "decision" = "decision",
+): {
   status: number;
   body: { success: false; code: string; error: string; staleContext?: boolean };
 } {
@@ -124,6 +127,26 @@ export function getEmployeeDecisionErrorResponse(error: unknown): {
       },
     };
   }
+  if (code === "EMPLOYEE_DECISION_CHANNEL_UNAVAILABLE") {
+    return {
+      status: 422,
+      body: {
+        success: false,
+        code,
+        error: "That Employee verification channel is not currently available. Choose an available channel.",
+      },
+    };
+  }
+  if (code === "EMPLOYEE_DECISION_RESEND_COOLDOWN") {
+    return {
+      status: 429,
+      body: {
+        success: false,
+        code,
+        error: "A verification code was sent recently. Wait one minute before requesting another code.",
+      },
+    };
+  }
   if (code.includes("SESSION")) {
     return {
       status: 401,
@@ -135,6 +158,19 @@ export function getEmployeeDecisionErrorResponse(error: unknown): {
     };
   }
   const runtime = getEmployeeRuntimeErrorResponse("decision", error);
+  if (phase === "verification") {
+    return {
+      status: runtime.status,
+      body: {
+        success: false,
+        code: runtime.body.code || "EMPLOYEE_IDENTITY_VERIFICATION_FAILED",
+        error:
+          runtime.body.code === "EMPLOYEE_RUNTIME_TEMPORARILY_UNAVAILABLE"
+            ? runtime.body.error
+            : "Employee identity verification could not be prepared. Reload the current Service Order and verify again.",
+      },
+    };
+  }
   return {
     status: runtime.status,
     body: {

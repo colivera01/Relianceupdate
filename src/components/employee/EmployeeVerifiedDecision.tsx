@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, Mail, MessageSquareText, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { buildEmployeeDecisionSubmission } from "@/lib/employee-decision-client";
 
 type Purpose =
   | "EMPLOYEE_RECORDING_PARTICIPATION"
@@ -111,6 +112,7 @@ export function EmployeeVerifiedDecision(props: {
     setWorking(true);
     setError("");
     setStaleContext(false);
+    let phase: "verification" | "decision" = "verification";
     try {
       const verifyResponse = await fetch("/api/employee/decision-verification/verify", {
         method: "POST",
@@ -122,11 +124,16 @@ export function EmployeeVerifiedDecision(props: {
       if (!verifyResponse.ok || verified?.success === false) {
         throw responseError(verified, "Verification was not completed.");
       }
+      phase = "decision";
       const decisionResponse = await fetch(props.submitUrl, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...props.headers },
-        body: JSON.stringify({ membershipId: props.membershipId, decision: props.decision }),
+        body: JSON.stringify(buildEmployeeDecisionSubmission({
+          membershipId: props.membershipId,
+          decision: props.decision,
+          contextHash: props.contextHash,
+        })),
       });
       const decisionBody = await decisionResponse.json().catch(() => ({}));
       if (!decisionResponse.ok || decisionBody?.success === false) {
@@ -134,7 +141,13 @@ export function EmployeeVerifiedDecision(props: {
       }
       await props.onComplete(decisionBody);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Your choice could not be saved.");
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : phase === "verification"
+            ? "Employee identity verification could not be completed. Verify again."
+            : "Your choice could not be saved.",
+      );
     } finally {
       setWorking(false);
     }
@@ -203,7 +216,15 @@ export function EmployeeVerifiedDecision(props: {
         <Button
           variant="outline"
           className="mt-3 border-amber-300 bg-transparent text-amber-100"
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            setError("");
+            setStaleContext(false);
+            setChannel(null);
+            setChallengeId("");
+            setCode("");
+            props.onCancel();
+            window.location.reload();
+          }}
         >
           Reload current Service Order
         </Button>

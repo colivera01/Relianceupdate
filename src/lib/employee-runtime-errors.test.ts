@@ -49,4 +49,29 @@ describe("employee runtime errors", () => {
     });
     expect(response.body.error).not.toContain("PARTICIPATION_CONTEXT_STALE");
   });
+
+  it("does not describe a verification preparation failure as a failed choice", () => {
+    const response = getEmployeeDecisionErrorResponse(
+      new Error("EMPLOYEE_DECISION_CONTEXT_UNAVAILABLE"),
+      "verification",
+    );
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe("EMPLOYEE_IDENTITY_VERIFICATION_FAILED");
+    expect(response.body.error).toContain("identity verification");
+    expect(response.body.error).not.toContain("choice");
+  });
+
+  it("maps unavailable channels to a truthful verification response", () => {
+    const response = getEmployeeDecisionErrorResponse(
+      new Error("EMPLOYEE_DECISION_CHANNEL_UNAVAILABLE"),
+      "verification",
+    );
+    expect(response).toMatchObject({
+      status: 422,
+      body: {
+        code: "EMPLOYEE_DECISION_CHANNEL_UNAVAILABLE",
+      },
+    });
+    expect(response.body.error).toContain("not currently available");
+  });
 });

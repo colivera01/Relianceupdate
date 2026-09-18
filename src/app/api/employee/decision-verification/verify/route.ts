@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     console.error("[employee/decision-verification/verify] rejected", {
       code: error instanceof Error ? error.message : "EMPLOYEE_DECISION_VERIFICATION_FAILED",
     });
-    const failure = getEmployeeDecisionErrorResponse(error);
+    const failure = getEmployeeDecisionErrorResponse(error, "verification");
     return NextResponse.json(failure.body, { status: failure.status });
   }
 }
