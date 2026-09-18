@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { permissionContentForAudio } from "./content-version";
+import {
+  buildAssessmentPermissionScopeJson,
+  permissionContentForAudio,
+} from "./content-version";
 
 describe("versioned recording-permission audio disclosure", () => {
   it("binds Video-only permission to a distinct disclosure and hash", () => {
@@ -31,5 +34,22 @@ describe("versioned recording-permission audio disclosure", () => {
     expect(content.content.boundary).toContain("service area");
     expect(content.content.prohibited).toContain("Minors");
     expect(content.content.audio).toBe("Audio will not be recorded.");
+  });
+
+  it("binds a permission request to the exact assessment identity without changing its scope hash", () => {
+    const result = JSON.parse(buildAssessmentPermissionScopeJson({
+      assessmentScopeJson: JSON.stringify({
+        contractVersion: "recording-assessment-v4-multiscope-safety-v1",
+        expectedPeople: ["CUSTOMER"],
+      }),
+      assessmentId: "assessment-v2-4",
+      assessmentGeneration: 4,
+      customerLabel: "Customer One",
+    }));
+    expect(result).toMatchObject({
+      recordingAssessmentId: "assessment-v2-4",
+      recordingAssessmentGeneration: 4,
+      customerLabel: "Customer One",
+    });
   });
 });

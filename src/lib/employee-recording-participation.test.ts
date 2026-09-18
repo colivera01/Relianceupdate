@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { hashOpaqueSecret } from "@/lib/consent/token";
 import { deriveRecordingScopeAssessment } from "@/lib/recording/scope-assessment";
 import {
+  parseRecordingAssessmentV2,
+  RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+} from "@/lib/recording/assessment-v2";
+import {
   EMPLOYEE_DECISION_PURPOSES,
   loadEmployeeDecisionContext,
 } from "./employee-decision-verification";
@@ -83,9 +87,14 @@ function createHarness() {
   let currentStageCount = 0;
   let privateProofReleased = false;
   let activePublicEligibility = false;
+  let transactionTail = Promise.resolve();
 
   const db: any = {
-    $transaction: (callback: any) => callback(db),
+    $transaction: (callback: any) => {
+      const result = transactionTail.then(() => callback(db));
+      transactionTail = result.then(() => undefined, () => undefined);
+      return result;
+    },
     vendorMembership: {
       findUnique: vi.fn(async ({ where }: any) =>
         memberships.find((row) => row.id === where.id) || null),
@@ -109,6 +118,8 @@ function createHarness() {
       }),
     },
     employeeRecordingParticipationDecision: {
+      findUnique: vi.fn(async ({ where }: any) =>
+        decisions.find((row) => row.id === where.id) || null),
       findFirst: vi.fn(async ({ where, orderBy }: any) => {
         const rows = decisions
           .filter((row) =>
@@ -184,6 +195,8 @@ function createHarness() {
 
   async function addSession(membershipId: string, secret: string) {
     const membership = memberships.find((row) => row.id === membershipId)!;
+    const existing = sessions.get(hashOpaqueSecret(secret));
+    if (existing) return membership;
     const employeeContext = await loadEmployeeDecisionContext({
       db,
       purpose: EMPLOYEE_DECISION_PURPOSES.RECORDING,
@@ -203,6 +216,8 @@ function createHarness() {
       verifiedContactHash: `contact-${membershipId}`,
       expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       consumedAt: null,
+      consumedByType: null,
+      consumedById: null,
     });
     return membership;
   }
@@ -270,6 +285,68 @@ describe("Employee Work Record recording participation", () => {
       requiredMembershipIds: ["membership-1", "membership-2"],
     });
     expect(complete.evidence).toHaveLength(2);
+  });
+
+  it("requires job-specific participation automatically for V2 without a metadata activation flag", async () => {
+    const harness = createHarness();
+    const canonical = parseRecordingAssessmentV2({
+      contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+      location: { type: "VENDOR_BUSINESS", snapshotEvidenceHash: "a".repeat(64) },
+      intendedSubjects: ["SERVICE_AREA_OR_EQUIPMENT", "SERVICE_PARTICIPANTS"],
+      expectedPeople: ["ASSIGNED_SERVICE_PROFESSIONAL"],
+      recordingFormat: "VIDEO_ONLY",
+      recordingArea: { boundary: "SERVICE_AREA_ONLY" },
+    });
+    Object.assign(harness.assessment, {
+      contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+      scopeJson: canonical.scopeJson,
+      subjectJson: canonical.subjectJson,
+      scopeHash: canonical.scopeHash,
+    });
+    const metadata = JSON.parse(harness.booking.customerMetadata);
+    delete metadata.vendor_job_employee_recording_participation_contract_version;
+    harness.booking.customerMetadata = JSON.stringify(metadata);
+
+    await expect(resolveEmployeeRecordingParticipation({
+      db: harness.db,
+      bookingId: harness.booking.id,
+      vendorId: harness.booking.vendorId,
+      customerMetadata: harness.booking.customerMetadata,
+      assessment: harness.assessment,
+    })).resolves.toMatchObject({
+      required: true,
+      complete: false,
+      status: "REQUIRED",
+      missingMembershipIds: ["membership-1", "membership-2"],
+    });
+  });
+
+  it("returns the original immutable decision for identical session retries", async () => {
+    const harness = createHarness();
+    const first = await harness.decide("membership-1", "ALLOW", "retry-secret");
+    const retry = await harness.decide("membership-1", "ALLOW", "retry-secret");
+    expect(retry).toMatchObject({ idempotent: true });
+    expect(retry.decision.id).toBe(first.decision.id);
+    expect(harness.decisions).toHaveLength(1);
+  });
+
+  it("fails closed when the same verified session is replayed with a different decision", async () => {
+    const harness = createHarness();
+    await harness.decide("membership-1", "ALLOW", "conflict-secret");
+    await expect(harness.decide("membership-1", "DECLINE", "conflict-secret"))
+      .rejects.toThrow("EMPLOYEE_RECORDING_PARTICIPATION_IDEMPOTENCY_CONFLICT");
+    expect(harness.decisions).toHaveLength(1);
+  });
+
+  it("serializes concurrent identical submissions into one canonical decision", async () => {
+    const harness = createHarness();
+    const [first, second] = await Promise.all([
+      harness.decide("membership-1", "ALLOW", "concurrent-secret"),
+      harness.decide("membership-1", "ALLOW", "concurrent-secret"),
+    ]);
+    expect(harness.decisions).toHaveLength(1);
+    expect(first.decision.id).toBe(second.decision.id);
+    expect([first.idempotent, second.idempotent].sort()).toEqual([false, true]);
   });
 
   it("fails closed when any assigned Employee declines", async () => {

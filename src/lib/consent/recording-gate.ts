@@ -25,6 +25,7 @@ import {
 } from "@/lib/recording/assessment-v2";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 import { validateV2SafetyLocationAttempt } from "@/lib/recording/v2-safety-location";
+import { resolveV2CustomerRecordingAuthorization } from "@/lib/recording/v2-customer-recording-authorization";
 import {
   employeeRecordingParticipationContractEnabled,
   resolveEmployeeRecordingParticipation,
@@ -37,17 +38,26 @@ export type RecordingPermissionRecord = {
   lifecycleStatus?: string | null;
   verifiedDecision?: boolean | null;
   isCurrent?: boolean | null;
+  supersededAt?: Date | string | null;
   scopeJson?: string | null;
   scopeHash?: string | null;
   expiresAt?: Date | string | null;
   decisionEvidence?: {
     id?: string | null;
+    decision?: string | null;
     claimedRole?: string | null;
     authorityScope?: string | null;
     verificationMethod?: string | null;
     verifiedContactHash?: string | null;
     scopeHash?: string | null;
+    contentHash?: string | null;
+    contentVersion?: string | null;
     metadata?: string | null;
+  } | null;
+  contentVersion?: {
+    version?: string | null;
+    contentHash?: string | null;
+    contentJson?: string | null;
   } | null;
   recipientMismatch?: boolean | null;
 };
@@ -191,8 +201,19 @@ function permissionFacts(input: {
       String(currentRecord.status || "").trim().toLowerCase() === "accepted" &&
       currentRecord.decisionEvidence?.id,
   );
-  const verifiedAllowed = recordClaimsAllowed && authorityEvidenceValid;
-  const permissionAuthorityInvalid = Boolean(recordClaimsAllowed && !authorityEvidenceValid);
+  const v2CustomerAuthorization =
+    input.assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+      ? resolveV2CustomerRecordingAuthorization({
+          assessment: input.assessment,
+          consentRecord: currentRecord,
+        })
+      : null;
+  const verifiedAllowed = v2CustomerAuthorization
+    ? v2CustomerAuthorization.allowed
+    : recordClaimsAllowed && authorityEvidenceValid;
+  const permissionAuthorityInvalid = v2CustomerAuthorization
+    ? v2CustomerAuthorization.status === "STALE"
+    : Boolean(recordClaimsAllowed && !authorityEvidenceValid);
   const permissionState: PermissionState | "not_required" = permissionRequired
     ? currentRecord
       ? stateFromRecord(currentRecord, verifiedAllowed, input.now ?? new Date())
@@ -207,6 +228,7 @@ function permissionFacts(input: {
     permissionState,
     authorityValidation,
     permissionAuthorityInvalid,
+    v2CustomerAuthorization,
   };
 }
 
@@ -379,6 +401,7 @@ export async function loadCanonicalRecordingGate(input: {
         lifecycleStatus: true,
         verifiedDecision: true,
         isCurrent: true,
+        supersededAt: true,
         scopeJson: true,
         scopeHash: true,
         expiresAt: true,
@@ -386,13 +409,19 @@ export async function loadCanonicalRecordingGate(input: {
         decisionEvidence: {
           select: {
             id: true,
+            decision: true,
             claimedRole: true,
             authorityScope: true,
             verificationMethod: true,
             verifiedContactHash: true,
             scopeHash: true,
+            contentHash: true,
+            contentVersion: true,
             metadata: true,
           },
+        },
+        contentVersion: {
+          select: { version: true, contentHash: true, contentJson: true },
         },
       },
     }),
@@ -497,7 +526,8 @@ export async function loadCanonicalRecordingGate(input: {
   const capability = input.capability || "record";
   const employeeParticipation =
     assessment &&
-    employeeRecordingParticipationContractEnabled(authoritativeMetadata)
+    (employeeRecordingParticipationContractEnabled(authoritativeMetadata) ||
+      assessment.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION)
       ? await resolveEmployeeRecordingParticipation({
           db,
           bookingId: input.bookingId,
@@ -759,6 +789,17 @@ export async function loadCanonicalRecordingGate(input: {
         resolution: "Create a valid V2 assessment and permission chain before recording.",
         serviceMayContinue: true,
       });
+    } else if (
+      assessmentInterpretation?.kind === "V2" &&
+      assessmentInterpretation.canonical.assessment.derived.participantPolicyStatus !== "SUPPORTED"
+    ) {
+      decision = blocked(base, {
+        code: "V2_PARTICIPANT_PLAN_CHANGE_REQUIRED",
+        why: "The proposed V2 recording scope includes a person Reliance does not currently support as an intentional recording participant.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Change the recording plan so minors, unrelated adults, and bystanders will not be intentionally recorded.",
+        serviceMayContinue: true,
+      });
     } else if (!locationSnapshot.ok) {
       const locationLabel =
         assessmentLocation === "business"
@@ -777,8 +818,12 @@ export async function loadCanonicalRecordingGate(input: {
       });
     } else if (facts.permissionRequired && facts.permissionAuthorityInvalid) {
       decision = blocked(base, {
-        code: "PERMISSION_AUTHORITY_INVALID",
-        why: "The saved permission does not contain current evidence for the authority required by this work record.",
+        code:
+          facts.v2CustomerAuthorization?.code ||
+          "PERMISSION_AUTHORITY_INVALID",
+        why: facts.v2CustomerAuthorization
+          ? "The saved Customer recording decision does not match the exact current V2 assessment, scope, text, or verified authority evidence."
+          : "The saved permission does not contain current evidence for the authority required by this work record.",
         responsibleParticipant: "VENDOR_MANAGER",
         resolution: "Correct the required decision-maker and send a new secure permission request.",
         serviceMayContinue: assessment.serviceCanContinueWithoutRecording,
@@ -796,6 +841,18 @@ export async function loadCanonicalRecordingGate(input: {
         why: "The approved scope may include a minor or protected non-participant without verified authority.",
         responsibleParticipant: "VENDOR_MANAGER",
         resolution: "Remove that person from the recording scope or obtain the required verified authority.",
+        serviceMayContinue: true,
+      });
+    } else if (
+      assessment.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+      facts.permissionRequired &&
+      String(facts.permissionState || "").toUpperCase() === "DECLINED"
+    ) {
+      decision = blocked(base, {
+        code: "CUSTOMER_RECORDING_DECLINED",
+        why: "The Customer declined recording for the exact current V2 scope.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Do not record. The underlying service may continue; any future recording proposal requires a separately governed new assessment.",
         serviceMayContinue: true,
       });
     } else if (facts.permissionRequired && !facts.verifiedAllowed) {

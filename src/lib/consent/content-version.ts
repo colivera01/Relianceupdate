@@ -44,6 +44,36 @@ export const PERMISSION_CONTENT_HASH = hashOpaqueSecret(
   PERMISSION_CONTENT_JSON,
 );
 
+export function buildAssessmentPermissionScopeJson(input: {
+  assessmentScopeJson: string;
+  assessmentId: string;
+  assessmentGeneration: number;
+  customerLabel?: string | null;
+}): string {
+  let scope: unknown;
+  try {
+    scope = JSON.parse(input.assessmentScopeJson);
+  } catch {
+    throw new Error("RECORDING_PERMISSION_SCOPE_INVALID");
+  }
+  if (!scope || typeof scope !== "object" || Array.isArray(scope)) {
+    throw new Error("RECORDING_PERMISSION_SCOPE_INVALID");
+  }
+  if (
+    !String(input.assessmentId || "").trim() ||
+    !Number.isInteger(input.assessmentGeneration) ||
+    input.assessmentGeneration < 1
+  ) {
+    throw new Error("RECORDING_PERMISSION_ASSESSMENT_IDENTITY_INVALID");
+  }
+  return stableJson({
+    ...(scope as Record<string, unknown>),
+    customerLabel: String(input.customerLabel || "").trim() || null,
+    recordingAssessmentId: input.assessmentId,
+    recordingAssessmentGeneration: input.assessmentGeneration,
+  });
+}
+
 export function permissionContentForAudio(
   audioEnabled: boolean,
   simplifiedWorkScope = false,
@@ -84,6 +114,7 @@ export function buildPermissionScope(input: {
   recordingLocation: string;
   customerName?: string | null;
   recordingAssessmentId?: string | null;
+  recordingAssessmentGeneration?: number | null;
   recordingAssessmentScopeHash?: string | null;
   audioEnabled?: boolean;
 }) {
@@ -98,6 +129,7 @@ export function buildPermissionScope(input: {
     customerLabel: String(input.customerName || "").trim() || null,
     publicSharingIncluded: false,
     recordingAssessmentId: input.recordingAssessmentId || null,
+    recordingAssessmentGeneration: input.recordingAssessmentGeneration || null,
     recordingAssessmentScopeHash: input.recordingAssessmentScopeHash || null,
   };
 }

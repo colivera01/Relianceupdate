@@ -27,6 +27,37 @@ export class PermissionDecisionError extends Error {
   }
 }
 
+export function permissionDecisionRetryMatches(input: {
+  record: any;
+  evidence: any;
+  session: any;
+  decision: "allow" | "decline";
+  claimedRole: string;
+  authorityScope: string;
+  requestHash: string;
+  contentHash: string;
+  contentVersion: string;
+}): boolean {
+  const expectedDecision = input.decision === "allow" ? "ALLOWED" : "DECLINED";
+  return Boolean(
+    input.record?.isCurrent === true &&
+      !input.record?.supersededAt &&
+      input.session?.consumedAt &&
+      input.evidence?.decision === expectedDecision &&
+      input.evidence?.requestHash === input.requestHash &&
+      input.evidence?.scopeHash === input.record?.scopeHash &&
+      input.evidence?.contentHash === input.contentHash &&
+      input.evidence?.contentVersion === input.contentVersion &&
+      input.evidence?.claimedRole === input.claimedRole &&
+      input.evidence?.authorityScope === input.authorityScope &&
+      input.evidence?.verificationMethod === input.session?.verificationMethod &&
+      (input.evidence?.verifiedContactHash || null) ===
+        (input.session?.verifiedContactHash || null) &&
+      (!input.session?.verifiedUserId ||
+        input.evidence?.actorUserId === input.session.verifiedUserId),
+  );
+}
+
 function authorityDecisionError(validation: AuthorityValidationResult) {
   if (validation.code === "AUTHORITY_MISMATCH") {
     return new PermissionDecisionError(
@@ -62,7 +93,8 @@ export async function completePermissionDecision(input: {
 }) {
   const link = await findPermissionByActionSecret(input.actionSecret);
   const availability = actionLinkAvailability(link);
-  if (!availability.active) {
+  const existingEvidence = link?.consentRecord?.decisionEvidence || null;
+  if (!availability.active && !existingEvidence) {
     throw new PermissionDecisionError("PERMISSION_NOT_AVAILABLE", 409, "This recording request is no longer available.");
   }
   const claimedRole = String(input.claimedRole || "").trim().toLowerCase();
@@ -83,7 +115,6 @@ export async function completePermissionDecision(input: {
   if (
     !session ||
     session.consentRecordId !== link.consentRecordId ||
-    session.consumedAt ||
     new Date(session.expiresAt).getTime() <= Date.now()
   ) {
     throw new PermissionDecisionError("IDENTITY_VERIFICATION_REQUIRED", 401, "Verify your identity before deciding.");
@@ -104,10 +135,99 @@ export async function completePermissionDecision(input: {
   if (!record.scopeHash || !contentHash || !contentVersion) {
     throw new PermissionDecisionError("PERMISSION_EVIDENCE_INCOMPLETE", 409, "This request must be reissued before recording can be allowed.");
   }
+  if (existingEvidence) {
+    const retryMatches = permissionDecisionRetryMatches({
+      record,
+      evidence: existingEvidence,
+      session,
+      decision: input.decision,
+      claimedRole,
+      authorityScope,
+      requestHash,
+      contentHash,
+      contentVersion,
+    });
+    if (!retryMatches) {
+      throw new PermissionDecisionError(
+        "PERMISSION_DECISION_IDEMPOTENCY_CONFLICT",
+        409,
+        "This verified recording-permission request was already used for a different or stale decision.",
+      );
+    }
+    return {
+      record,
+      evidence: existingEvidence,
+      cancellation: null,
+      bookingId: record.bookingId,
+      accepted: input.decision === "allow",
+      simplifiedV1,
+      workRecordCanceled: ["CANCELED", "CANCELLED"].includes(
+        String(record.booking?.status || "").toUpperCase(),
+      ),
+      audioEnabled: Boolean(record.audioEnabled),
+      idempotent: true,
+    };
+  }
+  if (session.consumedAt) {
+    throw new PermissionDecisionError(
+      "DECISION_SESSION_USED",
+      409,
+      "This verification session was already used.",
+    );
+  }
+
+  const recoverCompletedRetry = async () => {
+    const [retryRecord, retrySession] = await Promise.all([
+      (prisma as any).consentRecord.findUnique({
+        where: { id: record.id },
+        include: {
+          contentVersion: true,
+          decisionEvidence: true,
+          booking: { select: { status: true } },
+        },
+      }),
+      (prisma as any).consentDecisionSession.findUnique({
+        where: { id: session.id },
+      }),
+    ]);
+    const evidence = retryRecord?.decisionEvidence || null;
+    if (!evidence || !retrySession) return null;
+    if (!permissionDecisionRetryMatches({
+      record: retryRecord,
+      evidence,
+      session: retrySession,
+      decision: input.decision,
+      claimedRole,
+      authorityScope,
+      requestHash,
+      contentHash,
+      contentVersion,
+    })) {
+      throw new PermissionDecisionError(
+        "PERMISSION_DECISION_IDEMPOTENCY_CONFLICT",
+        409,
+        "This verified recording-permission request was already used for a different or stale decision.",
+      );
+    }
+    return {
+      record: retryRecord,
+      evidence,
+      cancellation: null,
+      bookingId: retryRecord.bookingId,
+      accepted: input.decision === "allow",
+      simplifiedV1,
+      workRecordCanceled: ["CANCELED", "CANCELLED"].includes(
+        String(retryRecord.booking?.status || "").toUpperCase(),
+      ),
+      audioEnabled: Boolean(retryRecord.audioEnabled),
+      idempotent: true,
+    };
+  };
 
   let result;
-  try {
-    result = await prisma.$transaction(async (tx) => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      result = await prisma.$transaction(async (tx) => {
     const currentRecord = await (tx as any).consentRecord.findFirst({
       where: {
         id: record.id,
@@ -306,24 +426,43 @@ export async function completePermissionDecision(input: {
         }),
       },
     });
-    return { record: updatedRecord, evidence, cancellation };
-    }, { isolationLevel: "Serializable" as any });
-  } catch (error: any) {
-    if (String(error?.code || "") === "P2002") {
-      throw new PermissionDecisionError(
-        "PERMISSION_ALREADY_DECIDED",
-        409,
-        "A final recording permission decision has already been recorded."
-      );
+      return { record: updatedRecord, evidence, cancellation };
+      }, { isolationLevel: "Serializable" as any });
+      break;
+    } catch (error: any) {
+      const errorCode = String(error?.code || "");
+      const retryable =
+        ["P2002", "P2034"].includes(errorCode) ||
+        (error instanceof PermissionDecisionError &&
+          ["PERMISSION_NOT_AVAILABLE", "DECISION_SESSION_USED"].includes(error.code));
+      if (retryable) {
+        const recovered = await recoverCompletedRetry();
+        if (recovered) return recovered;
+        if (errorCode === "P2034" && attempt < 2) continue;
+        if (errorCode === "P2002") {
+          throw new PermissionDecisionError(
+            "PERMISSION_ALREADY_DECIDED",
+            409,
+            "A final recording permission decision has already been recorded.",
+          );
+        }
+      }
+      if (String(error?.message || "") === "DECLINE_CANCELLATION_STATE_CHANGED") {
+        throw new PermissionDecisionError(
+          "PERMISSION_NOT_AVAILABLE",
+          409,
+          "This recording request is no longer available because the Reliance work record changed."
+        );
+      }
+      throw error;
     }
-    if (String(error?.message || "") === "DECLINE_CANCELLATION_STATE_CHANGED") {
-      throw new PermissionDecisionError(
-        "PERMISSION_NOT_AVAILABLE",
-        409,
-        "This recording request is no longer available because the Reliance work record changed."
-      );
-    }
-    throw error;
+  }
+  if (!result) {
+    throw new PermissionDecisionError(
+      "PERMISSION_DECISION_CONCURRENCY_RETRY_EXHAUSTED",
+      409,
+      "The recording-permission decision could not be serialized.",
+    );
   }
   return {
     ...result,
@@ -332,5 +471,6 @@ export async function completePermissionDecision(input: {
     simplifiedV1,
     workRecordCanceled: Boolean(result.cancellation),
     audioEnabled: Boolean(record.audioEnabled),
+    idempotent: false,
   };
 }

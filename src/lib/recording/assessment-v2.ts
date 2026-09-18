@@ -53,6 +53,8 @@ export type RecordingAreaBoundaryV2 = (typeof V2_RECORDING_AREA_BOUNDARIES)[numb
 export type V2ParticipantPolicyStatus = "SUPPORTED" | "PLAN_CHANGE_REQUIRED";
 export type V2ExpectedAuthority = "CUSTOMER" | "VENDOR_MANAGER";
 
+export type V2RecordingLocationChoice = "business" | "residence" | "customer-business";
+
 export type RecordingAssessmentV2 = {
   contractVersion: typeof RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
   location: {
@@ -93,6 +95,14 @@ export class RecordingAssessmentV2ValidationError extends Error {
     super(message);
     this.name = "RecordingAssessmentV2ValidationError";
   }
+}
+
+export function v2LocationToRecordingChoice(
+  value: RecordingLocationTypeV2,
+): V2RecordingLocationChoice {
+  if (value === "VENDOR_BUSINESS") return "business";
+  if (value === "CUSTOMER_RESIDENCE") return "residence";
+  return "customer-business";
 }
 
 function invalid(code: string, message: string): never {

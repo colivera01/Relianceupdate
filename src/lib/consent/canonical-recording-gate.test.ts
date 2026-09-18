@@ -688,6 +688,97 @@ describe("database-backed canonical recording gate", () => {
     });
   });
 
+  it("uses a distinct current-scope block when the Customer declined V2 recording", async () => {
+    const canonical = parseRecordingAssessmentV2({
+      contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+      location: {
+        type: "VENDOR_BUSINESS",
+        snapshotEvidenceHash: v2Location.snapshotEvidenceHash,
+      },
+      intendedSubjects: ["SERVICE_AREA_OR_EQUIPMENT"],
+      expectedPeople: ["NO_IDENTIFIABLE_PEOPLE"],
+      recordingFormat: "VIDEO_AUDIO",
+      recordingArea: { boundary: "SERVICE_AREA_ONLY" },
+    });
+    const customerAssessment = {
+      ...v2Assessment,
+      id: "assessment-v2-customer",
+      scopeJson: canonical.scopeJson,
+      subjectJson: canonical.subjectJson,
+      scopeHash: canonical.scopeHash,
+      audioRequested: true,
+      audioAllowed: true,
+      permissionRequired: true,
+      authorityHolderType: "CUSTOMER",
+    };
+    const validation = evaluatePermissionAuthority({
+      assessment: customerAssessment,
+      claimedRole: "customer",
+      authorityScope: "self_and_property",
+      verificationMethod: "email_otp",
+      verifiedContactHash: "verified-v2-customer",
+    });
+    const stored = buildStoredAuthorityEvidence({ assessment: customerAssessment, validation });
+    db.assessmentFindFirst.mockResolvedValue(customerAssessment);
+    db.consentFindFirst.mockResolvedValue({
+      id: "permission-v2-declined",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeHash: canonical.scopeHash,
+      scopeJson: JSON.stringify({
+        ...JSON.parse(canonical.scopeJson),
+        recordingAssessmentId: customerAssessment.id,
+        recordingAssessmentGeneration: customerAssessment.generation,
+      }),
+      decisionEvidence: {
+        id: "decision-v2-declined",
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+        verificationMethod: "email_otp",
+        verifiedContactHash: "verified-v2-customer",
+        scopeHash: canonical.scopeHash,
+        metadata: JSON.stringify({ authority: stored }),
+      },
+    });
+
+    const result = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(result).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "CUSTOMER_RECORDING_DECLINED",
+      block: { responsibleParticipant: "VENDOR_MANAGER", serviceMayContinue: true },
+    });
+  });
+
+  it("blocks unsupported intentional V2 participants before runtime safety", async () => {
+    const canonical = parseRecordingAssessmentV2({
+      contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+      location: {
+        type: "VENDOR_BUSINESS",
+        snapshotEvidenceHash: v2Location.snapshotEvidenceHash,
+      },
+      intendedSubjects: ["SERVICE_AREA_OR_EQUIPMENT"],
+      expectedPeople: ["BYSTANDER_NONPARTICIPANT"],
+      recordingFormat: "VIDEO_ONLY",
+      recordingArea: { boundary: "SERVICE_AREA_ONLY" },
+    });
+    db.assessmentFindFirst.mockResolvedValue({
+      ...v2Assessment,
+      id: "assessment-v2-plan-change",
+      scopeJson: canonical.scopeJson,
+      subjectJson: canonical.subjectJson,
+      scopeHash: canonical.scopeHash,
+    });
+    db.consentFindFirst.mockResolvedValue(null);
+    const result = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(result).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_PARTICIPANT_PLAN_CHANGE_REQUIRED",
+      block: { responsibleParticipant: "VENDOR_MANAGER" },
+    });
+  });
+
   it("fails closed for an unknown explicit assessment contract", async () => {
     db.assessmentFindFirst.mockResolvedValue({
       ...assessment,

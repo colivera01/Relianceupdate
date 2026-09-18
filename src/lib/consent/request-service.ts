@@ -2,8 +2,8 @@ import { prisma } from "@/server/db";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
 import { createAdminAuditLog } from "@/lib/admin-audit";
 import {
+  buildAssessmentPermissionScopeJson,
   permissionContentForAudio,
-  stableJson,
 } from "./content-version";
 import { buildPermissionRecipient } from "./recipient";
 import { PERMISSION_LINK_TTL_HOURS } from "./state-machine";
@@ -86,10 +86,11 @@ export async function createVerifiedPermissionRequest(input: {
     : null;
   const recipientMismatch = Boolean(emailOwner && phoneOwner && emailOwner !== phoneOwner);
   const hasChannel = Boolean(recipient.email || recipient.phone);
-  const scopeJson = stableJson({
-    ...JSON.parse(String(assessment.scopeJson || "{}")),
-    customerLabel: recipient.name || null,
-    recordingAssessmentId: assessment.id,
+  const scopeJson = buildAssessmentPermissionScopeJson({
+    assessmentScopeJson: String(assessment.scopeJson || ""),
+    assessmentId: assessment.id,
+    assessmentGeneration: Number(assessment.generation),
+    customerLabel: recipient.name,
   });
   const scopeHash = String(assessment.scopeHash);
   const permissionContent = permissionContentForAudio(
@@ -205,6 +206,8 @@ export async function createVerifiedPermissionRequest(input: {
           recipientEmailMasked: recipient.emailMasked,
           recipientPhoneMasked: recipient.phoneMasked,
           scopeHash,
+          recordingAssessmentId: assessment.id,
+          recordingAssessmentGeneration: Number(assessment.generation),
           contentVersion: permissionContent.version,
           audioEnabled: Boolean(assessment.audioAllowed),
         }),

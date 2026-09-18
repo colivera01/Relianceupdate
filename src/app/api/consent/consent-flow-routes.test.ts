@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => {
   const consentRequestLinkUpdate = vi.fn();
   const consentRequestLinkUpdateMany = vi.fn();
   const consentRecordFindFirst = vi.fn();
+  const consentRecordFindUnique = vi.fn();
   const consentRecordUpdate = vi.fn();
   const consentEventCreate = vi.fn();
   const consentDecisionSessionFindUnique = vi.fn();
@@ -32,7 +33,11 @@ const hoisted = vi.hoisted(() => {
       update: consentRequestLinkUpdate,
       updateMany: consentRequestLinkUpdateMany,
     },
-    consentRecord: { findFirst: consentRecordFindFirst, update: consentRecordUpdate },
+    consentRecord: {
+      findFirst: consentRecordFindFirst,
+      findUnique: consentRecordFindUnique,
+      update: consentRecordUpdate,
+    },
     consentEvent: { create: consentEventCreate },
     consentDecisionSession: {
       findUnique: consentDecisionSessionFindUnique,
@@ -53,6 +58,7 @@ const hoisted = vi.hoisted(() => {
     consentRequestLinkUpdate,
     consentRequestLinkUpdateMany,
     consentRecordFindFirst,
+    consentRecordFindUnique,
     consentRecordUpdate,
     consentEventCreate,
     consentDecisionSessionFindUnique,
@@ -142,6 +148,7 @@ describe("verified recording permission routes", () => {
     vi.clearAllMocks();
     hoisted.consentRequestLinkFindUnique.mockResolvedValue(buildLink());
     hoisted.consentRequestLinkUpdate.mockResolvedValue({ id: "link-1" });
+    hoisted.consentRecordFindUnique.mockResolvedValue(null);
     hoisted.consentDecisionSessionFindUnique.mockResolvedValue({
       id: "session-1",
       consentRecordId: "permission-1",

@@ -10,6 +10,7 @@ import {
 } from "@/lib/employee-decision-verification";
 import { parseAssignmentMetadata, parseCustomerMetadata } from "@/lib/job-assignment";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
 
 export const EMPLOYEE_RECORDING_PARTICIPATION_CONTRACT_VERSION =
   "employee-recording-participation-v1";
@@ -208,7 +209,9 @@ export async function resolveEmployeeRecordingParticipation(input: {
   customerMetadata: string | null | undefined;
   assessment: any | null;
 }): Promise<EmployeeRecordingParticipationResolution> {
-  const enabled = employeeRecordingParticipationContractEnabled(input.customerMetadata);
+  const enabled =
+    employeeRecordingParticipationContractEnabled(input.customerMetadata) ||
+    input.assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
   if (!enabled || !input.assessment || !assessmentIntentionallyIncludesAssignedEmployee(input.assessment)) {
     return {
       required: false,
@@ -471,7 +474,7 @@ export async function decideEmployeeRecordingParticipation(input: {
     bookingId: input.bookingId,
   });
   const now = input.now || new Date();
-  return input.db.$transaction(async (tx: any) => {
+  const run = () => input.db.$transaction(async (tx: any) => {
     const currentContext = await loadEmployeeDecisionContext({
       db: tx,
       purpose: EMPLOYEE_DECISION_PURPOSES.RECORDING,
@@ -481,6 +484,38 @@ export async function decideEmployeeRecordingParticipation(input: {
     });
     if (currentContext.contextHash !== context.contextHash) {
       throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONTEXT_STALE");
+    }
+    const priorSession = await tx.employeeVerifiedDecisionSession.findUnique({
+      where: { secretHash: hashOpaqueSecret(input.sessionSecret) },
+    });
+    if (priorSession?.consumedAt) {
+      const priorDecision = priorSession.consumedByType === "EMPLOYEE_RECORDING_PARTICIPATION_DECISION" &&
+          priorSession.consumedById
+        ? await tx.employeeRecordingParticipationDecision.findUnique({
+            where: { id: priorSession.consumedById },
+          })
+        : null;
+      if (
+        new Date(priorSession.expiresAt).getTime() <= now.getTime() ||
+        priorSession.purpose !== currentContext.purpose ||
+        priorSession.contextHash !== currentContext.contextHash ||
+        priorSession.userId !== currentContext.userId ||
+        priorSession.vendorId !== currentContext.vendorId ||
+        priorSession.membershipId !== currentContext.membershipId ||
+        !priorDecision ||
+        priorDecision.decision !== decision ||
+        priorDecision.verificationSessionId !== priorSession.id ||
+        !rowMatchesContext(priorDecision, currentContext)
+      ) {
+        throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_IDEMPOTENCY_CONFLICT");
+      }
+      return {
+        decision: priorDecision,
+        capturedMediaAffected: priorDecision.capturedMediaAffected === true,
+        privateProofReleased: false,
+        vendorNotificationId: null,
+        idempotent: true,
+      };
     }
     const id = randomUUID();
     const session = await consumeEmployeeDecisionSession({
@@ -593,8 +628,19 @@ export async function decideEmployeeRecordingParticipation(input: {
       capturedMediaAffected,
       privateProofReleased,
       vendorNotificationId,
+      idempotent: false,
     };
   }, { isolationLevel: "Serializable" });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await run();
+    } catch (error: any) {
+      if (!["P2002", "P2034"].includes(String(error?.code || "")) || attempt === 2) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_CONCURRENCY_RETRY_EXHAUSTED");
 }
 
 export async function assertEmployeeParticipationEvidenceCurrent(input: {
