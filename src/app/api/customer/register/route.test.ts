@@ -269,7 +269,7 @@ describe("POST /api/customer/register", () => {
         claim_status: "UNCLAIMED",
         client_email: "beta.customer@reliance.test",
       },
-      new Date("2026-09-01T12:00:00.000Z"),
+      new Date(),
     );
     hoisted.bookingFindUnique.mockResolvedValueOnce({
       id: "booking-1",

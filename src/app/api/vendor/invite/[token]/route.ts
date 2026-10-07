@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { sendTeamInviteAcceptedNotification } from "@/lib/notifications/send-team-invite-accepted";
 import { membershipActivationData } from "@/lib/vendor-membership-generation";
+import { findActiveAdminIdentityCollision } from "@/lib/platform-role-identity";
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -251,16 +252,33 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     step = "existing_user_lookup";
-    let user = email
+    const emailUser = email
       ? await (prisma as any).user.findUnique({
           where: { email },
         })
       : null;
-    if (!user && phone) {
-      user = await (prisma as any).user.findUnique({
-        where: { phone },
-      });
+    const phoneUser = phone
+      ? await (prisma as any).user.findUnique({
+          where: { phone },
+        })
+      : null;
+    const adminCollisionUserId = await findActiveAdminIdentityCollision({
+      db: prisma as any,
+      userIds: [emailUser?.id, phoneUser?.id],
+    });
+    if (adminCollisionUserId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "That contact belongs to a Reliance platform administrator. Use a distinct Employee contact.",
+          code: "PLATFORM_ADMIN_IDENTITY_COLLISION",
+          ...(process.env.NODE_ENV !== "production" ? { step } : {}),
+        },
+        { status: 409 }
+      );
     }
+    let user = emailUser || phoneUser;
 
     if (!user) {
       step = "user_create";

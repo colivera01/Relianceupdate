@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 import { sendEmployeeInviteNotification } from "@/lib/notifications/send-employee-invite";
 import { readNotificationEnv } from "@/lib/env/notification-config";
+import { findActiveAdminIdentityCollision } from "@/lib/platform-role-identity";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -184,17 +185,31 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     step = "lookup_or_create_user";
-    let inviteeUser = null as any;
-    if (email) {
-      inviteeUser = await (prisma as any).user.findUnique({
-        where: { email },
-      });
+    const emailUser = email
+      ? await (prisma as any).user.findUnique({
+          where: { email },
+        })
+      : null;
+    const phoneUser = phone
+      ? await (prisma as any).user.findUnique({
+          where: { phone },
+        })
+      : null;
+    const adminCollisionUserId = await findActiveAdminIdentityCollision({
+      db: prisma as any,
+      userIds: [emailUser?.id, phoneUser?.id],
+    });
+    if (adminCollisionUserId) {
+      return NextResponse.json(
+        {
+          error:
+            "That contact belongs to a Reliance platform administrator. Use a distinct Employee contact.",
+          code: "PLATFORM_ADMIN_IDENTITY_COLLISION",
+        },
+        { status: 409 }
+      );
     }
-    if (!inviteeUser && phone) {
-      inviteeUser = await (prisma as any).user.findUnique({
-        where: { phone },
-      });
-    }
+    let inviteeUser = emailUser || phoneUser;
 
     if (!inviteeUser) {
       const fallbackEmail = `invite+${Date.now()}-${crypto.randomBytes(4).toString("hex")}@reliance.local`;

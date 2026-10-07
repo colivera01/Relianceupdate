@@ -13,6 +13,7 @@ const hoisted = vi.hoisted(() => {
   const userUpdate = vi.fn();
   const vendorMembershipFindUnique = vi.fn();
   const vendorMembershipUpsert = vi.fn();
+  const platformRoleGrantFindFirst = vi.fn();
   const prisma = {
     vendorInvite: {
       findFirst: vendorInviteFindFirst,
@@ -31,6 +32,9 @@ const hoisted = vi.hoisted(() => {
       findUnique: vendorMembershipFindUnique,
       upsert: vendorMembershipUpsert,
     },
+    platformRoleGrant: {
+      findFirst: platformRoleGrantFindFirst,
+    },
   };
 
   return {
@@ -44,6 +48,7 @@ const hoisted = vi.hoisted(() => {
     userUpdate,
     vendorMembershipFindUnique,
     vendorMembershipUpsert,
+    platformRoleGrantFindFirst,
   };
 });
 
@@ -109,6 +114,8 @@ describe("vendor invite token routes", () => {
     hoisted.userUpdate.mockReset();
     hoisted.vendorMembershipFindUnique.mockReset();
     hoisted.vendorMembershipUpsert.mockReset();
+    hoisted.platformRoleGrantFindFirst.mockReset();
+    hoisted.platformRoleGrantFindFirst.mockResolvedValue(null);
     vi.mocked(recordLifecycleAudit).mockReset();
     vi.mocked(sendTeamInviteAcceptedNotification).mockReset();
     vi.mocked(sendTeamInviteAcceptedNotification).mockResolvedValue({
@@ -272,5 +279,35 @@ describe("vendor invite token routes", () => {
         baseUrl: "http://localhost",
       })
     );
+  });
+
+  it("rejects invite acceptance when a contact matches an active platform Admin", async () => {
+    hoisted.vendorInviteFindFirst.mockResolvedValue(buildInviteFixture());
+    hoisted.vendorFindUnique.mockResolvedValue(buildVendorFixture());
+    hoisted.userFindUnique.mockResolvedValue({
+      id: "admin-user-1",
+      name: "Reliance Admin",
+      email: "owner+reliance-admin-beta@gmail.com",
+      phone: null,
+    });
+    hoisted.platformRoleGrantFindFirst.mockResolvedValue({ userId: "admin-user-1" });
+
+    const res = await POST(
+      postInviteRequest({
+        name: "Employee Name",
+        email: "owner+reliance-admin-beta@gmail.com",
+      }),
+      { params: Promise.resolve({ token: INVITE_TOKEN }) }
+    );
+
+    expect(res.status).toBe(409);
+    expect(await readJson(res)).toMatchObject({
+      success: false,
+      code: "PLATFORM_ADMIN_IDENTITY_COLLISION",
+    });
+    expect(hoisted.userUpdate).not.toHaveBeenCalled();
+    expect(hoisted.vendorMembershipUpsert).not.toHaveBeenCalled();
+    expect(hoisted.vendorInviteUpdate).not.toHaveBeenCalled();
+    expect(recordLifecycleAudit).not.toHaveBeenCalled();
   });
 });

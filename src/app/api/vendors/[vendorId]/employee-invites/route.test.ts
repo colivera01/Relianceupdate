@@ -14,6 +14,7 @@ const hoisted = vi.hoisted(() => {
   const userCreate = vi.fn();
   const userUpdate = vi.fn();
   const vendorFindUnique = vi.fn();
+  const platformRoleGrantFindFirst = vi.fn();
   const prisma = {
     vendorInvite: {
       findMany: vendorInviteFindMany,
@@ -33,6 +34,9 @@ const hoisted = vi.hoisted(() => {
     vendor: {
       findUnique: vendorFindUnique,
     },
+    platformRoleGrant: {
+      findFirst: platformRoleGrantFindFirst,
+    },
   };
   return {
     prisma,
@@ -46,6 +50,7 @@ const hoisted = vi.hoisted(() => {
     userCreate,
     userUpdate,
     vendorFindUnique,
+    platformRoleGrantFindFirst,
   };
 });
 
@@ -100,6 +105,8 @@ describe("employee invite routes", () => {
     hoisted.userCreate.mockReset();
     hoisted.userUpdate.mockReset();
     hoisted.vendorFindUnique.mockReset();
+    hoisted.platformRoleGrantFindFirst.mockReset();
+    hoisted.platformRoleGrantFindFirst.mockResolvedValue(null);
   });
 
   it("returns stored invitee contact details for pending invite review", async () => {
@@ -176,5 +183,35 @@ describe("employee invite routes", () => {
         inviteeRole: "EMPLOYEE",
       }),
     });
+  });
+
+  it("rejects an Employee invite that matches an active platform Admin", async () => {
+    hoisted.userFindUnique.mockResolvedValue({
+      id: "admin-user-1",
+      name: "Reliance Admin",
+      email: "owner+reliance-admin-beta@gmail.com",
+      phone: null,
+    });
+    hoisted.platformRoleGrantFindFirst.mockResolvedValue({ userId: "admin-user-1" });
+
+    const req = new Request("https://beta.relianceonline.org/api/vendors/vendor-1/employee-invites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Employee Name",
+        email: "owner+reliance-admin-beta@gmail.com",
+        role: "employee",
+      }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ vendorId: "vendor-1" }) });
+
+    expect(res.status).toBe(409);
+    expect(await readJson(res)).toMatchObject({
+      code: "PLATFORM_ADMIN_IDENTITY_COLLISION",
+    });
+    expect(hoisted.userUpdate).not.toHaveBeenCalled();
+    expect(hoisted.vendorMembershipCreate).not.toHaveBeenCalled();
+    expect(hoisted.vendorMembershipUpdate).not.toHaveBeenCalled();
+    expect(hoisted.vendorInviteCreate).not.toHaveBeenCalled();
   });
 });

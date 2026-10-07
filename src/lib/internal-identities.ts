@@ -16,12 +16,14 @@ export const OWNER_ADMIN_PHONE = "4079148888";
 /** Prisma `users.id` for the owner account in the primary database. */
 export const OWNER_ADMIN_USER_ID = "D43B6BB3-1A72-45EC-A362-A6E1E0580EA0";
 
-/** Prisma `users.id` for the same owner account in the isolated beta database. */
-export const OWNER_ADMIN_BETA_USER_ID = "cmqwvc0gp0003so84j1ckab1p";
+/**
+ * Historical beta test Employee that was once misclassified as the beta owner.
+ * Keep it excluded from launch metrics, but never use it as Admin authority.
+ */
+export const LEGACY_BETA_TEST_EMPLOYEE_USER_ID = "cmqwvc0gp0003so84j1ckab1p";
 
 export const OWNER_ADMIN_USER_IDS = [
   OWNER_ADMIN_USER_ID,
-  OWNER_ADMIN_BETA_USER_ID,
 ] as const;
 
 /** Sparkle Clean Pro — internal/demo vendor shell for building vendor UX. */
@@ -38,6 +40,7 @@ export const INTERNAL_AUDIT_USER_IDS = [
   "e2e-smoke-customer",
   "e2e-trust-employee",
   "cmohivpc60000sorokbuehp94",
+  LEGACY_BETA_TEST_EMPLOYEE_USER_ID,
   ...OWNER_ADMIN_USER_IDS,
 ] as const;
 
@@ -148,7 +151,7 @@ export function isInternalDemoUserRecord(user: {
 export function internalUserNotClauses(): Record<string, unknown>[] {
   return [
     { id: OWNER_ADMIN_USER_ID },
-    { id: OWNER_ADMIN_BETA_USER_ID },
+    { id: LEGACY_BETA_TEST_EMPLOYEE_USER_ID },
     { email: { equals: OWNER_ADMIN_EMAIL } },
     { phone: { in: OWNER_PHONE_VARIANTS } },
   ];

@@ -4,7 +4,7 @@ import { POST } from "./route";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 
 const hoisted = vi.hoisted(() => {
-  const userFindFirst = vi.fn();
+  const userFindUnique = vi.fn();
   const platformRoleGrantFindMany = vi.fn();
   const findDbCredentialByEmail = vi.fn();
   const upsertDbCredential = vi.fn();
@@ -14,10 +14,10 @@ const hoisted = vi.hoisted(() => {
   const resolveTrustedDeviceUserIdFromRequest = vi.fn();
   return {
     prisma: {
-      user: { findFirst: userFindFirst },
+      user: { findUnique: userFindUnique },
       platformRoleGrant: { findMany: platformRoleGrantFindMany },
     },
-    userFindFirst,
+    userFindUnique,
     platformRoleGrantFindMany,
     findDbCredentialByEmail,
     upsertDbCredential,
@@ -60,7 +60,7 @@ async function readJson(res: Response) {
 
 describe("POST /api/auth/login account status", () => {
   beforeEach(() => {
-    hoisted.userFindFirst.mockReset();
+    hoisted.userFindUnique.mockReset();
     hoisted.platformRoleGrantFindMany.mockReset();
     hoisted.platformRoleGrantFindMany.mockResolvedValue([]);
     hoisted.findDbCredentialByEmail.mockReset();
@@ -103,9 +103,10 @@ describe("POST /api/auth/login account status", () => {
   });
 
   it("blocks a suspended user from signing in", async () => {
-    hoisted.userFindFirst.mockResolvedValue({
+    hoisted.userFindUnique.mockResolvedValue({
       id: "user-1",
       accountStatus: "suspended",
+      email: "test-user@example.com",
     });
 
     const res = await POST(
@@ -128,7 +129,7 @@ describe("POST /api/auth/login account status", () => {
   });
 
   it("blocks an unverified email from signing in", async () => {
-    hoisted.userFindFirst.mockResolvedValue({
+    hoisted.userFindUnique.mockResolvedValue({
       id: "user-1",
       accountStatus: "active",
       email: "test-user@example.com",
@@ -170,7 +171,7 @@ describe("POST /api/auth/login account status", () => {
       password: "Password123!",
       userType: "vendor",
     });
-    hoisted.userFindFirst.mockResolvedValue({
+    hoisted.userFindUnique.mockResolvedValue({
       id: "user-1",
       accountStatus: "active",
       name: "Vendor User",
@@ -215,5 +216,109 @@ describe("POST /api/auth/login account status", () => {
     expect(json).toMatchObject({
       code: "MFA_EMAIL_DELIVERY_FAILED",
     });
+  });
+
+  it("binds login to the credential User for identity-specific mailbox aliases", async () => {
+    hoisted.findRegisteredUserByEmail.mockReturnValue({
+      id: "employee-user",
+      email: "owner+reliance-admin-beta@gmail.com",
+      password: "Password123!",
+      userType: "vendor",
+    });
+    hoisted.findDbCredentialByEmail.mockResolvedValue({
+      id: "admin-credential",
+      userId: "admin-user",
+      email: "owner+reliance-admin-beta@gmail.com",
+      passwordHash: "Password123!",
+      emailVerifiedAt: new Date("2026-06-01T00:00:00.000Z"),
+      passwordUpdatedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+    hoisted.userFindUnique.mockResolvedValue({
+      id: "admin-user",
+      accountStatus: "active",
+      name: "Reliance Beta Admin",
+      email: "owner+reliance-admin-beta@gmail.com",
+      phone: null,
+      profilePhoto: null,
+      demo: true,
+    });
+    hoisted.platformRoleGrantFindMany.mockResolvedValue([{ role: "ADMIN" }]);
+    hoisted.issueLoginMfaChallenge.mockResolvedValue({
+      challengeId: "challenge-admin",
+      expiresAt: new Date(Date.now() + 60_000),
+      reused: false,
+      sendResult: { ok: true },
+    });
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "owner+reliance-admin-beta@gmail.com",
+          password: "Password123!",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(202);
+    expect(hoisted.userFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "admin-user" } })
+    );
+    expect(hoisted.platformRoleGrantFindMany).toHaveBeenCalledWith({
+      where: { userId: "admin-user", status: "ACTIVE" },
+      select: { role: true },
+    });
+    expect(hoisted.upsertDbCredential).not.toHaveBeenCalled();
+    expect(resolveVendorAccessForUser).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the credential User cannot be loaded", async () => {
+    hoisted.userFindUnique.mockResolvedValue(null);
+
+    const res = await POST(
+      new Request("http://localhost/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "test-user@example.com",
+          password: "Password123!",
+        }),
+      }) as any
+    );
+
+    expect(res.status).toBe(503);
+    expect(await readJson(res)).toMatchObject({
+      code: "AUTH_CREDENTIAL_PRINCIPAL_INCONSISTENT",
+    });
+    expect(hoisted.upsertDbCredential).not.toHaveBeenCalled();
+    expect(resolveVendorAccessForUser).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when credential and User email identities disagree", async () => {
+    hoisted.userFindUnique.mockResolvedValue({
+      id: "user-1",
+      accountStatus: "active",
+      name: "Unexpected Identity",
+      email: "different@example.com",
+      phone: null,
+      profilePhoto: null,
+      demo: false,
+    });
+
+    const res = await POST(
+      new Request("http://localhost/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "test-user@example.com",
+          password: "Password123!",
+        }),
+      }) as any
+    );
+
+    expect(res.status).toBe(503);
+    expect(await readJson(res)).toMatchObject({
+      code: "AUTH_CREDENTIAL_PRINCIPAL_INCONSISTENT",
+    });
+    expect(hoisted.upsertDbCredential).not.toHaveBeenCalled();
+    expect(resolveVendorAccessForUser).not.toHaveBeenCalled();
   });
 });

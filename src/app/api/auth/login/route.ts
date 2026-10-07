@@ -132,7 +132,9 @@ export async function POST(request: NextRequest) {
 
     let usedDevRegistryIdBecauseDbUnreachable = false;
 
-    let resolvedUserId = dbCredential?.userId || user?.id || "temp-id";
+    const credentialUserId = String(dbCredential?.userId || "").trim();
+    const devRegistryUserId = String(user?.id || "").trim();
+    let resolvedUserId = credentialUserId || devRegistryUserId || "temp-id";
     let resolvedDbUser: {
       id: string;
       accountStatus: string;
@@ -143,8 +145,8 @@ export async function POST(request: NextRequest) {
       demo?: boolean | null;
     } | null = null;
     try {
-      const dbUser = await prisma.user.findFirst({
-        where: { email: user?.email || emailNorm },
+      const dbUser = await prisma.user.findUnique({
+        where: { id: resolvedUserId },
         select: {
           id: true,
           accountStatus: true,
@@ -155,6 +157,31 @@ export async function POST(request: NextRequest) {
           demo: true,
         },
       });
+      if (dbCredential) {
+        const credentialEmail = normalizeEmail(dbCredential.email);
+        const userEmail = normalizeEmail(dbUser?.email);
+        if (
+          !dbUser?.id ||
+          String(dbUser.id) !== credentialUserId ||
+          !credentialEmail ||
+          !userEmail ||
+          credentialEmail !== userEmail
+        ) {
+          console.error("[auth/login] credential principal is inconsistent", {
+            credentialId: dbCredential.id,
+            credentialUserId,
+            resolvedDbUserId: dbUser?.id || null,
+          });
+          return NextResponse.json(
+            {
+              error: "Sign-in is temporarily unavailable. Please contact Reliance Support.",
+              code: "AUTH_CREDENTIAL_PRINCIPAL_INCONSISTENT",
+            },
+            { status: 503 }
+          );
+        }
+      }
+
       if (dbUser?.id) {
         resolvedDbUser = dbUser;
         if (isUserAccountRestricted(dbUser.accountStatus)) {
@@ -163,8 +190,8 @@ export async function POST(request: NextRequest) {
         }
         resolvedUserId = dbUser.id;
       } else if (IS_DEV) {
-        console.warn("[auth/login] no Prisma user row for email; using dev registry id", {
-          email: user?.email || emailNorm,
+        console.warn("[auth/login] no Prisma user row for id; using dev registry id", {
+          userId: resolvedUserId,
           fallbackId: resolvedUserId,
         });
       }
@@ -187,13 +214,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const resolvedEmailForVerification = user?.email || resolvedDbUser?.email || emailNorm;
+    const resolvedEmailForVerification =
+      dbCredential?.email || resolvedDbUser?.email || user?.email || emailNorm;
     const shouldBypassEmailVerification =
       IS_DEV &&
       isInternalDemoUserRecord({
         id: resolvedDbUser?.id || resolvedUserId || user?.id,
         email: resolvedEmailForVerification,
-        phone: user?.phone || resolvedDbUser?.phone,
+        phone: resolvedDbUser?.phone || user?.phone,
         demo: resolvedDbUser?.demo ?? null,
       });
 
@@ -269,35 +297,38 @@ export async function POST(request: NextRequest) {
     const userResponse: AuthLoginUserPayload = {
       id: resolvedUserId,
       name:
-        `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
         resolvedDbUser?.name ||
+        `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+        dbCredential?.email ||
         user?.email ||
         resolvedDbUser?.email ||
         emailNorm,
-      email: user?.email || resolvedDbUser?.email || emailNorm,
+      email: dbCredential?.email || resolvedDbUser?.email || user?.email || emailNorm,
       userType: sessionUserType as AuthLoginUserPayload["userType"],
       availableProfiles,
       emailVerified: Boolean(dbCredential?.emailVerifiedAt),
       emailVerifiedAt: dbCredential?.emailVerifiedAt?.toISOString?.() ?? null,
       avatar:
-        sanitizeCustomerFacingAvatar(user?.avatar || resolvedDbUser?.profilePhoto) || undefined,
+        sanitizeCustomerFacingAvatar(resolvedDbUser?.profilePhoto || user?.avatar) || undefined,
     };
 
     let resolvedCredentialForMfa = dbCredential;
-    try {
-      const syncedCredential = await upsertDbCredential({
-        userId: resolvedUserId,
-        email: user?.email || emailNorm,
-        passwordHash: dbCredential?.passwordHash || String(user?.passwordHash || ""),
-      });
-      if (syncedCredential?.id && syncedCredential?.email) {
-        resolvedCredentialForMfa = syncedCredential;
+    if (!dbCredential) {
+      try {
+        const syncedCredential = await upsertDbCredential({
+          userId: resolvedUserId,
+          email: resolvedDbUser?.email || user?.email || emailNorm,
+          passwordHash: String(user?.passwordHash || ""),
+        });
+        if (syncedCredential?.id && syncedCredential?.email) {
+          resolvedCredentialForMfa = syncedCredential;
+        }
+      } catch (credentialUpsertError) {
+        if (!IS_DEV) {
+          throw credentialUpsertError;
+        }
+        console.warn("[auth/login] credential upsert skipped:", credentialUpsertError);
       }
-    } catch (credentialUpsertError) {
-      if (!IS_DEV) {
-        throw credentialUpsertError;
-      }
-      console.warn("[auth/login] credential upsert skipped:", credentialUpsertError);
     }
     const mfaRequired = requiresLoginMfa(availableProfiles);
     const trustedDeviceUserId = mfaRequired
