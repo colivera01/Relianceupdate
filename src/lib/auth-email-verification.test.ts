@@ -182,4 +182,36 @@ describe("auth email verification", () => {
     );
     expect(result.verificationTokenPreview).toMatch(/^[a-f0-9]{64}$/);
   });
+
+  it("replaces an internal request origin with the configured public email host", async () => {
+    vi.stubEnv("APP_BASE_URL", "https://beta.relianceonline.org");
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "msg-public-host" });
+
+    try {
+      const { sendOrPreviewEmailVerification } = await import("./auth-email-verification");
+      const result = await sendOrPreviewEmailVerification({
+        email: "notify@example.com",
+        credentialId: "cred-public-host",
+        recipientName: "Notify User",
+        baseUrl: "https://4a63f37da1dd:8080",
+      });
+
+      expect(result.verificationLink).toMatch(
+        /^https:\/\/beta\.relianceonline\.org\/auth\/verify-email\?token=/
+      );
+      expect(result.verificationLink).not.toContain("4a63f37da1dd");
+      expect(hoisted.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.stringContaining(
+            "https://beta.relianceonline.org/auth/verify-email?token="
+          ),
+          text: expect.stringContaining(
+            "https://beta.relianceonline.org/auth/verify-email?token="
+          ),
+        })
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

@@ -1,6 +1,10 @@
 import crypto from "crypto";
 import { prisma } from "@/server/db";
-import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
+import {
+  buildRelianceEmailHtml,
+  escapeRelianceEmailHtml,
+  getPublicEmailBaseUrl,
+} from "@/lib/email/reliance-template";
 import { sanitizeAuthNextPath } from "@/lib/auth-next";
 import { markCustomerRegistrationEvidenceVerified } from "@/lib/legal/customer-registration-policy-evidence";
 
@@ -168,7 +172,8 @@ export async function sendOrPreviewEmailVerification(params: {
   if (safeNextPath) {
     verificationParams.set("next", safeNextPath);
   }
-  const verificationLink = `${String(params.baseUrl || "").replace(/\/+$/, "")}/auth/verify-email?${verificationParams.toString()}`;
+  const publicBaseUrl = getPublicEmailBaseUrl(params.baseUrl);
+  const verificationLink = `${publicBaseUrl}/auth/verify-email?${verificationParams.toString()}`;
   const recipientName = String(params.recipientName || "").trim();
   const copy = getVerificationEmailCopy(params.audience);
   const greeting = recipientName ? `Hi ${escapeHtml(recipientName)},` : "Hi there,";
@@ -187,7 +192,7 @@ export async function sendOrPreviewEmailVerification(params: {
       <p style="margin:0;"><strong style="color:#ffffff;">This link expires in 24 hours.</strong></p>
     `,
     fallbackHref: verificationLink,
-    baseUrl: params.baseUrl,
+    baseUrl: publicBaseUrl,
   });
   const text = [
     "Welcome to Reliance",
