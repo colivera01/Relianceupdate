@@ -83,6 +83,19 @@ export async function PATCH(request: Request, { params }: RouteParams): Promise<
         { status: 422 }
       );
     }
+    const existingAuthEmail = String(membership.user?.authCredential?.email || "")
+      .trim()
+      .toLowerCase();
+    if (membership.user?.authCredential?.id && email && existingAuthEmail !== email) {
+      return NextResponse.json(
+        {
+          error:
+            "A team member's sign-in email cannot be changed from contact editing. The account owner must use a verified email-change flow.",
+          code: "CREDENTIAL_EMAIL_CHANGE_REQUIRES_VERIFICATION",
+        },
+        { status: 409 }
+      );
+    }
 
     step = "update_user_contact";
     const updated = await (prisma as any).$transaction(async (tx: any) => {
@@ -100,18 +113,6 @@ export async function PATCH(request: Request, { params }: RouteParams): Promise<
           phone: true,
         },
       });
-
-      const authCredentialId = membership.user?.authCredential?.id
-        ? String(membership.user.authCredential.id)
-        : "";
-      const existingAuthEmail = String(membership.user?.authCredential?.email || "").trim().toLowerCase();
-      if (authCredentialId && email && existingAuthEmail !== email) {
-        await tx.authCredential.update({
-          where: { id: authCredentialId },
-          data: { email },
-        });
-      }
-
       return updatedUser;
     });
 

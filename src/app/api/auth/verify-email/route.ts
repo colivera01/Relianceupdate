@@ -15,7 +15,12 @@ export async function POST(request: NextRequest) {
 
     const result = await consumeEmailVerificationToken(token);
     if (!result.ok) {
-      const status = result.reason === "expired" || result.reason === "already_used" ? 400 : 404;
+      const status =
+        result.reason === "expired" ||
+        result.reason === "already_used" ||
+        result.reason === "email_changed"
+          ? 400
+          : 404;
       return NextResponse.json(
         {
           error:
@@ -23,6 +28,8 @@ export async function POST(request: NextRequest) {
               ? "Verification link has expired"
               : result.reason === "already_used"
               ? "Verification link has already been used"
+              : result.reason === "email_changed"
+              ? "Verification link no longer matches the current account email"
               : "Verification link is invalid",
           code: "EMAIL_VERIFICATION_FAILED",
           reason: result.reason,

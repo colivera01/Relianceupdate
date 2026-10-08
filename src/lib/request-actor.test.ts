@@ -61,6 +61,19 @@ describe("canonical request actor", () => {
     expect(actor?.vendorMemberships).toEqual([]);
   });
 
+  it("rejects an otherwise valid signed session after the account email changes", async () => {
+    prismaMocks.user.findUnique.mockResolvedValue({
+      id: "user-email-change",
+      email: "current@example.test",
+      accountStatus: "active",
+      platformRoleGrants: [{ role: "ADMIN" }],
+      memberships: [],
+    });
+
+    const { resolveRequestActor } = await import("./request-actor");
+    await expect(resolveRequestActor(signedRequest("user-email-change"))).resolves.toBeNull();
+  });
+
   it("rejects a restricted current database user", async () => {
     prismaMocks.user.findUnique.mockResolvedValue({
       id: "user-3",

@@ -94,14 +94,8 @@ export async function consumeEmailVerificationToken(rawToken: string) {
       return { ok: false as const, reason: "expired" as const };
     }
 
-    await tx.emailVerificationToken.update({
-      where: { tokenHash },
-      data: { consumedAt: now },
-    });
-
-    const credential = await tx.authCredential.update({
+    const currentCredential = await tx.authCredential.findUnique({
       where: { id: record.credentialId },
-      data: { emailVerifiedAt: now },
       select: {
         id: true,
         userId: true,
@@ -110,13 +104,44 @@ export async function consumeEmailVerificationToken(rawToken: string) {
       },
     });
 
+    if (!currentCredential) {
+      return { ok: false as const, reason: "not_found" as const };
+    }
+    if (normalizeEmail(currentCredential.email) !== normalizeEmail(record.email)) {
+      return { ok: false as const, reason: "email_changed" as const };
+    }
+
+    const consumed = await tx.emailVerificationToken.updateMany({
+      where: { tokenHash, consumedAt: null },
+      data: { consumedAt: now },
+    });
+    if (Number(consumed?.count) !== 1) {
+      return { ok: false as const, reason: "already_used" as const };
+    }
+
+    const credentialUpdated = await tx.authCredential.updateMany({
+      where: {
+        id: record.credentialId,
+        email: normalizeEmail(record.email),
+      },
+      data: { emailVerifiedAt: now },
+    });
+    if (Number(credentialUpdated?.count) !== 1) {
+      throw new Error("EMAIL_VERIFICATION_CREDENTIAL_CHANGED_DURING_CONSUME");
+    }
+
+    const credential = {
+      ...currentCredential,
+      emailVerifiedAt: now,
+    };
+
     await markCustomerRegistrationEvidenceVerified(tx, credential.userId, now);
 
     return {
       ok: true as const,
       credential,
     };
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function sendOrPreviewEmailVerification(params: {

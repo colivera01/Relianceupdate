@@ -97,6 +97,11 @@ export async function resolveRequestActor(
   });
 
   if (!user) return null;
+  const sessionEmail = String(claims?.email || "").trim().toLowerCase();
+  const currentEmail = String(user.email || "").trim().toLowerCase();
+  if (!sessionEmail || sessionEmail !== currentEmail) {
+    return null;
+  }
   const accountStatus = normalizeAccountStatus(user.accountStatus);
   if (accountStatus !== "active") {
     throw new AuthorizationError(

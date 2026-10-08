@@ -1,22 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => {
-  const updateMany = vi.fn();
+  const tokenUpdateMany = vi.fn();
   const create = vi.fn();
   const findUnique = vi.fn();
-  const update = vi.fn();
-  const authCredentialUpdate = vi.fn();
+  const authCredentialFindUnique = vi.fn();
+  const authCredentialUpdateMany = vi.fn();
   const registrationEvidenceUpdateMany = vi.fn();
   const transaction = vi.fn(async (callback: (tx: any) => Promise<any>) =>
     callback({
       emailVerificationToken: {
-        updateMany,
+        updateMany: tokenUpdateMany,
         create,
         findUnique,
-        update,
       },
       authCredential: {
-        update: authCredentialUpdate,
+        findUnique: authCredentialFindUnique,
+        updateMany: authCredentialUpdateMany,
       },
       customerRegistrationEvidence: {
         updateMany: registrationEvidenceUpdateMany,
@@ -30,11 +30,11 @@ const hoisted = vi.hoisted(() => {
     prisma: {
       $transaction: transaction,
     },
-    updateMany,
+    tokenUpdateMany,
     create,
     findUnique,
-    update,
-    authCredentialUpdate,
+    authCredentialFindUnique,
+    authCredentialUpdateMany,
     registrationEvidenceUpdateMany,
     transaction,
     sendEmail,
@@ -51,11 +51,11 @@ vi.mock("@/lib/email/resend", () => ({
 
 describe("auth email verification", () => {
   beforeEach(() => {
-    hoisted.updateMany.mockReset();
+    hoisted.tokenUpdateMany.mockReset();
     hoisted.create.mockReset();
     hoisted.findUnique.mockReset();
-    hoisted.update.mockReset();
-    hoisted.authCredentialUpdate.mockReset();
+    hoisted.authCredentialFindUnique.mockReset();
+    hoisted.authCredentialUpdateMany.mockReset();
     hoisted.registrationEvidenceUpdateMany.mockReset();
     hoisted.transaction.mockClear();
     hoisted.sendEmail.mockReset();
@@ -72,7 +72,7 @@ describe("auth email verification", () => {
 
     expect(result.rawToken).toMatch(/^[a-f0-9]{64}$/);
     expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
-    expect(hoisted.updateMany).toHaveBeenCalledTimes(1);
+    expect(hoisted.tokenUpdateMany).toHaveBeenCalledTimes(1);
     expect(hoisted.create).toHaveBeenCalledTimes(1);
     expect(hoisted.create.mock.calls[0][0].data).toMatchObject({
       credentialId: "cred-1",
@@ -98,12 +98,14 @@ describe("auth email verification", () => {
       expiresAt: new Date(Date.now() + 60_000),
       consumedAt: null,
     });
-    hoisted.authCredentialUpdate.mockResolvedValue({
+    hoisted.authCredentialFindUnique.mockResolvedValue({
       id: "cred-2",
       userId: "user-2",
       email: "verify@example.com",
-      emailVerifiedAt: new Date(),
+      emailVerifiedAt: null,
     });
+    hoisted.tokenUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.authCredentialUpdateMany.mockResolvedValue({ count: 1 });
 
     const result = await consumeEmailVerificationToken(issued.rawToken);
 
@@ -111,8 +113,11 @@ describe("auth email verification", () => {
     if (result.ok) {
       expect(result.credential.email).toBe("verify@example.com");
     }
-    expect(hoisted.update).toHaveBeenCalledTimes(1);
-    expect(hoisted.authCredentialUpdate).toHaveBeenCalledTimes(1);
+    expect(hoisted.tokenUpdateMany).toHaveBeenCalledWith({
+      where: { tokenHash: expect.any(String), consumedAt: null },
+      data: { consumedAt: expect.any(Date) },
+    });
+    expect(hoisted.authCredentialUpdateMany).toHaveBeenCalledTimes(1);
     expect(hoisted.registrationEvidenceUpdateMany).toHaveBeenCalledWith({
       where: {
         userId: "user-2",
@@ -121,6 +126,35 @@ describe("auth email verification", () => {
       },
       data: { verificationCompletedAt: expect.any(Date) },
     });
+    expect(hoisted.transaction).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" }
+    );
+  });
+
+  it("rejects a token issued for a previous credential email", async () => {
+    const { consumeEmailVerificationToken } = await import("./auth-email-verification");
+    hoisted.findUnique.mockResolvedValue({
+      id: "token-row-stale",
+      credentialId: "cred-2",
+      email: "old@example.com",
+      expiresAt: new Date(Date.now() + 60_000),
+      consumedAt: null,
+    });
+    hoisted.authCredentialFindUnique.mockResolvedValue({
+      id: "cred-2",
+      userId: "user-2",
+      email: "new@example.com",
+      emailVerifiedAt: null,
+    });
+
+    await expect(consumeEmailVerificationToken("stale-token")).resolves.toEqual({
+      ok: false,
+      reason: "email_changed",
+    });
+    expect(hoisted.tokenUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.authCredentialUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.registrationEvidenceUpdateMany).not.toHaveBeenCalled();
   });
 
   it("sends a verification email and returns a preview link in development", async () => {
