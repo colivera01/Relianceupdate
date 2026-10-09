@@ -32,6 +32,7 @@ import { tutorialGuides } from "@/lib/user-guidance";
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
 import { EmployeeV2ServiceOrderPanel } from "@/components/employee/EmployeeV2ServiceOrderPanel";
 import type { EmployeeV2ServiceOrderView } from "@/lib/recording/employee-v2-service-order";
+import { getEmployeeWorkspaceLoadFailure } from "@/lib/employee-runtime-errors";
 
 type EmployeeJob = {
   id: string;
@@ -345,6 +346,7 @@ export default function EmployeeJobsPage() {
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [employeeMembershipRequired, setEmployeeMembershipRequired] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [participationChoice, setParticipationChoice] = useState<{
@@ -411,11 +413,16 @@ export default function EmployeeJobsPage() {
     () => dedupeCompletedHistoryJobs(jobs.filter((job) => isCompletedStatus(job.status))),
     [jobs]
   );
+  const workspaceLoadFailure = useMemo(
+    () => getEmployeeWorkspaceLoadFailure(errorCode),
+    [errorCode],
+  );
 
   const loadJobs = async () => {
     if (!userId && !captureToken) return;
     setLoading(true);
     setError(null);
+    setErrorCode(null);
     setEmployeeMembershipRequired(false);
     try {
       const url = captureToken
@@ -431,7 +438,13 @@ export default function EmployeeJobsPage() {
         setEmployeeMembershipRequired(true);
         return;
       }
-      if (!res.ok) throw new Error(json?.error || "Failed to load assigned jobs.");
+      if (!res.ok) {
+        setJobs([]);
+        setErrorCode(String(json?.code || "EMPLOYEE_JOBS_LOAD_FAILED"));
+        setError(json?.error || "Failed to load assigned jobs.");
+        return;
+      }
+      setErrorCode(null);
       setJobs(Array.isArray(json?.jobs) ? json.jobs : []);
     } catch (e) {
       const message =
@@ -441,6 +454,7 @@ export default function EmployeeJobsPage() {
             ? e.message
             : "Failed to load jobs";
       setError(message);
+      setErrorCode("EMPLOYEE_JOBS_REQUEST_FAILED");
       setJobs([]);
     } finally {
       setLoading(false);
@@ -2380,17 +2394,16 @@ export default function EmployeeJobsPage() {
           </div>
         ) : null}
 
-        {!loading && error && jobs.length === 0 ? (
+        {!loading && error && jobs.length === 0 && workspaceLoadFailure ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
-            <p className="text-sm font-semibold text-amber-900">Employee workspace temporarily unavailable</p>
+            <p className="text-sm font-semibold text-amber-900">{workspaceLoadFailure.title}</p>
             <p className="mt-1 text-sm text-amber-800">
-              Your assigned jobs could not be loaded right now. This usually means the connected database is paused or
-              temporarily unavailable.
+              {workspaceLoadFailure.description}
             </p>
             <ul className="mt-3 space-y-2 text-xs text-amber-800">
-              <li>1. Reload this page in a minute to retry.</li>
-              <li>2. If the problem continues, ask your manager to confirm Reliance is fully online.</li>
-              <li>3. Do not assume your job queue is empty until this warning clears.</li>
+              {workspaceLoadFailure.actions.map((action, index) => (
+                <li key={action}>{index + 1}. {action}</li>
+              ))}
             </ul>
           </div>
         ) : null}

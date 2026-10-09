@@ -728,6 +728,7 @@ describe("vendor job actions integration", () => {
     hoisted.vendorMembershipFindMany.mockResolvedValue([
       {
         id: "member-1",
+        role: "EMPLOYEE",
         user: { name: "Peter Parker", email: "peter@example.com", phone: "4075550123" },
       },
     ]);
@@ -751,6 +752,42 @@ describe("vendor job actions integration", () => {
     const saved = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
     expect(saved.vendor_job_assigned_membership_ids).toEqual(["member-1"]);
     expect(saved.vendor_job_service_order_released_at).toBeUndefined();
+  });
+
+  it("PATCH ASSIGN_JOB rejects a Manager as an Employee Service Order recipient", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["employee-1"],
+      vendor_job_assigned_employees: ["Reliance Test"],
+      vendor_job_assignment_generation: 2,
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: metadata,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Customer", email: "customer@example.com", phone: null },
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "manager-1",
+        role: "MANAGER",
+        user: { name: "Electro LLC Manager", email: "manager@example.com", phone: null },
+      },
+    ]);
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "ASSIGN_JOB",
+      assignedMembershipIds: ["manager-1"],
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(422);
+    expect(json.code).toBe("EMPLOYEE_ASSIGNMENT_ROLE_REQUIRED");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(releaseEmployeeServiceOrderWhenReady).not.toHaveBeenCalled();
   });
 
   it("PATCH ASSIGN_JOB stores primary employee attribution and defers the service order email", async () => {
@@ -779,6 +816,7 @@ describe("vendor job actions integration", () => {
     hoisted.vendorMembershipFindMany.mockResolvedValue([
       {
         id: "member-1",
+        role: "EMPLOYEE",
         user: {
           name: "Peter Parker",
           email: "peter@example.com",

@@ -14,6 +14,16 @@ export type VendorTeamMember = {
   publicMediaConsentDecidedAt?: string | null;
 };
 
+export function filterAssignableEmployeeMemberships(
+  memberships: VendorTeamMember[],
+): VendorTeamMember[] {
+  return memberships.filter(
+    (membership) =>
+      String(membership.role || "").trim().toUpperCase() === "EMPLOYEE" &&
+      String(membership.status || "").trim().toUpperCase() === "ACTIVE",
+  );
+}
+
 export async function fetchVendorTeamMembers(
   vendorId: string,
   getHeaders: () => Record<string, string>,

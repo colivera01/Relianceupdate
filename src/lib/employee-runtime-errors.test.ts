@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getEmployeeDecisionErrorResponse,
   getEmployeeRuntimeErrorResponse,
+  getEmployeeWorkspaceLoadFailure,
   isPausedEmployeeDatabaseError,
 } from "@/lib/employee-runtime-errors";
 
@@ -73,5 +74,18 @@ describe("employee runtime errors", () => {
       },
     });
     expect(response.body.error).toContain("not currently available");
+  });
+
+  it("does not mislabel an invalid Service Order link as a database outage", () => {
+    expect(getEmployeeWorkspaceLoadFailure("EMPLOYEE_SERVICE_ORDER_LINK_INVALID")).toBeNull();
+  });
+
+  it("keeps the database warning specific to a temporary database failure", () => {
+    const presentation = getEmployeeWorkspaceLoadFailure(
+      "EMPLOYEE_RUNTIME_TEMPORARILY_UNAVAILABLE",
+    );
+
+    expect(presentation?.title).toBe("Employee workspace temporarily unavailable");
+    expect(presentation?.description).toContain("database");
   });
 });

@@ -231,6 +231,19 @@ async function resolveJobAssignmentForVendor(
         ),
       };
     }
+    if (rows.some((row) => String(row.role || "").trim().toUpperCase() !== "EMPLOYEE")) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          apiResponse(
+            false,
+            "EMPLOYEE_ASSIGNMENT_ROLE_REQUIRED",
+            "Only Employee team members can be assigned to receive a Service Order."
+          ),
+          { status: 422 }
+        ),
+      };
+    }
     const byId = new Map(rows.map((r) => [r.id, r]));
     const displayNames = normalizedIds.map((id) => displayNameForMembershipUser(byId.get(id)?.user));
     const members = normalizedIds
@@ -252,7 +265,11 @@ async function resolveJobAssignmentForVendor(
   }
 
   const activeMembers = await prisma.vendorMembership.findMany({
-    where: { vendorId, status: { in: ["ACTIVE", "active", "PENDING", "pending"] } },
+    where: {
+      vendorId,
+      role: { in: ["EMPLOYEE", "employee"] },
+      status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
+    },
     include: { user: { select: { name: true, email: true, phone: true } } },
   });
 

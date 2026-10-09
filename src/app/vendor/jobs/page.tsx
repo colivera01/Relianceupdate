@@ -41,6 +41,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { tutorialGuides } from '@/lib/user-guidance';
 import {
   fetchVendorTeamMembers,
+  filterAssignableEmployeeMemberships,
   avatarUrlForName,
   type VendorTeamMember,
 } from '@/lib/vendor-team-members';
@@ -1254,7 +1255,7 @@ export default function VendorJobs() {
         const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders(), {
           timeoutMs: VENDOR_TEAM_TIMEOUT_MS,
         });
-        setTeamMembers(members);
+        setTeamMembers(filterAssignableEmployeeMemberships(members));
       } catch (error) {
         setTeamMembers([]);
         setEmployeesLoadError(formatEmployeeLoadError(error));

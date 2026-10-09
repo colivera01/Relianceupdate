@@ -110,9 +110,25 @@ export async function releaseEmployeeServiceOrderWhenReady(
       id: { in: assignment.assignedMembershipIds },
       vendorId: input.vendorId,
       status: "ACTIVE",
+      role: "EMPLOYEE",
     },
-    select: { id: true, user: { select: { name: true, email: true, phone: true } } },
+    select: { id: true, role: true, user: { select: { name: true, email: true, phone: true } } },
   });
+  if (members.length !== assignment.assignedMembershipIds.length) {
+    return {
+      ready: false,
+      alreadyReleased: false,
+      deliveryInProgress: false,
+      sentCount: 0,
+      releasedMembershipIds: compliance.releasedMembershipIds,
+      results: [],
+      blocked: {
+        code: "EMPLOYEE_ASSIGNMENT_ROLE_REQUIRED",
+        why: "The current assignment does not identify an active Employee recipient.",
+        resolution: "Assign an active Employee before sending the Service Order.",
+      },
+    };
+  }
   const metadata = parseMetadata(booking.customerMetadata);
   const generation = Math.max(1, Number(metadata.vendor_job_assignment_generation || 1));
   const releaseContext: CurrentReleaseContext = {

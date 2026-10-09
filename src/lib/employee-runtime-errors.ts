@@ -33,6 +33,39 @@ const TEMPORARY_UNAVAILABLE_MESSAGES: Record<EmployeeRuntimeErrorContext, string
     "Recording participation is temporarily unavailable because the connected database is paused. Try again after the database resumes.",
 };
 
+export type EmployeeWorkspaceLoadFailure = {
+  title: string;
+  description: string;
+  actions: string[];
+};
+
+export function getEmployeeWorkspaceLoadFailure(
+  code: string | null | undefined,
+): EmployeeWorkspaceLoadFailure | null {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (normalized === "EMPLOYEE_SERVICE_ORDER_LINK_INVALID") return null;
+  if (normalized === "EMPLOYEE_RUNTIME_TEMPORARILY_UNAVAILABLE") {
+    return {
+      title: "Employee workspace temporarily unavailable",
+      description:
+        "Your assigned jobs could not be loaded because the connected database is temporarily unavailable.",
+      actions: [
+        "Reload this page in a minute to retry.",
+        "If the problem continues, ask your manager to confirm Reliance is fully online.",
+        "Do not assume your job queue is empty until this warning clears.",
+      ],
+    };
+  }
+  return {
+    title: "Employee workspace could not be loaded",
+    description: "Reliance could not load the assigned work for this Service Order.",
+    actions: [
+      "Reload this page to retry.",
+      "If the problem continues, ask your manager to confirm the current Service Order.",
+    ],
+  };
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;

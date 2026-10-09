@@ -139,6 +139,30 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
     expect(h.send).not.toHaveBeenCalled();
   });
 
+  it("fails closed when the assigned membership is not an active Employee", async () => {
+    h.membershipFindMany.mockResolvedValue([]);
+
+    const result = await releaseEmployeeServiceOrderWhenReady({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      actorUserId: "manager-1",
+      baseUrl: "https://beta.relianceonline.org",
+    });
+
+    expect(result).toMatchObject({
+      ready: false,
+      sentCount: 0,
+      blocked: { code: "EMPLOYEE_ASSIGNMENT_ROLE_REQUIRED" },
+    });
+    expect(h.membershipFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ role: "EMPLOYEE" }),
+      }),
+    );
+    expect(h.notificationCreate).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
   it("reports a concurrent current-context delivery as in progress rather than already released", async () => {
     h.notificationCreate.mockRejectedValue({ code: "P2002" });
 
