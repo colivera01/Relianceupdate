@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "subscriptionId": "00000000-0000-0000-0000-000000000000",
+  "runId": "migration-rehearsal-yyyymmdd",
+  "completion": {
+    "mode": "cleanup"
+  },
+  "resources": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-reliance-rehearsal/providers/Microsoft.Sql/servers/sql-reliance-rehearsal/databases/reliance-rehearsal-yyyymmdd",
+      "purpose": "Disposable migration rehearsal database",
+      "expectedMonthlyCostUsd": 5.0,
+      "createdByRun": true,
+      "retention": "Temporary",
+      "expiresOn": "2099-12-31",
+      "cleanupCondition": "Delete after the rehearsal succeeds or fails"
+    }
+  ]
+}
