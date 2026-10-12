@@ -16,6 +16,8 @@
     "release:validate-sqlserver-schema": "node scripts/release/validate_sqlserver_schema_contract.cjs",
     "azure:cost-guard": "python scripts/azure/temporary_resource_guard.py",
     "test:azure-cost-guard": "python scripts/azure/test_temporary_resource_guard.py",
+    "legal:assent-gaps:dry-run": "cross-env TS_NODE_COMPILER_OPTIONS={\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"} ts-node --transpile-only scripts/legal/read-assent-gap-inventory.ts",
+    "legal:retention:dry-run": "cross-env TS_NODE_COMPILER_OPTIONS={\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"} ts-node --transpile-only scripts/legal/read-retention-dry-run.ts",
     "test:rv8:protected": "node scripts/release/run_rv8_protected_regression_gate.cjs",
     "build": "next build",
     "start": "next start",

@@ -242,6 +242,21 @@ class LiveSafetyTests(unittest.TestCase):
         delete.assert_not_called()
         self.assertTrue(summary["retentionApproved"])
 
+    def test_windows_subprocess_runner_uses_azure_cli_command_shim(self):
+        completed = subprocess.CompletedProcess(["az.cmd", "account", "show"], 0, "{}", "")
+        with (
+            mock.patch.object(guard.os, "name", "nt"),
+            mock.patch.object(guard.subprocess, "run", return_value=completed) as run,
+        ):
+            result = guard.subprocess_runner(("az", "account", "show"))
+        self.assertEqual(result.returncode, 0)
+        run.assert_called_once_with(
+            ["az.cmd", "account", "show"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -330,6 +330,161 @@ model CustomerRegistrationEvidence {
   @@map("customer_registration_evidence")
 }
 
+// Dormant governance registry for prospective legal/policy and decision copy.
+// This model intentionally has no EFFECTIVE or COUNSEL_APPROVED state. Making
+// content effective requires a separately authorized future contract.
+model GovernedContentVersion {
+  id                                String    @id @default(cuid())
+  contentKey                        String    @db.NVarChar(200)
+  contentClass                      String    @db.NVarChar(64)
+  audienceRole                      String?   @db.NVarChar(64)
+  version                           String    @db.NVarChar(100)
+  governanceStatus                  String    @default("DRAFT") @db.NVarChar(64)
+  contentSnapshot                   String    @db.NVarChar(Max)
+  contentHash                       String    @db.NVarChar(64)
+  sourceRevision                    String?   @db.NVarChar(100)
+  productOwnerApprovedByPrincipalId String?   @db.NVarChar(255)
+  productOwnerApprovedAt            DateTime?
+  supersedesVersionId               String?
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
+
+  supersedesVersion    GovernedContentVersion?       @relation("GovernedContentSupersession", fields: [supersedesVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededByVersions GovernedContentVersion[]      @relation("GovernedContentSupersession")
+  roleAssentEvidence   RoleAssentEvidence[]
+  publicChoiceEvidence PublicChoiceContentEvidence[]
+
+  @@unique([contentKey, version])
+  @@unique([contentKey, contentHash])
+  @@index([contentClass, governanceStatus, createdAt])
+  @@index([audienceRole, governanceStatus])
+  @@index([supersedesVersionId])
+  @@map("governed_content_versions")
+}
+
+// Append-only, role-aware assent evidence plumbing. No live route or gate uses
+// this table until a later, explicitly authorized activation.
+model RoleAssentEvidence {
+  id                      String   @id @default(cuid())
+  contentVersionId        String
+  actorPrincipalId        String   @db.NVarChar(255)
+  actorUserId             String?
+  actorRole               String   @db.NVarChar(64)
+  vendorId                String?
+  membershipId            String?
+  bookingId               String?
+  contextType             String   @db.NVarChar(100)
+  contextId               String   @db.NVarChar(255)
+  contextHash             String   @db.NVarChar(64)
+  decision                String   @db.NVarChar(32)
+  policyKey               String   @db.NVarChar(200)
+  policyVersion           String   @db.NVarChar(100)
+  contentSnapshot         String   @db.NVarChar(Max)
+  contentHash             String   @db.NVarChar(64)
+  verificationMethod      String   @db.NVarChar(100)
+  verificationContextJson String   @db.NVarChar(Max)
+  chainKey                String   @db.NVarChar(64)
+  sequence                Int
+  supersedesEvidenceId    String?
+  requestId               String   @db.NVarChar(255)
+  requestHash             String   @db.NVarChar(64)
+  evidenceHash            String   @unique @db.NVarChar(64)
+  decidedAt               DateTime
+  createdAt               DateTime @default(now())
+
+  contentVersion       GovernedContentVersion @relation(fields: [contentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersedesEvidence   RoleAssentEvidence?    @relation("RoleAssentSupersession", fields: [supersedesEvidenceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersededByEvidence RoleAssentEvidence[]   @relation("RoleAssentSupersession")
+
+  @@unique([chainKey, sequence])
+  @@unique([chainKey, requestId])
+  @@index([actorPrincipalId, actorRole, decidedAt])
+  @@index([policyKey, policyVersion, actorRole])
+  @@index([bookingId, actorRole, decidedAt])
+  @@index([membershipId, actorRole, decidedAt])
+  @@index([supersedesEvidenceId])
+  @@map("role_assent_evidence")
+}
+
+// Immutable sidecar evidence for future Customer Share Publicly / Make Private
+// wording. This never replaces canonical visibility authorization.
+model PublicChoiceContentEvidence {
+  id                            String   @id @default(cuid())
+  contentVersionId              String
+  bookingId                     String
+  packageId                     String
+  packageVersion                Int
+  packageHash                   String   @db.NVarChar(64)
+  stageSetHash                  String   @db.NVarChar(64)
+  customerUserId                String
+  visibilityDecisionId          String?
+  choice                        String   @db.NVarChar(32)
+  contentKey                    String   @db.NVarChar(200)
+  contentVersion                String   @db.NVarChar(100)
+  contentSnapshot               String   @db.NVarChar(Max)
+  contentHash                   String   @db.NVarChar(64)
+  includesAudio                 Boolean
+  audioDisclosureIncluded       Boolean
+  outsideCopyDisclosureIncluded Boolean
+  verificationMethod            String   @db.NVarChar(100)
+  verificationContextJson       String   @db.NVarChar(Max)
+  requestId                     String   @db.NVarChar(255)
+  requestHash                   String   @db.NVarChar(64)
+  evidenceHash                  String   @unique @db.NVarChar(64)
+  recordedAt                    DateTime
+  createdAt                     DateTime @default(now())
+
+  contentVersionRecord GovernedContentVersion @relation(fields: [contentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([bookingId, requestId])
+  @@index([bookingId, packageId, recordedAt])
+  @@index([customerUserId, recordedAt])
+  @@index([visibilityDecisionId])
+  @@index([contentKey, contentVersion])
+  @@map("public_choice_content_evidence")
+}
+
+// Neutral privacy-case intake reference. It deliberately contains no statutory
+// deadline, entitlement, jurisdiction, approval, or denial outcome.
+model PrivacyCaseReference {
+  id                     String   @id @default(cuid())
+  referenceCode          String   @unique @db.NVarChar(64)
+  intakeChannel          String   @db.NVarChar(64)
+  requesterPrincipalId   String?  @db.NVarChar(255)
+  requesterPrincipalHash String?  @db.NVarChar(64)
+  requesterRole          String?  @db.NVarChar(64)
+  subjectPrincipalId     String?  @db.NVarChar(255)
+  intakeContextHash      String   @db.NVarChar(64)
+  createdAt              DateTime @default(now())
+
+  events PrivacyCaseEvent[]
+
+  @@index([requesterPrincipalId, createdAt])
+  @@index([subjectPrincipalId, createdAt])
+  @@index([intakeContextHash])
+  @@map("privacy_case_references")
+}
+
+// Append-only neutral case history. Legal rights, deadlines, and outcomes are
+// intentionally deferred to a future authorized policy implementation.
+model PrivacyCaseEvent {
+  id               String   @id @default(cuid())
+  caseId           String
+  eventType        String   @db.NVarChar(100)
+  actorPrincipalId String?  @db.NVarChar(255)
+  actorRole        String?  @db.NVarChar(64)
+  metadataJson     String   @db.NVarChar(Max)
+  evidenceHash     String   @unique @db.NVarChar(64)
+  occurredAt       DateTime
+  createdAt        DateTime @default(now())
+
+  case PrivacyCaseReference @relation(fields: [caseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([caseId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@map("privacy_case_events")
+}
+
 // PlatformRole: "ADMIN"
 // PlatformRoleStatus: "ACTIVE" | "REVOKED"
 model PlatformRoleGrant {

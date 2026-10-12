@@ -11,6 +11,13 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const schemaText = (value) => value.replace(/\r\n/g, '\n').trim();
 const requiredReviewFields = ['contractVersion', 'ratingValidityStatus', 'ratingInvalidationReason', 'ratingInvalidatedAt', 'ratingInvalidatedByUserId', 'submissionRequestId', 'submissionRequestHash'];
+const requiredDormantLegalFields = Object.freeze({
+  GovernedContentVersion: ['contentKey', 'contentClass', 'version', 'governanceStatus', 'contentSnapshot', 'contentHash'],
+  RoleAssentEvidence: ['actorPrincipalId', 'actorRole', 'policyKey', 'policyVersion', 'contentSnapshot', 'contentHash', 'chainKey', 'sequence', 'evidenceHash'],
+  PublicChoiceContentEvidence: ['bookingId', 'packageId', 'packageHash', 'stageSetHash', 'choice', 'contentSnapshot', 'contentHash', 'evidenceHash'],
+  PrivacyCaseReference: ['referenceCode', 'intakeChannel', 'intakeContextHash'],
+  PrivacyCaseEvent: ['caseId', 'eventType', 'metadataJson', 'evidenceHash', 'occurredAt'],
+});
 
 function assertInside(root, file) {
   const relative = path.relative(fs.realpathSync(root), fs.realpathSync(file));
@@ -39,6 +46,13 @@ function inspect(root) {
     }
     const review = models.find((model) => model.name === 'Review');
     for (const field of requiredReviewFields) assert(review?.fields.some((item) => item.name === field), `Missing current Review.${field}`);
+    for (const [modelName, fields] of Object.entries(requiredDormantLegalFields)) {
+      const model = models.find((candidate) => candidate.name === modelName);
+      assert(model, `Missing dormant legal model: ${modelName}`);
+      const delegate = modelName[0].toLowerCase() + modelName.slice(1);
+      assert.equal(typeof db[delegate]?.findMany, 'function', `Missing dormant legal Prisma delegate: ${delegate}`);
+      for (const field of fields) assert(model.fields.some((item) => item.name === field), `Missing dormant legal field: ${modelName}.${field}`);
+    }
     assertInside(root, createRequire(entry).resolve('.prisma/client/default'));
     assertInside(root, runtimeRequire.resolve('@prisma/client/runtime/library'));
     const generated = fs.readFileSync(generatedSchema);
@@ -62,7 +76,7 @@ function inspect(root) {
     return {
       generatedSchemaSha256: sha256(generated), generatedSchema: schemaText(generated.toString()),
       clientVersion: version, engineVersion: Prisma.prismaVersion.engine,
-      engines, codeHashes, models: contract, requiredReviewFields,
+      engines, codeHashes, models: contract, requiredReviewFields, requiredDormantLegalFields,
     };
   } finally { void db.$disconnect(); }
 }
@@ -83,7 +97,7 @@ function verify(root, manifest) {
   const runtime = inspect(root);
   assert.equal(manifest.contractVersion, 1, 'Unsupported artifact manifest');
   assert.equal(sha256(runtime.generatedSchema), manifest.sourceSchemaNormalizedSha256, 'Source semantic schema mismatch');
-  for (const key of ['generatedSchemaSha256', 'clientVersion', 'engineVersion', 'engines', 'codeHashes', 'models', 'requiredReviewFields']) {
+  for (const key of ['generatedSchemaSha256', 'clientVersion', 'engineVersion', 'engines', 'codeHashes', 'models', 'requiredReviewFields', 'requiredDormantLegalFields']) {
     assert.deepEqual(runtime[key], manifest[key], `Packaged Prisma ${key} differs from current generation`);
   }
   return { verdict: 'PASS', sourceCommit: manifest.sourceCommit, sourceSchemaSha256: manifest.sourceSchemaSha256, generatedSchemaSha256: runtime.generatedSchemaSha256, clientVersion: runtime.clientVersion, engineVersion: runtime.engineVersion, modelCount: runtime.models.length };

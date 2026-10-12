@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -290,7 +291,10 @@ def validate_live_resource(
 
 
 def subprocess_runner(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=False, capture_output=True, text=True)
+    executable_args = list(args)
+    if os.name == "nt" and executable_args[:1] == ["az"]:
+        executable_args[0] = "az.cmd"
+    return subprocess.run(executable_args, check=False, capture_output=True, text=True)
 
 
 def run_az_json(arguments: Sequence[str], runner: Runner = subprocess_runner) -> Any:
