@@ -18,6 +18,8 @@
     "test:azure-cost-guard": "python scripts/azure/test_temporary_resource_guard.py",
     "legal:assent-gaps:dry-run": "cross-env TS_NODE_COMPILER_OPTIONS={\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"} ts-node --transpile-only scripts/legal/read-assent-gap-inventory.ts",
     "legal:retention:dry-run": "cross-env TS_NODE_COMPILER_OPTIONS={\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"} ts-node --transpile-only scripts/legal/read-retention-dry-run.ts",
+    "legal:drafts:manifest": "node scripts/legal/build-prospective-content-manifest.mjs",
+    "legal:drafts:verify": "node scripts/legal/build-prospective-content-manifest.mjs --check",
     "test:rv8:protected": "node scripts/release/run_rv8_protected_regression_gate.cjs",
     "build": "next build",
     "start": "next start",
