@@ -42,6 +42,11 @@ describe("vendor-owned service mutation access", () => {
     vi.mocked(requireRequestActor).mockReset();
     vi.mocked(requireRequestActor).mockResolvedValue({ userId: "user-1" } as any);
     vi.mocked(requireActorVendorManager).mockReset();
+    vi.mocked(requireActorVendorManager).mockReturnValue({
+      id: "manager-membership-1",
+      vendorId: "vendor-1",
+      role: "MANAGER",
+    });
 
     hoisted.serviceFindUnique.mockReset();
     hoisted.serviceUpdate.mockReset();

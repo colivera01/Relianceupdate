@@ -12,6 +12,7 @@ import {
   requireActorVendorManager,
   requireRequestActor,
 } from "@/lib/request-actor";
+import { assertCurrentVendorRoleAssent } from "@/lib/legal/role-assent-service";
 
 const VENDOR_PROFILE_SELECT = {
   id: true,
@@ -313,7 +314,13 @@ export async function PUT(request: Request) {
     }
     const vendorId = vendorContext.vendorId;
     if (membershipStatus === "ACTIVE") {
-      requireActorVendorManager(actor, vendorId);
+      const managerMembership = requireActorVendorManager(actor, vendorId);
+      await assertCurrentVendorRoleAssent({
+        db: prisma as any,
+        userId: actor.userId,
+        vendorId,
+        membershipId: managerMembership.id,
+      });
     } else if (String(vendorContext.role || "").toUpperCase() !== "MANAGER") {
       return NextResponse.json(
         { code: "VENDOR_MANAGER_REQUIRED", error: "Vendor manager access required." },

@@ -22,9 +22,12 @@ export async function sendEmployeeDecisionOtp(input: {
   const env = readNotificationEnv();
   const availability = getEmployeeDecisionChannelAvailability({ env });
   const isRecording = input.purpose === "EMPLOYEE_RECORDING_PARTICIPATION";
+  const isServiceOrderAssent = input.purpose === "EMPLOYEE_SERVICE_ORDER_LEGAL_ASSENT";
   const action = isRecording
     ? `recording participation for ${input.serviceName || "this service"}`
-    : `Public Service Video participation for ${input.vendorName}`;
+    : isServiceOrderAssent
+      ? `the Service Order agreement for ${input.serviceName || "this service"}`
+      : `Public Service Video participation for ${input.vendorName}`;
   if (input.channel === "email") {
     if (!availability.email) {
       return { ok: false, errorCode: "EMAIL_DISABLED", errorMessage: "email_disabled" };

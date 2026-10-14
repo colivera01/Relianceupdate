@@ -1,5 +1,6 @@
 import type { EmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
+import { assertCurrentEmployeeRoleAssent } from "@/lib/legal/role-assent-service";
 
 export async function assertV2EmployeeServiceOrderEntry(input: {
   db: any;
@@ -29,5 +30,16 @@ export async function assertV2EmployeeServiceOrderEntry(input: {
     !input.tokenAccess
   ) {
     throw new Error("EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED");
+  }
+  if (
+    assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+    input.tokenAccess
+  ) {
+    await assertCurrentEmployeeRoleAssent({
+      db: input.db,
+      userId: input.tokenAccess.userId,
+      membershipId: input.tokenAccess.membershipId,
+      bookingId: input.bookingId,
+    });
   }
 }

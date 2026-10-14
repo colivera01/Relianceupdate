@@ -8,6 +8,7 @@ import { buildEmployeeDecisionSubmission } from "@/lib/employee-decision-client"
 
 type Purpose =
   | "EMPLOYEE_RECORDING_PARTICIPATION"
+  | "EMPLOYEE_SERVICE_ORDER_LEGAL_ASSENT"
   | "EMPLOYEE_STANDING_PUBLIC_MEDIA";
 
 type VerificationView = {
@@ -24,11 +25,13 @@ export function EmployeeVerifiedDecision(props: {
   membershipId: string;
   bookingId?: string | null;
   contextHash?: string | null;
-  decision: "ALLOW" | "DECLINE" | "DENY";
+  decision: "ALLOW" | "DECLINE" | "DENY" | "ASSENT";
   title: string;
   decisionText: string;
   headers: Record<string, string>;
   submitUrl: string;
+  submissionBody?: Record<string, unknown>;
+  confirmLabel?: string;
   onCancel: () => void;
   onComplete: (body: any) => void | Promise<void>;
 }) {
@@ -129,11 +132,20 @@ export function EmployeeVerifiedDecision(props: {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...props.headers },
-        body: JSON.stringify(buildEmployeeDecisionSubmission({
-          membershipId: props.membershipId,
-          decision: props.decision,
-          contextHash: props.contextHash,
-        })),
+        body: JSON.stringify(
+          props.submissionBody
+            ? {
+                ...props.submissionBody,
+                membershipId: props.membershipId,
+                ...(props.bookingId ? { bookingId: props.bookingId } : {}),
+                ...(props.contextHash ? { contextHash: props.contextHash } : {}),
+              }
+            : buildEmployeeDecisionSubmission({
+                membershipId: props.membershipId,
+                decision: props.decision as "ALLOW" | "DECLINE" | "DENY",
+                contextHash: props.contextHash,
+              }),
+        ),
       });
       const decisionBody = await decisionResponse.json().catch(() => ({}));
       if (!decisionResponse.ok || decisionBody?.success === false) {
@@ -203,7 +215,7 @@ export function EmployeeVerifiedDecision(props: {
           <div className="flex flex-wrap gap-2">
             <Button disabled={working || code.length !== 6} onClick={() => void verifyAndSubmit()}>
               {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-              Verify and confirm
+              {props.confirmLabel || "Verify and confirm"}
             </Button>
             <Button variant="outline" className="border-slate-500 bg-transparent text-white" disabled={working} onClick={props.onCancel}>Cancel</Button>
           </div>

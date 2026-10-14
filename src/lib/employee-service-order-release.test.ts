@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   bookingFindFirst: vi.fn(),
@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   bookingUpdate: vi.fn(),
   assessmentFindFirst: vi.fn(),
   gate: vi.fn(),
+  managerAttestation: vi.fn(),
   send: vi.fn(),
 }));
 
@@ -37,6 +38,10 @@ vi.mock("@/lib/consent/recording-gate", () => ({
   loadRecordingPermissionGate: h.gate,
 }));
 
+vi.mock("@/lib/legal/role-assent-service", () => ({
+  hasCurrentManagerWorkRecordAttestation: h.managerAttestation,
+}));
+
 vi.mock("@/lib/notifications/send-job-assignment", () => ({
   sendJobAssignmentNotification: h.send,
 }));
@@ -57,6 +62,10 @@ const metadata = JSON.stringify({
 });
 
 describe("releaseEmployeeServiceOrderWhenReady", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     h.bookingFindFirst.mockResolvedValue({
@@ -82,6 +91,7 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
       assessmentGeneration: 2,
       scopeHash: "scope-hash-2",
     });
+    h.managerAttestation.mockResolvedValue(true);
     h.notificationCreate.mockResolvedValue({ id: "claim-1" });
     h.notificationFindUnique.mockResolvedValue({
       id: "claim-1",
@@ -135,6 +145,27 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
     });
 
     expect(result).toMatchObject({ ready: false, sentCount: 0, blocked: { code: "VERIFIED_PERMISSION_REQUIRED" } });
+    expect(h.notificationCreate).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("blocks Service Order release until the exact current Manager attestation exists", async () => {
+    vi.stubEnv("LEGAL_ROLE_ASSENT_BETA_ENABLED", "true");
+    h.managerAttestation.mockResolvedValue(false);
+
+    const result = await releaseEmployeeServiceOrderWhenReady({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      actorUserId: "manager-1",
+      baseUrl: "https://beta.relianceonline.org",
+    });
+
+    expect(result).toMatchObject({
+      ready: false,
+      sentCount: 0,
+      blocked: { code: "MANAGER_WORK_RECORD_ATTESTATION_REQUIRED" },
+    });
+    expect(h.gate).not.toHaveBeenCalled();
     expect(h.notificationCreate).not.toHaveBeenCalled();
     expect(h.send).not.toHaveBeenCalled();
   });

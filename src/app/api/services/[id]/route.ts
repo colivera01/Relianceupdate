@@ -30,6 +30,7 @@ import {
   requireActorVendorManager,
   requireRequestActor,
 } from '@/lib/request-actor';
+import { assertCurrentVendorRoleAssent } from '@/lib/legal/role-assent-service';
 
 export async function GET(
   request: NextRequest,
@@ -267,7 +268,13 @@ export async function PUT(
       const statusError = new AccountStatusError('vendor', (existing as any).vendor?.accountStatus);
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
-    requireActorVendorManager(actor, existing.vendorId);
+    const managerMembership = requireActorVendorManager(actor, existing.vendorId);
+    await assertCurrentVendorRoleAssent({
+      db: prisma as any,
+      userId: actor.userId,
+      vendorId: existing.vendorId,
+      membershipId: managerMembership.id,
+    });
 
     const nextName = body?.name !== undefined ? String(body.name || '').trim() : undefined;
     const nextDescription = body?.description !== undefined ? String(body.description || '').trim() : undefined;
@@ -355,7 +362,13 @@ export async function DELETE(
       const statusError = new AccountStatusError('vendor', (existing as any).vendor?.accountStatus);
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
-    requireActorVendorManager(actor, existing.vendorId);
+    const managerMembership = requireActorVendorManager(actor, existing.vendorId);
+    await assertCurrentVendorRoleAssent({
+      db: prisma as any,
+      userId: actor.userId,
+      vendorId: existing.vendorId,
+      membershipId: managerMembership.id,
+    });
 
     const referenceCount =
       existing._count.bookings +

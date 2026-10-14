@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
+import { ManagerWorkRecordAttestation } from "@/components/vendor/ManagerWorkRecordAttestation";
 import { PackageVisibilityCard } from "@/components/service-video/PackageVisibilityCard";
 import { resolveVendorJobLifecyclePresentation } from "@/lib/vendor-job-lifecycle-presentation";
 import { coreAdminAuditRejectionCategoryLabel } from "@/lib/core-admin-audit-categories";
@@ -717,6 +718,18 @@ export default function VendorJobDetailPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {isManager && job.recordingAssessment ? (
+              <Card>
+                <CardContent className="p-5">
+                  <ManagerWorkRecordAttestation
+                    vendorId={effectiveVendorId}
+                    bookingId={job.id}
+                    headers={headers}
+                  />
+                </CardContent>
+              </Card>
+            ) : null}
 
             <Card>
               <CardContent className="p-5">

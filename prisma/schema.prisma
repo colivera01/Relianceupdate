@@ -362,8 +362,9 @@ model GovernedContentVersion {
   @@map("governed_content_versions")
 }
 
-// Append-only, role-aware assent evidence plumbing. No live route or gate uses
-// this table until a later, explicitly authorized activation.
+// Append-only, role-aware assent evidence. Beta-only Vendor and accountless
+// Employee gates may use this table when their dedicated runtime flag is on;
+// the broader legal package remains non-effective.
 model RoleAssentEvidence {
   id                      String   @id @default(cuid())
   contentVersionId        String

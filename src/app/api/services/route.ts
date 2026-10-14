@@ -8,6 +8,7 @@ import {
   requireRequestActor,
   resolveRequestActor,
 } from '@/lib/request-actor';
+import { assertCurrentVendorRoleAssent } from '@/lib/legal/role-assent-service';
 import { countableServiceWhere, countableVendorWhere } from '@/lib/metrics-exclusion';
 import { buildServiceVendorCategoryFilter } from '@/lib/vendor-category-query';
 
@@ -193,7 +194,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
 
-    requireActorVendorManager(actor, vendorId);
+    const managerMembership = requireActorVendorManager(actor, vendorId);
+    await assertCurrentVendorRoleAssent({
+      db: prisma as any,
+      userId: actor.userId,
+      vendorId,
+      membershipId: managerMembership.id,
+    });
 
     const created = await prisma.service.create({
       data: {

@@ -21,6 +21,7 @@ import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
 import VendorSessionGuard from '@/components/vendor/VendorSessionGuard';
 import VendorManagerRecoveryPanel from '@/components/auth/VendorManagerRecoveryPanel';
+import { VendorRoleAssentGate } from '@/components/vendor/VendorRoleAssentGate';
 import { isVendorManagerWorkflowPath } from '@/lib/vendor-access-recovery';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
@@ -384,7 +385,14 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
                 </div>
               </div>
             ) : null}
-            {content}
+            {authUser?.id && vendorProfile?.id ? (
+              <VendorRoleAssentGate
+                userId={String(authUser.id)}
+                vendorId={String(vendorProfile.id)}
+              >
+                {content}
+              </VendorRoleAssentGate>
+            ) : content}
           </div>
         </div>
       </main>

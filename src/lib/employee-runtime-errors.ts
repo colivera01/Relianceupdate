@@ -136,6 +136,16 @@ export function getEmployeeDecisionErrorResponse(
       },
     };
   }
+  if (code === "EMPLOYEE_ROLE_ASSENT_REQUIRED") {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        code,
+        error: "Review and agree to the current Service Order terms before making a recording-participation choice.",
+      },
+    };
+  }
   if (
     code.includes("STALE") ||
     code === "EMPLOYEE_V2_SERVICE_ORDER_RELEASE_STALE"

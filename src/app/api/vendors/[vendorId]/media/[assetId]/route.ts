@@ -18,6 +18,7 @@ import {
   requireActorVendorManager,
   requireRequestActor,
 } from "@/lib/request-actor";
+import { assertCurrentVendorRoleAssent } from "@/lib/legal/role-assent-service";
 import {
   assertCoreAdminAuditMutationAllowed,
   CoreAdminAuditError,
@@ -40,7 +41,13 @@ export async function DELETE(
   try {
     const { vendorId, assetId } = await params;
     const actor = await requireRequestActor(request);
-    requireActorVendorManager(actor, vendorId);
+    const managerMembership = requireActorVendorManager(actor, vendorId);
+    await assertCurrentVendorRoleAssent({
+      db: prisma as any,
+      userId: actor.userId,
+      vendorId,
+      membershipId: managerMembership.id,
+    });
 
     // Find asset and verify it belongs to this vendor
     const asset = await (prisma as any).mediaAsset.findUnique({

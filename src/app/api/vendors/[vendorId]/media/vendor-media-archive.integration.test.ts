@@ -51,9 +51,17 @@ vi.mock("@/lib/media-lifecycle", () => ({
 vi.mock("@/lib/request-actor", () => ({
   requireRequestActor: vi.fn(),
   requireActorVendorManager: vi.fn((actor: any, vendorId: string) => {
-    if (!actor?.vendorMemberships?.some((membership: any) => membership.vendorId === vendorId && membership.isManager)) {
+    const membership = actor?.vendorMemberships?.find(
+      (candidate: any) => candidate.vendorId === vendorId && candidate.isManager,
+    );
+    if (!membership) {
       throw new Error("Forbidden");
     }
+    return {
+      id: membership.id || "manager-membership-1",
+      vendorId,
+      role: "MANAGER",
+    };
   }),
   authorizationErrorResponse: vi.fn(() => null),
 }));
@@ -69,7 +77,7 @@ describe("GET /api/vendors/[vendorId]/media", () => {
     vi.mocked(requireRequestActor).mockReset();
     vi.mocked(requireRequestActor).mockResolvedValue({
       userId: "manager-user",
-      vendorMemberships: [{ vendorId: "v1", isManager: true }],
+      vendorMemberships: [{ id: "manager-membership-1", vendorId: "v1", isManager: true }],
     } as any);
     vi.mocked(requestMediaDeletion).mockReset();
     vi.mocked(requestMediaDeletion).mockResolvedValue({

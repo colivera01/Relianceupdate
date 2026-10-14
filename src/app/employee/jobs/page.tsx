@@ -1715,6 +1715,12 @@ export default function EmployeeJobsPage() {
             }
             onChoice={(decision) => setParticipationChoice({ jobId: job.id, decision })}
             onCancel={() => setParticipationChoice(null)}
+            onLegalAssented={async () => {
+              setActionMessage(
+                "Your Service Order agreement was saved. Recording participation remains a separate next choice.",
+              );
+              await loadJobs();
+            }}
             onComplete={async (body) => {
               setParticipationChoice(null);
               setActionMessage(

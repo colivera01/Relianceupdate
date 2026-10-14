@@ -23,6 +23,7 @@ import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assess
 
 export const EMPLOYEE_DECISION_PURPOSES = {
   RECORDING: "EMPLOYEE_RECORDING_PARTICIPATION",
+  SERVICE_ORDER_LEGAL_ASSENT: "EMPLOYEE_SERVICE_ORDER_LEGAL_ASSENT",
   STANDING_PUBLIC: "EMPLOYEE_STANDING_PUBLIC_MEDIA",
 } as const;
 
@@ -159,7 +160,10 @@ export async function loadEmployeeDecisionContext(input: {
     serviceOrderCurrent: false,
   };
 
-  if (input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING) {
+  if (
+    input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING ||
+    input.purpose === EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT
+  ) {
     if (!input.bookingId) throw new Error("EMPLOYEE_RECORDING_CONTEXT_REQUIRED");
     const booking = await input.db.booking.findFirst({
       where: { id: input.bookingId, vendorId: membership.vendorId },

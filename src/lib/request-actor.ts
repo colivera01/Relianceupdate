@@ -25,7 +25,7 @@ export type RequestActor = {
 
 export class AuthorizationError extends Error {
   constructor(
-    public readonly code: "UNAUTHENTICATED" | "ACCOUNT_RESTRICTED" | "FORBIDDEN" | "VENDOR_SESSION_TIMEOUT",
+    public readonly code: "UNAUTHENTICATED" | "ACCOUNT_RESTRICTED" | "FORBIDDEN" | "VENDOR_SESSION_TIMEOUT" | "VENDOR_ROLE_ASSENT_REQUIRED",
     message: string,
     public readonly statusCode: 401 | 403
   ) {
@@ -200,9 +200,16 @@ export function requireActorVendorManager(
 }
 
 export function authorizationErrorResponse(error: unknown): Response | null {
-  if (!(error instanceof AuthorizationError)) return null;
+  if (
+    !(error instanceof AuthorizationError) &&
+    !(
+      error instanceof Error &&
+      (error as any).code === "VENDOR_ROLE_ASSENT_REQUIRED" &&
+      (error as any).statusCode === 403
+    )
+  ) return null;
   return Response.json(
-    { success: false, code: error.code, error: error.message },
-    { status: error.statusCode }
+    { success: false, code: (error as any).code, error: error.message },
+    { status: (error as any).statusCode }
   );
 }

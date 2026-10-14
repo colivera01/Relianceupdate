@@ -32,12 +32,14 @@ export async function resolveEmployeeDecisionActor(input: {
 }): Promise<EmployeeDecisionActor> {
   const capture = await resolveEmployeeCaptureAccess(input.request, {
     bookingId:
-      input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING
+      input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING ||
+      input.purpose === EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT
         ? input.requestedBookingId
         : null,
   });
   if (
-    input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING &&
+    (input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING ||
+      input.purpose === EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT) &&
     readEmployeeCaptureToken(input.request) &&
     !capture
   ) {
@@ -55,7 +57,8 @@ export async function resolveEmployeeDecisionActor(input: {
       vendorId: capture.vendorId,
       membershipId: capture.membershipId,
       bookingId:
-        input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING
+        input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING ||
+        input.purpose === EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT
           ? capture.bookingId
           : null,
       entryMethod: "SERVICE_ORDER_ENTRY",
@@ -99,7 +102,8 @@ export async function resolveEmployeeDecisionActor(input: {
     vendorId: membership.vendorId,
     membershipId,
     bookingId:
-      input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING
+      input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING ||
+      input.purpose === EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT
         ? String(input.requestedBookingId || "").trim() || null
         : null,
     entryMethod: "SIGNED_IN_ACCOUNT",

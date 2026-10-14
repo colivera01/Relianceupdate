@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
+import { EmployeeServiceOrderLegalAssent } from "@/components/employee/EmployeeServiceOrderLegalAssent";
 import type { EmployeeV2ServiceOrderView } from "@/lib/recording/employee-v2-service-order";
 
 type Decision = "ALLOW" | "DECLINE";
@@ -24,6 +25,7 @@ export function EmployeeV2ServiceOrderPanel(props: {
   onChoice: (decision: Decision) => void;
   onCancel: () => void;
   onComplete: (body: any) => void | Promise<void>;
+  onLegalAssented: () => void | Promise<void>;
 }) {
   const status = props.view.participation.employeeStatus;
   return (
@@ -83,6 +85,13 @@ export function EmployeeV2ServiceOrderPanel(props: {
         {props.view.scope.privateUseNotice}
       </p>
 
+      <EmployeeServiceOrderLegalAssent
+        membershipId={props.membershipId}
+        bookingId={props.bookingId}
+        contextHash={props.view.contextHash}
+        headers={props.headers}
+        onAssented={props.onLegalAssented}
+      >
       <div className="mt-5 flex items-start gap-3 border-t border-blue-300/20 pt-4">
         {status === "ALLOWED" ? (
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" aria-hidden="true" />
@@ -145,6 +154,7 @@ export function EmployeeV2ServiceOrderPanel(props: {
           />
         </div>
       ) : null}
+      </EmployeeServiceOrderLegalAssent>
     </section>
   );
 }

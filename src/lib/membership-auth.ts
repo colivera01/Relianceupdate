@@ -9,6 +9,7 @@ import {
   requireActorVendorMembership,
   requireRequestActor,
 } from "@/lib/request-actor";
+import { assertCurrentVendorRoleAssent } from "@/lib/legal/role-assent-service";
 export { getUserIdFromRequest };
 
 export type MembershipRole = "MANAGER" | "EMPLOYEE";
@@ -88,6 +89,12 @@ export async function requireVendorManager(
   }
   await ensureVendorAccountCanOperate(targetVendorId);
   const membership = requireActorVendorManager(actor, targetVendorId);
+  await assertCurrentVendorRoleAssent({
+    db: prisma as any,
+    userId: actor.userId,
+    vendorId: targetVendorId,
+    membershipId: membership.id,
+  });
 
   return {
     vendorId: targetVendorId,
@@ -106,6 +113,14 @@ export async function requireVendorMembership(
   const actor = await requireRequestActor(request);
   await ensureVendorAccountCanOperate(vendorId);
   const membership = requireActorVendorMembership(actor, vendorId);
+  if (membership.role === "MANAGER") {
+    await assertCurrentVendorRoleAssent({
+      db: prisma as any,
+      userId: actor.userId,
+      vendorId,
+      membershipId: membership.id,
+    });
+  }
 
   return {
     userId: actor.userId,

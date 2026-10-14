@@ -18,6 +18,7 @@ import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assess
 import { resolveCurrentV2RecordingAuthorization } from "@/lib/recording/recording-authorization-v2";
 import { employeeV2NextState } from "@/lib/recording/employee-v2-service-order";
 import { prisma } from "@/server/db";
+import { assertCurrentEmployeeRoleAssent } from "@/lib/legal/role-assent-service";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -54,6 +55,12 @@ export async function POST(request: Request, routeContext: Context) {
       context: decisionContext,
       entryMethod: actor.entryMethod,
       displayedContextHash: body?.contextHash,
+    });
+    await assertCurrentEmployeeRoleAssent({
+      db: prisma as any,
+      userId: actor.userId,
+      membershipId: actor.membershipId,
+      bookingId: jobId,
     });
     const sessionSecret = readEmployeeDecisionCookie(request);
     if (!sessionSecret) throw new Error("EMPLOYEE_DECISION_SESSION_REQUIRED");

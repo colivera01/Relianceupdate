@@ -57,8 +57,18 @@ describe("Phase 3C dormant Employee runtime contract", () => {
 
   it("keeps standing Public participation out of the V2 Service Order decision panel", () => {
     const panel = read("src/components/employee/EmployeeV2ServiceOrderPanel.tsx");
+    expect(panel).toContain("EmployeeServiceOrderLegalAssent");
     expect(panel).toContain('purpose="EMPLOYEE_RECORDING_PARTICIPATION"');
     expect(panel).not.toContain("EMPLOYEE_STANDING_PUBLIC_MEDIA");
     expect(panel).not.toContain("public-media-consent");
+  });
+
+  it("keeps accountless legal assent separate from the later recording choice", () => {
+    const legalGate = read("src/components/employee/EmployeeServiceOrderLegalAssent.tsx");
+    expect(legalGate).toContain('purpose="EMPLOYEE_SERVICE_ORDER_LEGAL_ASSENT"');
+    expect(legalGate).toContain("This Service Order is not for me");
+    expect(legalGate).toContain("does not submit a recording-participation choice");
+    expect(legalGate).not.toContain('decision="ALLOW"');
+    expect(legalGate).not.toContain("EMPLOYEE_STANDING_PUBLIC_MEDIA");
   });
 });

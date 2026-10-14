@@ -7,6 +7,7 @@ import {
 } from "@/lib/job-assignment";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
+import { hasCurrentManagerWorkRecordAttestation } from "@/lib/legal/role-assent-service";
 
 type ReleaseInput = {
   bookingId: string;
@@ -83,6 +84,28 @@ export async function releaseEmployeeServiceOrderWhenReady(
   const compliance = parseRecordingComplianceMetadata(booking.customerMetadata);
   if (!assignment.assignedMembershipIds.length) {
     return { ready: false, alreadyReleased: false, deliveryInProgress: false, sentCount: 0, releasedMembershipIds: [], results: [] };
+  }
+
+  if (
+    !(await hasCurrentManagerWorkRecordAttestation({
+      db: prisma as any,
+      bookingId: booking.id,
+      vendorId: input.vendorId,
+    }))
+  ) {
+    return {
+      ready: false,
+      alreadyReleased: false,
+      deliveryInProgress: false,
+      sentCount: 0,
+      releasedMembershipIds: compliance.releasedMembershipIds,
+      results: [],
+      blocked: {
+        code: "MANAGER_WORK_RECORD_ATTESTATION_REQUIRED",
+        why: "The current Work Record has not been attested by an authorized Vendor Manager.",
+        resolution: "Review the exact assignment and recording scope, then confirm the Manager Work Record attestation before sending the Service Order.",
+      },
+    };
   }
 
   const gate = await loadRecordingPermissionGate({
