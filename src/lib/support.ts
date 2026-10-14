@@ -1,4 +1,6 @@
-export const RELIANCE_V1_SUPPORT_EMAIL = 'Relianceorg.support@gmail.com';
+import publicContact from '@/config/reliance-public-contact.json';
+
+export const RELIANCE_V1_SUPPORT_EMAIL = publicContact.supportEmail;
 
 const configuredLaunchSupportEmail = process.env.NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL?.trim();
 

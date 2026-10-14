@@ -28,11 +28,17 @@ def main():
         raise RuntimeError('Source worktree must be clean')
     if subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip() != args.commit:
         raise RuntimeError('HEAD must match exact approved commit')
+    public_contact = json.loads(
+        (source / 'src/config/reliance-public-contact.json').read_text(encoding='utf-8')
+    )
+    support_email = str(public_contact.get('supportEmail', '')).strip()
+    if not support_email:
+        raise RuntimeError('Canonical Reliance support email is missing')
     # Do not inherit database credentials or ambient generation/engine overrides.
     env = {key: value for key, value in os.environ.items() if key.upper() in {
         'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'COMSPEC', 'PATHEXT', 'PROCESSOR_ARCHITECTURE',
     }}
-    env.update(NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL='Relianceorg.support@gmail.com', NEXT_TELEMETRY_DISABLED='1', NODE_OPTIONS='--max-old-space-size=6144 --dns-result-order=ipv4first', DATABASE_URL='sqlserver://localhost:1433;database=release_build;user=unused;password=unused;trustServerCertificate=true')
+    env.update(NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL=support_email, NEXT_TELEMETRY_DISABLED='1', NODE_OPTIONS='--max-old-space-size=6144 --dns-result-order=ipv4first', DATABASE_URL='sqlserver://localhost:1433;database=release_build;user=unused;password=unused;trustServerCertificate=true')
     run(['git', '-c', 'core.autocrlf=false', 'clone', '--no-hardlinks', '--no-checkout', source, build], source, env)
     run(['git', '-c', 'core.autocrlf=false', 'checkout', '--detach', args.commit], build, env)
     npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')

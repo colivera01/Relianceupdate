@@ -8,7 +8,9 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const legacyRoot = path.join(root, "docs/legal-content-drafts/2026-10-12");
 const revisedRoot = path.join(root, "docs/legal-content-drafts/2026-10-12-draft.2");
+const currentRoot = path.join(root, "docs/legal-content-drafts/2026-10-13-draft.3");
 const legacyPackageSha256 = "63bb7c9523e4690e85843d542b92cd6d78d8ad70714c5b0e13be2df573f5f83b";
+const revisedPackageSha256 = "78893222833248ff6f299e78c59ac1a2a0fba893a8e4e8f72ca50022891d0555";
 
 type LegacyEntry = {
   contentKey: string;
@@ -29,6 +31,15 @@ type RevisedEntry = {
   publishableBodySha256: string;
   internalActivationNotesSha256: string;
   documentSha256: string;
+};
+
+type CurrentEntry = Omit<RevisedEntry, "predecessor"> & {
+  predecessor: {
+    version: string;
+    publishableBodySha256: string;
+    internalActivationNotesSha256: string;
+    documentSha256: string;
+  };
 };
 
 function sourceFiles(directory: string): string[] {
@@ -66,6 +77,14 @@ function publishableCopy(fileName: string): string {
   return boundedSection(revisedDocument(fileName), "PROSPECTIVE USER-FACING COPY");
 }
 
+function currentDocument(fileName: string): string {
+  return normalize(fs.readFileSync(path.join(currentRoot, fileName), "utf8"));
+}
+
+function currentPublishableCopy(fileName: string): string {
+  return boundedSection(currentDocument(fileName), "PROSPECTIVE USER-FACING COPY");
+}
+
 describe("prospective legal content drafts", () => {
   it("has deterministic current manifests and preserves revision 1", () => {
     const result = spawnSync(
@@ -80,6 +99,95 @@ describe("prospective legal content drafts", () => {
     );
     expect(legacy.packageSha256).toBe(legacyPackageSha256);
     expect(legacy.entries).toHaveLength(14);
+    const revised = JSON.parse(
+      fs.readFileSync(path.join(revisedRoot, "manifest.json"), "utf8"),
+    );
+    expect(revised.packageSha256).toBe(revisedPackageSha256);
+  });
+
+  it("contains fourteen draft.3 identities linked to immutable draft.2 predecessors", () => {
+    const revised = JSON.parse(
+      fs.readFileSync(path.join(revisedRoot, "manifest.json"), "utf8"),
+    );
+    const current = JSON.parse(
+      fs.readFileSync(path.join(currentRoot, "manifest.json"), "utf8"),
+    );
+    const revisedByKey = new Map<string, RevisedEntry>(
+      revised.entries.map((entry: RevisedEntry) => [entry.contentKey, entry]),
+    );
+
+    expect(current.formatVersion).toBe(3);
+    expect(current.packageKey).toBe(
+      "reliance-legal-content-drafts-2026-10-13-draft.3",
+    );
+    expect(current.entries).toHaveLength(14);
+    expect(current.predecessorPackage).toEqual({
+      packageKey: revised.packageKey,
+      packageSha256: revisedPackageSha256,
+    });
+    expect(current.governanceStatus).toBe("DRAFT");
+    expect(current.reviewState).toBe("PRODUCT_OWNER_REVIEW");
+    expect(current.runtimeEffective).toBe(false);
+    expect(current.counselApproved).toBe(false);
+
+    for (const entry of current.entries as CurrentEntry[]) {
+      const predecessor = revisedByKey.get(entry.contentKey);
+      expect(predecessor).toBeDefined();
+      expect(entry.version).toBe(
+        predecessor!.version.replace(
+          /-2026-10-12-draft\.2$/,
+          "-2026-10-13-draft.3",
+        ),
+      );
+      expect(entry.predecessor).toEqual({
+        version: predecessor!.version,
+        publishableBodySha256: predecessor!.publishableBodySha256,
+        internalActivationNotesSha256:
+          predecessor!.internalActivationNotesSha256,
+        documentSha256: predecessor!.documentSha256,
+      });
+    }
+  });
+
+  it("changes only the approved support contact in draft.3 publishable copy", () => {
+    const draftFiles = fs
+      .readdirSync(currentRoot)
+      .filter((file) => file.endsWith(".draft.md"));
+    expect(draftFiles).toHaveLength(14);
+
+    for (const fileName of draftFiles) {
+      const expected = publishableCopy(fileName).replaceAll(
+        "colivera080124@gmail.com",
+        "Relianceorg.support@gmail.com",
+      );
+      expect(currentPublishableCopy(fileName)).toBe(expected);
+      expect(currentPublishableCopy(fileName)).not.toContain(
+        "colivera080124@gmail.com",
+      );
+    }
+    expect(
+      currentPublishableCopy("customer-recording-authorization.draft.md"),
+    ).not.toMatch(/decide later/i);
+    expect(
+      fs.readFileSync(path.join(currentRoot, "coverage-map.md"), "utf8"),
+    ).toContain("retired Decide Later action has been removed prospectively");
+  });
+
+  it("keeps every draft.3 document review-only and non-effective", () => {
+    const documents = fs
+      .readdirSync(currentRoot)
+      .filter((file) => file.endsWith(".draft.md"))
+      .map((file) => currentDocument(file));
+    expect(documents).toHaveLength(14);
+    for (const document of documents) {
+      expect(document).toContain("# DRAFT / PRODUCT OWNER REVIEW");
+      expect(document).toMatch(/version: .+-2026-10-13-draft\.3/);
+      expect(document).toMatch(/supersedes_version: .+-2026-10-12-draft\.2/);
+      expect(document).toMatch(/governance_status: DRAFT/);
+      expect(document).toMatch(/review_state: PRODUCT_OWNER_REVIEW/);
+      expect(document).toMatch(/runtime_effective: false/);
+      expect(document).toMatch(/counsel_approved: false/);
+    }
   });
 
   it("contains fourteen new draft.2 identities linked to immutable predecessors", () => {
@@ -228,5 +336,6 @@ describe("prospective legal content drafts", () => {
     expect(runtime).not.toContain("legal-content-drafts");
     expect(runtime).not.toContain("reliance-legal-content-drafts-2026-10-12");
     expect(runtime).not.toContain("reliance-legal-content-drafts-2026-10-12-draft.2");
+    expect(runtime).not.toContain("reliance-legal-content-drafts-2026-10-13-draft.3");
   });
 });

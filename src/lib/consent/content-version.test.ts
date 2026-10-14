@@ -3,8 +3,28 @@ import {
   buildAssessmentPermissionScopeJson,
   permissionContentForAudio,
 } from "./content-version";
+import {
+  isCurrentPermissionContentVersion,
+  SUPPORTED_PERMISSION_CONTENT_VERSIONS,
+} from "./content-contract";
 
 describe("versioned recording-permission audio disclosure", () => {
+  it("recognizes only the explicit current permission contracts", () => {
+    for (const version of SUPPORTED_PERMISSION_CONTENT_VERSIONS) {
+      expect(isCurrentPermissionContentVersion(version)).toBe(true);
+    }
+    for (const unsupported of [
+      null,
+      "",
+      "recording-permission-v1",
+      "recording-permission-v3-unknown",
+      "recording-permission-v4-simplified-work-scope-unknown",
+      "recording-permission-v5",
+    ]) {
+      expect(isCurrentPermissionContentVersion(unsupported)).toBe(false);
+    }
+  });
+
   it("binds Video-only permission to a distinct disclosure and hash", () => {
     const videoOnly = permissionContentForAudio(false);
 

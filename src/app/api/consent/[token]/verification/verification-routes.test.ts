@@ -77,6 +77,7 @@ function linkFixture() {
       status: "requested",
       lifecycleStatus: "DELIVERED",
       decisionEvidence: null,
+      contentVersion: { version: "recording-permission-v3-video-only" },
       recipientEmailHash: hashOpaqueSecret("permission-contact:customer@example.com"),
       recipientPhoneHash: null,
       vendor: { name: "Vendor", businessName: "Vendor Co" },
@@ -134,6 +135,49 @@ describe("permission identity verification", () => {
     });
     expect(JSON.stringify(hoisted.challengeCreate.mock.calls[0][0])).not.toContain("123456");
     expect(hoisted.sendOtp).toHaveBeenCalledWith(expect.objectContaining({ code: "123456" }));
+  });
+
+  it.each([null, "recording-permission-v1", "recording-permission-v4-unknown"])(
+    "does not issue verification for unsupported permission content (%s)",
+    async (version) => {
+      const link = linkFixture() as any;
+      link.consentRecord.contentVersion = version ? { version } : null;
+      hoisted.linkFindUnique.mockResolvedValue(link);
+
+      const response = await startVerification(
+        post(`/api/consent/${ACTION_SECRET}/verification/start`, {
+          channel: "email",
+        }) as any,
+        { params: Promise.resolve({ token: ACTION_SECRET }) },
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "CURRENT_PERMISSION_REQUEST_REQUIRED",
+      });
+      expect(hoisted.challengeCreate).not.toHaveBeenCalled();
+      expect(hoisted.decisionSessionCreate).not.toHaveBeenCalled();
+      expect(hoisted.sendOtp).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not consume an OTP or issue a decision session after content becomes unsupported", async () => {
+    const link = linkFixture() as any;
+    link.consentRecord.contentVersion = null;
+    hoisted.linkFindUnique.mockResolvedValue(link);
+
+    const response = await verifyCode(
+      post(`/api/consent/${ACTION_SECRET}/verification/verify`, {
+        channel: "email",
+        code: "123456",
+      }) as any,
+      { params: Promise.resolve({ token: ACTION_SECRET }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(hoisted.challengeFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.challengeUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.decisionSessionCreate).not.toHaveBeenCalled();
   });
 
   it("rate limits without revealing whether the destination exists", async () => {

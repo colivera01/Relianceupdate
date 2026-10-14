@@ -55,6 +55,7 @@ describe("vendor-attributed SMS copy", () => {
       customerPhone: "4075550199",
       vendorName: "Electro LLC",
       serviceName: "Outlet Installation",
+      contentVersion: "recording-permission-v3-video-only",
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
@@ -149,7 +150,7 @@ describe("vendor-attributed SMS copy", () => {
     expect(`${email.text}\n${email.html}\n${sms}`).not.toContain("Audio will not be recorded");
   });
 
-  it("keeps SMS action copy bound to the permission content version", async () => {
+  it("uses only current action copy and refuses legacy notification delivery", async () => {
     const { sendConsentLinkNotification } = await import("./send-consent-link");
 
     await sendConsentLinkNotification({
@@ -161,21 +162,23 @@ describe("vendor-attributed SMS copy", () => {
       serviceName: "Outlet Installation",
       contentVersion: "recording-permission-v2-simplified-v1",
     });
-    await sendConsentLinkNotification({
-      consentRecordId: "consent-historical",
-      actorUserId: "vendor-user-1",
-      consentPath: "/consent/token-historical",
-      customerPhone: "4075550199",
-      vendorName: "Electro LLC",
-      serviceName: "Outlet Installation",
-      contentVersion: "recording-permission-v1",
-    });
+    await expect(
+      sendConsentLinkNotification({
+        consentRecordId: "consent-historical",
+        actorUserId: "vendor-user-1",
+        consentPath: "/consent/token-historical",
+        customerPhone: "4075550199",
+        vendorName: "Electro LLC",
+        serviceName: "Outlet Installation",
+        contentVersion: "recording-permission-v1",
+      }),
+    ).rejects.toMatchObject({ code: "CURRENT_PERMISSION_REQUEST_REQUIRED" });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
       "Allow recording, decline recording, or report wrong recipient",
     );
     expect(hoisted.sendSms.mock.calls[0][0].body).not.toContain("decide later");
-    expect(hoisted.sendSms.mock.calls[1][0].body).toContain("Allow, decline, or decide later");
+    expect(hoisted.sendSms).toHaveBeenCalledTimes(1);
   });
 
   it("identifies the vendor in the optional customer review invitation SMS", async () => {

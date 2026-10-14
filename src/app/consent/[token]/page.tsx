@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle2, Clock3, LockKeyhole, ShieldCheck, UserCheck, Volume2, VolumeX } from "lucide-react";
 
+import {
+  CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+  isCurrentPermissionContentVersion,
+} from "@/lib/consent/content-contract";
 import styles from "./permission.module.css";
 
 type Permission = {
@@ -52,8 +56,6 @@ type Permission = {
   contentVersion: string | null;
 };
 
-const SIMPLIFIED_V1_CONTENT_VERSION = "recording-permission-v2-simplified-v1";
-
 const SUPPORTED_CUSTOMER_AUTHORITY = {
   value: "customer",
   scope: "self_and_property",
@@ -73,7 +75,6 @@ function stateMessage(state: string, simplifiedV1 = false) {
       title: "Recording declined",
       detail: "Reliance will not record this service through this work record. The Reliance work record is closed, and no further recording-permission action is required.",
     },
-    later: { title: "No decision was saved", detail: "Recording stays locked. You can return to this secure link before it expires. The provider is not told that you approved or declined." },
     expired: { title: "This secure link expired", detail: "Ask the service provider to send a new recording-permission request." },
     superseded: {
       title: "This permission request was replaced",
@@ -121,9 +122,9 @@ export default function PermissionPage() {
   const [code, setCode] = useState("");
   const [verified, setVerified] = useState(false);
   const [busy, setBusy] = useState("");
-  const [finished, setFinished] = useState<"allowed" | "declined" | "later" | "wrong_recipient" | null>(null);
+  const [finished, setFinished] = useState<"allowed" | "declined" | "wrong_recipient" | null>(null);
   const [address, setAddress] = useState({ address: "", city: "", state: "", zipCode: "" });
-  const simplifiedV1 = String(permission?.contentVersion || "").startsWith("recording-permission-v");
+  const simplifiedV1 = isCurrentPermissionContentVersion(permission?.contentVersion);
 
   useEffect(() => {
     let active = true;
@@ -133,6 +134,9 @@ export default function PermissionPage() {
       .then(({ response, body }) => {
         if (!active) return;
         if (!response.ok || !body?.permission) throw new Error(body?.error || "This recording request could not be loaded.");
+        if (!isCurrentPermissionContentVersion(body.permission.contentVersion)) {
+          throw new Error(CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE);
+        }
         setPermission(body.permission);
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : "This recording request could not be loaded."))
@@ -294,9 +298,6 @@ export default function PermissionPage() {
             </div>
             <div className={styles.decisionBox}>
               <p><strong>What happens now:</strong> Recording stays locked. Contact {permission.vendorName} to correct the required decision-maker or request a supported authority-verification path.</p>
-              {!simplifiedV1 ? <div className={styles.actions}>
-                <button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button>
-              </div> : null}
             </div>
           </section>
         ) : !verified ? (
@@ -313,20 +314,16 @@ export default function PermissionPage() {
           <section className={styles.step}>
             <div className={styles.stepHeading}><span>2</span><div><h2>Make your recording decision</h2><p>You verified the customer contact Reliance intended for this Service Order. If this request is not for you, report it below instead of making a decision.</p></div></div>
             {permission.recordingLocation === "customer-business" ? <div className={styles.addressGrid}><label>Street address<input value={address.address} onChange={(event) => setAddress({ ...address, address: event.target.value })} /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} /></label><label>ZIP code<input inputMode="numeric" value={address.zipCode} onChange={(event) => setAddress({ ...address, zipCode: event.target.value })} /></label></div> : null}
-            {simplifiedV1 ? (
-              <div className={styles.decisionBox} aria-label="Customer recording decision">
-                <h2>Your decision</h2>
-                <p><strong>Allow Recording:</strong> Reliance may record the three Service Video stages according to the scope shown above. All remaining recording checks still apply.</p>
-                <p><strong>Decline Recording:</strong> Reliance will not record through this work record, and the Reliance work record will be canceled. This does not cancel your underlying service with the provider.</p>
-                <p><strong>This Request Is Not for Me:</strong> Use this only when the permission request was sent to the wrong person or contact.</p>
-                <div className={styles.actions}>
-                  <button className={styles.primary} disabled={Boolean(busy)} onClick={() => decide("allow")}>Allow Recording</button>
-                  <button className={styles.danger} disabled={Boolean(busy)} onClick={() => decide("decline")}>Decline Recording</button>
-                </div>
+            <div className={styles.decisionBox} aria-label="Customer recording decision">
+              <h2>Your decision</h2>
+              <p><strong>Allow Recording:</strong> Reliance may record the three Service Video stages according to the scope shown above. All remaining recording checks still apply.</p>
+              <p><strong>Decline Recording:</strong> Reliance will not record through this work record, and the Reliance work record will be canceled. This does not cancel your underlying service with the provider.</p>
+              <p><strong>This Request Is Not for Me:</strong> Use this only when the permission request was sent to the wrong person or contact.</p>
+              <div className={styles.actions}>
+                <button className={styles.primary} disabled={Boolean(busy)} onClick={() => decide("allow")}>Allow Recording</button>
+                <button className={styles.danger} disabled={Boolean(busy)} onClick={() => decide("decline")}>Decline Recording</button>
               </div>
-            ) : (
-              <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. {permission.plannedScope?.serviceCanContinueWithoutRecording ? "The service may continue without a Service Video." : "The business has said recording is required to complete this service, so the service will not proceed under this Service Order."}</p><p><strong>If you decide later:</strong> No decision is saved. Recording stays locked, you may return before this link expires, and the provider is not told that you approved or declined.</p><div className={styles.actions}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
-            )}
+            </div>
           </section>
         )}
 

@@ -7,6 +7,7 @@ import {
 } from "@/lib/consent/authorization";
 import { deliverVerifiedPermissionRequest } from "@/lib/consent/delivery-service";
 import { rotateVerifiedPermissionLink } from "@/lib/consent/request-service";
+import { CurrentPermissionRequestRequiredError } from "@/lib/consent/content-contract";
 
 type Context = { params: Promise<{ requestId: string }> };
 
@@ -63,6 +64,12 @@ export async function POST(request: NextRequest, context: Context) {
         : null,
     });
   } catch (error) {
+    if (error instanceof CurrentPermissionRequestRequiredError) {
+      return NextResponse.json(
+        { success: false, code: error.code, error: error.message },
+        { status: 409 },
+      );
+    }
     const status = permissionAuthorizationStatus(error);
     if (status !== 500)
       return NextResponse.json(

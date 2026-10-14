@@ -7,6 +7,10 @@ function source(relativePath: string): string {
 }
 
 describe('customer support contact contract', () => {
+  const publicContact = JSON.parse(source('src/config/reliance-public-contact.json'));
+  const supportResolver = source('src/lib/support.ts');
+  const isolatedReleaseBuilder = source('scripts/release/build_isolated_azure_package.py');
+  const releaseContract = source('docs/release/customer-portal-artifact-contract.md');
   const customerSupportPage = source('src/app/(user)/customer/support/page.tsx');
   const publicHelpPage = source('src/app/help/page.tsx');
   const smsPolicyPage = source('src/app/sms-policy/page.tsx');
@@ -15,6 +19,13 @@ describe('customer support contact contract', () => {
   const reportDialog = source('src/components/reports/ReportContentDialog.tsx');
 
   it('uses the canonical support resolver across current customer-facing surfaces', () => {
+    expect(publicContact.supportEmail).toBe('Relianceorg.support@gmail.com');
+    expect(supportResolver).toContain('@/config/reliance-public-contact.json');
+    expect(isolatedReleaseBuilder).toContain('src/config/reliance-public-contact.json');
+    expect(releaseContract).toContain('src/config/reliance-public-contact.json');
+    expect(isolatedReleaseBuilder).not.toContain(
+      "NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL='Relianceorg.support@gmail.com'",
+    );
     for (const currentSurface of [
       customerSupportPage,
       publicHelpPage,

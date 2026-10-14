@@ -1,18 +1,17 @@
 import { hashOpaqueSecret } from "./token";
+import {
+  isCurrentPermissionContentVersion,
+  PERMISSION_CONTENT_VERSION,
+} from "./content-contract";
 
-export const PERMISSION_CONTENT_VERSION = "recording-permission-v2-simplified-v1";
+export { PERMISSION_CONTENT_VERSION } from "./content-contract";
 export const PERMISSION_SCOPE_SCHEMA_VERSION = "recording-scope-v2-simplified-v1";
 export const AUDIO_PERMISSION_SCOPE_SCHEMA_VERSION = "recording-scope-v3-package-audio-v1";
 export const SIMPLIFIED_WORK_SCOPE_PERMISSION_SCHEMA_VERSION =
   "recording-scope-v4-simplified-work-scope-v1";
 
 export function isSimplifiedV1PermissionVersion(value: unknown): boolean {
-  const version = String(value || "").trim();
-  return (
-    version === PERMISSION_CONTENT_VERSION ||
-    version.startsWith("recording-permission-v3-") ||
-    version.startsWith("recording-permission-v4-")
-  );
+  return isCurrentPermissionContentVersion(value);
 }
 
 export const PERMISSION_CONTENT = {

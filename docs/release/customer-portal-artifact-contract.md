@@ -17,9 +17,10 @@ The script uses a fresh detached checkout and the committed npm lockfile. It run
 `npm ci`, explicit `prisma generate --schema=prisma/schema.prisma`, current-client
 validation, Next production build, standalone validation, allowlisted ZIP assembly,
 clean extraction, and executable validation of the extracted runtime. It has no
-Azure deployment or migration operation. Support contact is built with
-`NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL=Relianceorg.support@gmail.com`. Database credentials
-are not inherited; build-time DATABASE_URL is a non-operational localhost value.
+Azure deployment or migration operation. The builder reads the canonical support
+contact from `src/config/reliance-public-contact.json` and sets
+`NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL` to that exact value. Database credentials are not
+inherited; build-time DATABASE_URL is a non-operational localhost value.
 
 On Windows, a second fresh `npm ci --ignore-scripts --os=linux --cpu=x64
 --libc=glibc` installs the same committed lockfile into an isolated scratch tree.

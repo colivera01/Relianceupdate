@@ -26,6 +26,11 @@ import {
 } from "@/lib/consent/recipient";
 import { hashOpaqueSecret } from "@/lib/consent/token";
 import { sendPermissionOtp } from "@/lib/notifications/send-permission-otp";
+import {
+  CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+  CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+  isCurrentPermissionContentVersion,
+} from "@/lib/consent/content-contract";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -73,6 +78,16 @@ export async function POST(request: NextRequest, context: Context) {
   const link = await findPermissionByActionSecret(String(token || ""));
   const availability = actionLinkAvailability(link);
   if (!availability.active) return NextResponse.json(GENERIC_RESPONSE);
+  if (!isCurrentPermissionContentVersion(link.consentRecord.contentVersion?.version)) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+        error: CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+      },
+      { status: 409 },
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const channel = String(body?.channel || "")

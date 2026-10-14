@@ -1,6 +1,9 @@
 import { prisma } from "@/server/db";
 import { dispatchQueuedConsentNotification } from "@/lib/booking-notification-delivery";
-import { PERMISSION_CONTENT_VERSION } from "@/lib/consent/content-version";
+import {
+  CurrentPermissionRequestRequiredError,
+  isCurrentPermissionContentVersion,
+} from "@/lib/consent/content-contract";
 
 export async function deliverVerifiedPermissionRequest(input: {
   request: Request;
@@ -30,6 +33,10 @@ export async function deliverVerifiedPermissionRequest(input: {
         },
       })
     : null;
+  const contentVersion = current?.contentVersion?.version || null;
+  if (!isCurrentPermissionContentVersion(contentVersion)) {
+    throw new CurrentPermissionRequestRequiredError();
+  }
   const dispatched = await dispatchQueuedConsentNotification({
     notificationId: input.notificationId,
     consentRecordId: input.consentRecordId,
@@ -45,7 +52,7 @@ export async function deliverVerifiedPermissionRequest(input: {
     bookingTitle: input.booking.title || null,
     serviceDate: input.booking.scheduledFor || input.booking.date || null,
     consentTypeLabel: "recording permission",
-    contentVersion: current?.contentVersion?.version || PERMISSION_CONTENT_VERSION,
+    contentVersion,
     audioEnabled: current?.audioEnabled === true,
   });
   const delivery = dispatched.delivery;

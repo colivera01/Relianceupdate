@@ -5,7 +5,10 @@ import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
-import { isSimplifiedV1PermissionVersion } from '@/lib/consent/content-version';
+import {
+  CurrentPermissionRequestRequiredError,
+  isCurrentPermissionContentVersion,
+} from '@/lib/consent/content-contract';
 
 export type ConsentLinkDeliveryInput = {
   consentRecordId: string;
@@ -59,9 +62,12 @@ function formatConsentRequestLabel(value: string | null | undefined): string {
 }
 
 /**
- * Sends consent link via enabled channels. Always returns a manual fallback link.
+ * Sends current-contract consent links via enabled channels.
  */
 export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInput): Promise<ConsentLinkDeliveryResult> {
+  if (!isCurrentPermissionContentVersion(input.contentVersion)) {
+    throw new CurrentPermissionRequestRequiredError();
+  }
   const env = readNotificationEnv();
   const absoluteFallbackLink = buildAbsoluteUrl(
     String(input.absoluteBaseUrl || '').trim() || env.appBaseUrl,
@@ -83,20 +89,18 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   });
   const subject = `Recording permission request from ${vendorName}`;
   const label = formatConsentRequestLabel(input.consentTypeLabel || 'recording permission');
-  const simplifiedV1 = isSimplifiedV1PermissionVersion(input.contentVersion);
   const audioEnabled =
     typeof input.audioEnabled === 'boolean'
       ? input.audioEnabled
-      : String(input.contentVersion || '').trim() === 'recording-permission-v3-video-audio';
+      : String(input.contentVersion || '').trim().endsWith('-audio');
   const audioEmailCopy = audioEnabled
     ? 'This Service Video will include video and audio because sound is part of documenting the service.'
     : 'Audio will not be recorded.';
   const audioSmsCopy = audioEnabled
     ? 'Video and audio are included.'
     : 'Audio will not be recorded.';
-  const decisionCopy = simplifiedV1
-    ? 'You may allow recording, decline recording, or report that this request was sent to the wrong person. If you take no action, recording remains blocked.'
-    : 'You may allow, decline, or decide later. The service may continue without Reliance recording.';
+  const decisionCopy =
+    'You may allow recording, decline recording, or report that this request was sent to the wrong person. If you take no action, recording remains blocked.';
   const html = buildRelianceEmailHtml({
     eyebrow: 'Recording permission request',
     headline: 'Choose whether Reliance may record this service',
@@ -175,9 +179,8 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const smsActions = simplifiedV1
-      ? "Allow recording, decline recording, or report wrong recipient"
-      : "Allow, decline, or decide later";
+    const smsActions =
+      "Allow recording, decline recording, or report wrong recipient";
     const body = `Reliance: ${vendorName} requests permission for one three-stage Service Video for ${serviceName}. ${audioSmsCopy} It starts Private. ${smsActions}: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({

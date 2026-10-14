@@ -11,7 +11,7 @@ type FixtureOptions = {
   initialDelayMs?: number;
   failVerification?: boolean;
   failInitialLoad?: boolean;
-  contentVersion?: string;
+  contentVersion?: string | null;
   audioEnabled?: boolean;
   authorityRequirement?: {
     expectedAuthority: string | null;
@@ -61,7 +61,10 @@ function permissionFixture(options: FixtureOptions = {}) {
       explanation: "The intended customer must verify the request and confirm customer authority.",
     },
     canDecide: options.canDecide ?? true,
-    contentVersion: options.contentVersion ?? "recording-permission-v2-simplified-v1",
+    contentVersion:
+      options.contentVersion === undefined
+        ? "recording-permission-v2-simplified-v1"
+        : options.contentVersion,
   };
 }
 
@@ -198,7 +201,6 @@ test.describe("verified permission request UX", () => {
 
   test("blocks an authority type the current beta cannot independently verify", async ({ page }) => {
     await installControlledPermissionApi(page, {
-      contentVersion: "recording-permission-v1",
       authorityRequirement: {
         expectedAuthority: "guardian",
         expectedClaimedRole: "guardian",
@@ -215,6 +217,24 @@ test.describe("verified permission request UX", () => {
     await expect(page.getByRole("button", { name: "Decide later" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "This Request Is Not for Me" })).toBeVisible();
   });
+
+  for (const contentVersion of [
+    null,
+    "recording-permission-v1",
+    "recording-permission-v4-unknown",
+  ]) {
+    test(`fails closed for unsupported permission content ${contentVersion ?? "null"}`, async ({ page }) => {
+      await installControlledPermissionApi(page, { contentVersion });
+      await page.goto(`/consent/${TOKEN}`);
+
+      await expect(page.locator("main [role='alert']")).toContainText(
+        "older or unsupported permission version",
+      );
+      await expect(page.getByRole("button", { name: "Allow Recording" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Decline Recording" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Decide later" })).toHaveCount(0);
+    });
+  }
 
   test("captures desktop success and blocked states", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

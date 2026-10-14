@@ -10,6 +10,10 @@ import { PERMISSION_LINK_TTL_HOURS } from "./state-machine";
 import { createOpaqueSecret, hashOpaqueSecret } from "./token";
 import { verifiedPermissionRequestsEnabled } from "./lookup";
 import { SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION } from "@/lib/recording/scope-assessment";
+import {
+  CurrentPermissionRequestRequiredError,
+  isCurrentPermissionContentVersion,
+} from "./content-contract";
 
 export const CUSTOMER_PERMISSION_NOTIFICATION_KIND = "CUSTOMER_PERMISSION_REQUEST";
 
@@ -273,9 +277,13 @@ export async function rotateVerifiedPermissionLink(input: {
         },
       },
       decisionEvidence: true,
+      contentVersion: { select: { version: true } },
     },
   });
   if (!record) throw new Error("Permission request not found");
+  if (!isCurrentPermissionContentVersion(record.contentVersion?.version)) {
+    throw new CurrentPermissionRequestRequiredError();
+  }
   if (
     String(record.lifecycleStatus || "").toUpperCase() === "WRONG_RECIPIENT" ||
     String(record.status || "").toLowerCase() === "wrong_recipient"

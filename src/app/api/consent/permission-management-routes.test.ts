@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as markWrongRecipient } from "./[token]/wrong-recipient/route";
 import { PATCH as correctRecipient } from "./requests/[requestId]/recipient/route";
 import { POST as resendPermission } from "./requests/[requestId]/resend/route";
+import { CurrentPermissionRequestRequiredError } from "@/lib/consent/content-contract";
 
 const hoisted = vi.hoisted(() => {
   const recordFindUnique = vi.fn();
@@ -98,6 +99,21 @@ describe("permission request management", () => {
     expect(hoisted.rotate).toHaveBeenCalledWith({ consentRecordId: "permission-1", actorUserId: "manager-1" });
     expect(json.permission).toMatchObject({ id: "permission-1", generation: 2, state: "delivered" });
     expect(JSON.stringify(json)).not.toContain("new-secret");
+  });
+
+  it("returns a stable current-request-required response for a legacy resend", async () => {
+    hoisted.rotate.mockRejectedValue(new CurrentPermissionRequestRequiredError());
+
+    const response = await resendPermission(request() as any, {
+      params: Promise.resolve({ requestId: "permission-1" }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "CURRENT_PERMISSION_REQUEST_REQUIRED",
+    });
+    expect(hoisted.deliver).not.toHaveBeenCalled();
   });
 
   it("requires a manager for resend and recipient correction", async () => {

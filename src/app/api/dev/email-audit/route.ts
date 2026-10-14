@@ -4,6 +4,7 @@ import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-li
 import { sendReviewInvitationNotification } from '@/lib/notifications/send-review-invitation';
 import { sendEmployeeInviteNotification } from '@/lib/notifications/send-employee-invite';
 import { sendVideoReadyNotification } from '@/lib/notifications/send-video-ready';
+import { PERMISSION_CONTENT_VERSION } from '@/lib/consent/content-contract';
 
 function buildAbsoluteUrl(base: string, path: string): string {
   const p = path.startsWith('/') ? path : `/${path}`;
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
       bookingTitle,
       serviceDate,
       consentTypeLabel: 'video_access',
+      contentVersion: PERMISSION_CONTENT_VERSION,
     });
 
     const reviewInvitation = await sendReviewInvitationNotification({

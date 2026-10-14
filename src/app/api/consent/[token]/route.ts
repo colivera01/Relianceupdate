@@ -5,6 +5,11 @@ import { actionLinkAvailability, findPermissionByActionSecret } from "@/lib/cons
 import { buildIdentitySafePermissionSummary } from "@/lib/consent/public-summary";
 import { permissionAuthorityPresentation } from "@/lib/consent/authority-validation";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import {
+  CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+  CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+  isCurrentPermissionContentVersion,
+} from "@/lib/consent/content-contract";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -64,6 +69,16 @@ export async function GET(_request: Request, context: Context) {
   }
   const availability = actionLinkAvailability(link);
   const record = link.consentRecord;
+  if (!isCurrentPermissionContentVersion(record.contentVersion?.version)) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+        error: CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+      },
+      { status: 409 },
+    );
+  }
   if (!availability.active && availability.reason === "expired" && record.lifecycleStatus !== "EXPIRED") {
     await (prisma as any).consentRecord.update({
       where: { id: record.id },

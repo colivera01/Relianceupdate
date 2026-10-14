@@ -30,6 +30,7 @@ describe("permission resend lifecycle", () => {
       bookingId: "booking-1",
       generation: 1,
       decisionEvidence: null,
+      contentVersion: { version: "recording-permission-v3-video-only" },
       booking: {},
       ...state,
     });
@@ -40,4 +41,29 @@ describe("permission resend lifecycle", () => {
     expect(hoisted.transaction).not.toHaveBeenCalled();
     expect(hoisted.audit).not.toHaveBeenCalled();
   });
+
+  it.each([null, "recording-permission-v1", "recording-permission-v4-unknown"])(
+    "requires a new current request instead of rotating unsupported content (%s)",
+    async (version) => {
+      hoisted.findUnique.mockResolvedValue({
+        id: "permission-1",
+        bookingId: "booking-1",
+        generation: 1,
+        decisionEvidence: null,
+        contentVersion: version ? { version } : null,
+        booking: {},
+        lifecycleStatus: "PENDING",
+        status: "requested",
+      });
+
+      await expect(
+        rotateVerifiedPermissionLink({
+          consentRecordId: "permission-1",
+          actorUserId: "manager-1",
+        }),
+      ).rejects.toMatchObject({ code: "CURRENT_PERMISSION_REQUEST_REQUIRED" });
+      expect(hoisted.transaction).not.toHaveBeenCalled();
+      expect(hoisted.audit).not.toHaveBeenCalled();
+    },
+  );
 });

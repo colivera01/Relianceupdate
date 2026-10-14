@@ -7,9 +7,12 @@ const root = process.cwd();
 const draftsRoot = path.join(root, "docs", "legal-content-drafts");
 const legacyDirectory = path.join(draftsRoot, "2026-10-12");
 const revisedDirectory = path.join(draftsRoot, "2026-10-12-draft.2");
+const currentDirectory = path.join(draftsRoot, "2026-10-13-draft.3");
 const legacyManifestPath = path.join(legacyDirectory, "manifest.json");
 const revisedManifestPath = path.join(revisedDirectory, "manifest.json");
+const currentManifestPath = path.join(currentDirectory, "manifest.json");
 const legacyPackageSha256 = "63bb7c9523e4690e85843d542b92cd6d78d8ad70714c5b0e13be2df573f5f83b";
+const revisedPackageSha256 = "78893222833248ff6f299e78c59ac1a2a0fba893a8e4e8f72ca50022891d0555";
 const draftFiles = [
   "terms-of-use.draft.md",
   "privacy-notice.draft.md",
@@ -257,21 +260,142 @@ function revisedManifestFromSource(legacyManifest) {
   };
 }
 
-const legacyManifest = verifyLegacyPackage();
-const revisedManifest = revisedManifestFromSource(legacyManifest);
-const serialized = `${JSON.stringify(revisedManifest, null, 2)}\n`;
-
-if (process.argv.includes("--check")) {
+function verifyRevisedPackage(legacyManifest) {
+  const computed = revisedManifestFromSource(legacyManifest);
+  const serialized = `${JSON.stringify(computed, null, 2)}\n`;
   const existing = normalizeText(fs.readFileSync(revisedManifestPath, "utf8"));
   if (existing !== serialized) {
-    throw new Error("Revision 2 draft manifest is stale; run npm run legal:drafts:manifest");
+    throw new Error("Revision 2 draft package changed; restore its original files and manifest");
+  }
+  if (computed.packageSha256 !== revisedPackageSha256) {
+    throw new Error("Revision 2 package identity does not match its preserved SHA-256");
+  }
+  return computed;
+}
+
+function parseCurrentDraft(fileName, revisedByContentKey) {
+  const { document, metadata, body } = readDraft(currentDirectory, fileName);
+  if (!metadata.supersedes_version) {
+    throw new Error(`${fileName}: supersedes_version is required`);
+  }
+  if (!metadata.version.endsWith("-draft.3")) {
+    throw new Error(`${fileName}: revision 3 version must end with -draft.3`);
+  }
+
+  const predecessor = revisedByContentKey.get(metadata.content_key);
+  if (!predecessor) throw new Error(`${fileName}: no revision 2 predecessor found`);
+  if (metadata.supersedes_version !== predecessor.version) {
+    throw new Error(`${fileName}: supersedes_version does not match revision 2`);
+  }
+  const expectedVersion = predecessor.version.replace(
+    /-2026-10-12-draft\.2$/,
+    "-2026-10-13-draft.3",
+  );
+  if (metadata.version !== expectedVersion) {
+    throw new Error(`${fileName}: revision 3 version does not advance its predecessor`);
+  }
+
+  const publishableBody = extractBoundedSection(
+    fileName,
+    body,
+    "PROSPECTIVE USER-FACING COPY",
+  );
+  const internalActivationNotes = extractBoundedSection(
+    fileName,
+    body,
+    "INTERNAL ACTIVATION NOTES",
+  );
+
+  return {
+    file: `docs/legal-content-drafts/2026-10-13-draft.3/${fileName}`,
+    contentKey: metadata.content_key,
+    contentClass: metadata.content_class,
+    audienceRole: metadata.audience_role,
+    version: metadata.version,
+    governanceStatus: metadata.governance_status,
+    reviewState: metadata.review_state,
+    runtimeEffective: false,
+    counselApproved: false,
+    language: metadata.language,
+    predecessor: {
+      version: predecessor.version,
+      publishableBodySha256: predecessor.publishableBodySha256,
+      internalActivationNotesSha256: predecessor.internalActivationNotesSha256,
+      documentSha256: predecessor.documentSha256,
+    },
+    publishableBodySha256: sha256(publishableBody),
+    internalActivationNotesSha256: sha256(internalActivationNotes),
+    documentSha256: sha256(document),
+    publishableBodyBytes: Buffer.byteLength(publishableBody, "utf8"),
+    internalActivationNotesBytes: Buffer.byteLength(internalActivationNotes, "utf8"),
+    documentBytes: Buffer.byteLength(document, "utf8"),
+  };
+}
+
+function currentManifestFromSource(revisedManifest) {
+  const revisedByContentKey = new Map(
+    revisedManifest.entries.map((entry) => [entry.contentKey, entry]),
+  );
+  const entries = draftFiles
+    .map((fileName) => parseCurrentDraft(fileName, revisedByContentKey))
+    .sort((left, right) => left.contentKey.localeCompare(right.contentKey));
+
+  if (new Set(entries.map((entry) => entry.contentKey)).size !== entries.length) {
+    throw new Error("Revision 3 content keys must be unique");
+  }
+  if (new Set(entries.map((entry) => entry.version)).size !== entries.length) {
+    throw new Error("Revision 3 versions must be unique");
+  }
+
+  const packageFingerprint = entries.map(
+    ({
+      contentKey,
+      version,
+      publishableBodySha256,
+      internalActivationNotesSha256,
+      documentSha256,
+    }) => ({
+      contentKey,
+      version,
+      publishableBodySha256,
+      internalActivationNotesSha256,
+      documentSha256,
+    }),
+  );
+  return {
+    formatVersion: 3,
+    packageKey: "reliance-legal-content-drafts-2026-10-13-draft.3",
+    predecessorPackage: {
+      packageKey: revisedManifest.packageKey,
+      packageSha256: revisedManifest.packageSha256,
+    },
+    governanceStatus: "DRAFT",
+    reviewState: "PRODUCT_OWNER_REVIEW",
+    runtimeEffective: false,
+    counselApproved: false,
+    normalization: "UTF-8 text with LF line endings",
+    hashBoundaries: revisedManifest.hashBoundaries,
+    packageSha256: sha256(JSON.stringify(packageFingerprint)),
+    entries,
+  };
+}
+
+const legacyManifest = verifyLegacyPackage();
+const revisedManifest = verifyRevisedPackage(legacyManifest);
+const currentManifest = currentManifestFromSource(revisedManifest);
+const serialized = `${JSON.stringify(currentManifest, null, 2)}\n`;
+
+if (process.argv.includes("--check")) {
+  const existing = normalizeText(fs.readFileSync(currentManifestPath, "utf8"));
+  if (existing !== serialized) {
+    throw new Error("Revision 3 draft manifest is stale; run npm run legal:drafts:manifest");
   }
   console.log(
-    `Verified revision 1 ${legacyManifest.entries.length} drafts (${legacyManifest.packageSha256}) and revision 2 ${revisedManifest.entries.length} drafts (${revisedManifest.packageSha256})`,
+    `Verified revision 1 (${legacyManifest.packageSha256}), revision 2 (${revisedManifest.packageSha256}), and revision 3 ${currentManifest.entries.length} drafts (${currentManifest.packageSha256})`,
   );
 } else {
-  fs.writeFileSync(revisedManifestPath, serialized, "utf8");
+  fs.writeFileSync(currentManifestPath, serialized, "utf8");
   console.log(
-    `Preserved revision 1 (${legacyManifest.packageSha256}); wrote revision 2 ${revisedManifest.entries.length} draft snapshots (${revisedManifest.packageSha256})`,
+    `Preserved revisions 1 and 2; wrote revision 3 ${currentManifest.entries.length} draft snapshots (${currentManifest.packageSha256})`,
   );
 }

@@ -6,6 +6,11 @@ import { findPermissionByActionSecret } from "@/lib/consent/lookup";
 import { formatAddress, geocodeAddress, geocodeFailureMessage, hasCompleteAddress } from "@/lib/geocoding";
 import { buildRecordingLocationSnapshot } from "@/lib/recording-location-snapshot";
 import { sendConsentDecisionNotifications } from "@/lib/notifications/send-consent-decision";
+import {
+  CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+  CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+  isCurrentPermissionContentVersion,
+} from "@/lib/consent/content-contract";
 
 function parseMetadata(value: string | null | undefined): Record<string, unknown> {
   try {
@@ -22,6 +27,19 @@ export async function POST(request: NextRequest) {
     if (!token) return NextResponse.json({ success: false, error: "Request is not available" }, { status: 400 });
 
     const link = await findPermissionByActionSecret(token);
+    if (
+      link &&
+      !isCurrentPermissionContentVersion(link.consentRecord?.contentVersion?.version)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+          error: CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+        },
+        { status: 409 },
+      );
+    }
     const metadata = parseMetadata(link?.consentRecord?.booking?.customerMetadata);
     const bookingMetadataPatch: Record<string, unknown> = {};
     if (String(metadata.vendor_job_recording_location || "").trim() === "customer-business") {

@@ -10,6 +10,11 @@ import {
   type AuthorityValidationResult,
 } from "./authority-validation";
 import { isSimplifiedV1PermissionVersion } from "./content-version";
+import {
+  CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+  CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+  isCurrentPermissionContentVersion,
+} from "./content-contract";
 import { cancelSimplifiedV1WorkRecordAfterDecline } from "./decline-cancellation";
 
 function parseMetadata(value: string | null | undefined): Record<string, unknown> {
@@ -94,7 +99,18 @@ export async function completePermissionDecision(input: {
   const link = await findPermissionByActionSecret(input.actionSecret);
   const availability = actionLinkAvailability(link);
   const existingEvidence = link?.consentRecord?.decisionEvidence || null;
+  const record = link?.consentRecord || null;
+  if (record && !isCurrentPermissionContentVersion(record.contentVersion?.version)) {
+    throw new PermissionDecisionError(
+      CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+      409,
+      CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+    );
+  }
   if (!availability.active && !existingEvidence) {
+    throw new PermissionDecisionError("PERMISSION_NOT_AVAILABLE", 409, "This recording request is no longer available.");
+  }
+  if (!record) {
     throw new PermissionDecisionError("PERMISSION_NOT_AVAILABLE", 409, "This recording request is no longer available.");
   }
   const claimedRole = String(input.claimedRole || "").trim().toLowerCase();
@@ -120,7 +136,6 @@ export async function completePermissionDecision(input: {
     throw new PermissionDecisionError("IDENTITY_VERIFICATION_REQUIRED", 401, "Verify your identity before deciding.");
   }
 
-  const record = link.consentRecord;
   const decidedAt = new Date();
   const actorUserId = session.verifiedUserId || (await getUserIdFromRequest(input.request));
   const ipAddress = String(input.request.headers.get("x-forwarded-for") || input.request.headers.get("x-real-ip") || "")

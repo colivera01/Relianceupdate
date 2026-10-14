@@ -92,4 +92,21 @@ describe("canonical permission delivery scope", () => {
       }),
     );
   });
+
+  it.each([null, "recording-permission-v1", "recording-permission-v4-unknown"])(
+    "does not dispatch an unsupported permission contract (%s)",
+    async (version) => {
+      hoisted.consentFindUnique.mockResolvedValue({
+        audioEnabled: false,
+        contentVersion: version ? { version } : null,
+      });
+
+      await expect(deliverVerifiedPermissionRequest(baseInput)).rejects.toMatchObject({
+        code: "CURRENT_PERMISSION_REQUEST_REQUIRED",
+      });
+      expect(hoisted.dispatch).not.toHaveBeenCalled();
+      expect(hoisted.consentUpdate).not.toHaveBeenCalled();
+      expect(hoisted.eventCreate).not.toHaveBeenCalled();
+    },
+  );
 });

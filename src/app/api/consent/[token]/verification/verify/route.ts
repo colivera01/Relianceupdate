@@ -9,6 +9,11 @@ import {
 } from "@/lib/consent/decision-session";
 import { actionLinkAvailability, findPermissionByActionSecret } from "@/lib/consent/lookup";
 import { evaluateOtpAttempt } from "@/lib/consent/otp";
+import {
+  CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+  CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+  isCurrentPermissionContentVersion,
+} from "@/lib/consent/content-contract";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -17,6 +22,16 @@ export async function POST(request: NextRequest, context: Context) {
   const link = await findPermissionByActionSecret(String(token || ""));
   if (!actionLinkAvailability(link).active) {
     return NextResponse.json({ success: false, error: "Verification was not completed" }, { status: 422 });
+  }
+  if (!isCurrentPermissionContentVersion(link.consentRecord.contentVersion?.version)) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: CURRENT_PERMISSION_REQUEST_REQUIRED_CODE,
+        error: CURRENT_PERMISSION_REQUEST_REQUIRED_MESSAGE,
+      },
+      { status: 409 },
+    );
   }
   const body = await request.json().catch(() => ({}));
   const channel = String(body?.channel || "").trim().toLowerCase();

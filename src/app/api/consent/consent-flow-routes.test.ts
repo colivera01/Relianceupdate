@@ -110,7 +110,7 @@ function buildLink(overrides: Record<string, unknown> = {}) {
       recipientEmailMasked: "c***@example.com",
       recipientPhoneMasked: null,
       contentVersion: {
-        version: "recording-permission-v1",
+        version: PERMISSION_CONTENT_VERSION,
         contentHash: "content-hash",
         contentJson: JSON.stringify({ purpose: "Record proof of service" }),
       },
@@ -226,6 +226,51 @@ describe("verified recording permission routes", () => {
     });
     expect(JSON.stringify(json)).not.toContain(ACTION_SECRET);
     expect(JSON.stringify(json)).not.toContain("customer@example.com");
+  });
+
+  it.each([null, "recording-permission-v1", "recording-permission-v4-unknown"])(
+    "fails closed before rendering or mutating an unsupported content version (%s)",
+    async (contentVersion) => {
+      const link = buildLink() as any;
+      link.consentRecord.contentVersion = contentVersion
+        ? { ...link.consentRecord.contentVersion, version: contentVersion }
+        : null;
+      hoisted.consentRequestLinkFindUnique.mockResolvedValue(link);
+
+      const response = await getPermission(
+        new Request(`http://localhost/api/consent/${ACTION_SECRET}`),
+        { params: Promise.resolve({ token: ACTION_SECRET }) },
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "CURRENT_PERMISSION_REQUEST_REQUIRED",
+      });
+      expect(hoisted.consentRequestLinkUpdate).not.toHaveBeenCalled();
+      expect(hoisted.consentRecordUpdate).not.toHaveBeenCalled();
+      expect(hoisted.consentEventCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects an unsupported content version before verification or evidence writes", async () => {
+    const link = buildLink() as any;
+    link.consentRecord.contentVersion.version = "recording-permission-v1";
+    hoisted.consentRequestLinkFindUnique.mockResolvedValue(link);
+
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "CURRENT_PERMISSION_REQUEST_REQUIRED",
+    });
+    expect(hoisted.consentDecisionSessionFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
   });
 
   it("requires verified identity before allowing recording", async () => {
