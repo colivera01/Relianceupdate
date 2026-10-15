@@ -7,6 +7,7 @@ import {
   loadEmployeeDecisionContext,
 } from "@/lib/employee-decision-verification";
 import {
+  ensureBetaRoleAssentContent,
   getEmployeeRoleAssentStatus,
   getManagerWorkRecordAttestationStatus,
   getVendorRoleAssentStatus,
@@ -19,6 +20,7 @@ import {
   recordVendorRoleAssent,
 } from "./role-assent-service";
 import {
+  BETA_ROLE_ASSENT_PACKAGE,
   ROLE_ASSENT_CONTENT_KEYS,
   managerWorkRecordAttestationPresentation,
   roleAssentContentSetHash,
@@ -192,6 +194,47 @@ afterEach(() => {
 });
 
 describe("beta role-assent evidence service", () => {
+  it("preserves an older same-body version while creating the current governed version", async () => {
+    const data = fixture();
+    const currentTerms = BETA_ROLE_ASSENT_PACKAGE.entries.find(
+      (item) => item.contentKey === ROLE_ASSENT_CONTENT_KEYS.TERMS,
+    );
+    expect(currentTerms).toBeDefined();
+    data.contents.push({
+      id: "content-legacy-terms",
+      contentKey: currentTerms!.contentKey,
+      contentClass: "POLICY",
+      audienceRole: currentTerms!.audienceRole,
+      version: "reliance-terms-2026-10-13-draft.3",
+      governanceStatus: "PRODUCT_OWNER_APPROVED",
+      contentSnapshot: currentTerms!.contentSnapshot,
+      contentHash: currentTerms!.contentHash,
+      sourceRevision: "historical-release",
+      productOwnerApprovedByPrincipalId: "product-owner:historical",
+      productOwnerApprovedAt: new Date("2026-10-13T00:00:00.000Z"),
+    });
+
+    const ensured = await ensureBetaRoleAssentContent(data.db);
+
+    expect(ensured).toHaveLength(BETA_ROLE_ASSENT_PACKAGE.entries.length);
+    expect(
+      data.contents.filter(
+        (item) =>
+          item.contentKey === currentTerms!.contentKey &&
+          item.contentHash === currentTerms!.contentHash,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ version: "reliance-terms-2026-10-13-draft.3" }),
+        expect.objectContaining({ version: currentTerms!.version }),
+      ]),
+    );
+    expect(data.contents.find((item) => item.id === "content-legacy-terms")).toMatchObject({
+      version: "reliance-terms-2026-10-13-draft.3",
+      sourceRevision: "historical-release",
+    });
+  });
+
   it("records a pre-verification Vendor registration bundle that remains current after membership activation", async () => {
     const data = fixture();
     data.manager.status = "PENDING";

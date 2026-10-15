@@ -8,6 +8,10 @@ const migrationPath = path.join(
   root,
   "prisma/migrations/20261012193000_add_dormant_legal_consent_infrastructure/migration.sql",
 );
+const governedContentVersioningMigrationPath = path.join(
+  root,
+  "prisma/migrations/20261015143000_allow_reused_governed_content_hash/migration.sql",
+);
 
 function sourceFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -38,6 +42,26 @@ describe("dormant legal infrastructure contract", () => {
     const model = schema.match(/model GovernedContentVersion \{[\s\S]*?\n\}/)?.[0] || "";
     expect(model).not.toContain("effectiveAt");
     expect(model).not.toContain("counselApproved");
+  });
+
+  it("keeps version identity unique while allowing separately governed versions to share an identical body hash", () => {
+    const schema = fs.readFileSync(path.join(root, "prisma/schema.prisma"), "utf8");
+    const model = schema.match(/model GovernedContentVersion \{[\s\S]*?\n\}/)?.[0] || "";
+    const sql = fs.readFileSync(governedContentVersioningMigrationPath, "utf8");
+
+    expect(model).toContain("@@unique([contentKey, version])");
+    expect(model).not.toContain("@@unique([contentKey, contentHash])");
+    expect(model).toContain(
+      '@@index([contentKey, contentHash], map: "governed_content_versions_key_hash_idx")',
+    );
+    expect(sql).toMatch(
+      /DROP INDEX \[governed_content_versions_key_hash_key\]\s+ON \[dbo\]\.\[governed_content_versions\]/,
+    );
+    expect(sql).toContain(
+      "CREATE NONCLUSTERED INDEX [governed_content_versions_key_hash_idx]",
+    );
+    expect(sql).not.toMatch(/^\s*(?:DELETE|INSERT|MERGE|TRUNCATE|UPDATE)\b/gim);
+    expect(sql).not.toMatch(/DROP\s+(?:TABLE|COLUMN)\b/i);
   });
 
   it("has no live app route, UI, or scheduler import", () => {

@@ -355,7 +355,7 @@ model GovernedContentVersion {
   publicChoiceEvidence PublicChoiceContentEvidence[]
 
   @@unique([contentKey, version])
-  @@unique([contentKey, contentHash])
+  @@index([contentKey, contentHash], map: "governed_content_versions_key_hash_idx")
   @@index([contentClass, governanceStatus, createdAt])
   @@index([audienceRole, governanceStatus])
   @@index([supersedesVersionId])
