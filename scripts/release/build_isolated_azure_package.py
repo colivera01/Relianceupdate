@@ -65,6 +65,7 @@ def main():
             if not installed.is_dir() or destination.exists():
                 raise RuntimeError(f'Unexpected target-native dependency state: {relative}')
             shutil.copytree(installed, destination)
+        shutil.rmtree(target)
     run(['node', 'node_modules/prisma/build/index.js', 'generate', '--schema=prisma/schema.prisma'], build, env)
     verifier = build / 'scripts/release/verify_prisma_artifact.cjs'
     manifest = build / 'prisma-artifact-manifest.json'
