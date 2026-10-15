@@ -49,7 +49,9 @@ def main():
         # npm omits other operating systems' optional native packages. Install
         # the same lockfile for Azure's target in a separate fresh scratch tree;
         # copy only its Linux-native packages, never Prisma/generated contents.
-        target = build / 'node_modules/.release-linux-target'
+        target = build.parent / f'.release-linux-target-{args.commit[:12]}'
+        if target.exists():
+            raise RuntimeError('Linux target dependency scratch path must be new')
         target.mkdir()
         for name in ('package.json', 'package-lock.json'):
             shutil.copy2(build / name, target / name)
