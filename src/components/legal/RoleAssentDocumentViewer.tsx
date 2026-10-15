@@ -13,7 +13,7 @@ type ContentItem = {
 function labelFor(key: string) {
   if (key === "reliance.terms-of-use") return "Reliance Terms of Use";
   if (key === "reliance.privacy-notice") return "Reliance Privacy Notice";
-  if (key === "reliance.vendor-role-assent") return "Vendor and Vendor Manager Assent";
+  if (key === "reliance.vendor-role-assent") return "Vendor Organization Agreement";
   if (key === "reliance.employee-accountless-role-assent") return "Accountless Employee Service Order Notice";
   return key;
 }

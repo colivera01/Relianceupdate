@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => {
   const bookingUpdateMany = vi.fn();
   const privateProofAccessGrantUpdateMany = vi.fn();
   const recordCustomerRegistrationEvidence = vi.fn();
+  const assertCurrentCustomerRegistrationContentSet = vi.fn();
   const transaction = vi.fn(async (callback: (tx: any) => Promise<any>) =>
     callback({
       user: { upsert: userUpsert },
@@ -27,6 +28,7 @@ const hoisted = vi.hoisted(() => {
     bookingUpdateMany,
     privateProofAccessGrantUpdateMany,
     recordCustomerRegistrationEvidence,
+    assertCurrentCustomerRegistrationContentSet,
     transaction,
     prisma: {
       $transaction: transaction,
@@ -68,6 +70,8 @@ vi.mock("@/lib/auth-email-verification", () => ({
 }));
 
 vi.mock("@/lib/legal/customer-registration-policy-evidence", () => ({
+  assertCurrentCustomerRegistrationContentSet:
+    hoisted.assertCurrentCustomerRegistrationContentSet,
   parseRegistrationBoolean: (value: unknown) =>
     value === true || String(value || "").trim().toLowerCase() === "true",
   recordCustomerRegistrationEvidence: hoisted.recordCustomerRegistrationEvidence,
@@ -96,6 +100,7 @@ function createCustomerRegisterRequest(overrides: Record<string, unknown> = {}) 
       termsAccepted: true,
       privacyAcknowledged: true,
       smsConsent: false,
+      legalContentSetHash: "customer-content-set-hash",
       address: "123 Main St",
       city: "Orlando",
       state: "Florida",
@@ -127,6 +132,7 @@ describe("POST /api/customer/register", () => {
     hoisted.privateProofAccessGrantUpdateMany.mockResolvedValue({ count: 0 });
     hoisted.recordCustomerRegistrationEvidence.mockReset();
     hoisted.recordCustomerRegistrationEvidence.mockResolvedValue({ id: "evidence-1" });
+    hoisted.assertCurrentCustomerRegistrationContentSet.mockReset();
     hoisted.transaction.mockClear();
     vi.mocked(claimCustomerBookingWithinTransaction).mockReset();
     vi.mocked(claimCustomerBookingWithinTransaction).mockResolvedValue({
@@ -192,6 +198,7 @@ describe("POST /api/customer/register", () => {
         userId: "customer-1",
         actorEmail: "beta.customer@reliance.test",
         smsOptIn: false,
+        displayedContentSetHash: "customer-content-set-hash",
       })
     );
   });
@@ -240,6 +247,20 @@ describe("POST /api/customer/register", () => {
       code: "CUSTOMER_PRIVACY_ACKNOWLEDGMENT_REQUIRED",
     });
     expect(hoisted.userFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.userUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale displayed onboarding package before creating an account", async () => {
+    hoisted.assertCurrentCustomerRegistrationContentSet.mockImplementationOnce(() => {
+      throw new Error("CUSTOMER_REGISTRATION_CONTENT_STALE");
+    });
+
+    const response = await POST(
+      createCustomerRegisterRequest({ legalContentSetHash: "stale-package" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).code).toBe("CUSTOMER_REGISTRATION_CONTENT_STALE");
     expect(hoisted.userUpsert).not.toHaveBeenCalled();
   });
 

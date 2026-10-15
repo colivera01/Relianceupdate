@@ -2,12 +2,20 @@ import { randomUUID } from "node:crypto";
 
 import {
   BETA_ROLE_ASSENT_PACKAGE,
+  ROLE_ASSENT_CONTENT_KEYS,
+  betaRoleAssentContent,
   isBetaRoleAssentEnabled,
+  managerWorkRecordAttestationPresentation,
   roleAssentContentSet,
   roleAssentContentSetHash,
   roleAssentPresentation,
   type BetaRoleAssentContent,
 } from "@/lib/legal/beta-role-assent-content";
+import {
+  BETA_ONBOARDING_CONTENT_KEYS,
+  BETA_ONBOARDING_LEGAL_PACKAGE,
+  betaOnboardingDocumentByKey,
+} from "@/lib/legal/beta-onboarding-content";
 import {
   buildGovernedContentVersionCandidate,
   buildRoleAssentEvidenceCandidate,
@@ -35,6 +43,11 @@ export class VendorRoleAssentRequiredError extends Error {
 
 const PRODUCT_OWNER_APPROVAL_PRINCIPAL = "product-owner:github-issue-1";
 const PRODUCT_OWNER_APPROVAL_AT = new Date("2026-10-13T00:00:00.000Z");
+const LEGACY_MANAGER_ATTESTATION_CONTRACT = Object.freeze({
+  contentKey: "reliance.vendor-role-assent",
+  version: "reliance-vendor-assent-2026-10-13-draft.3",
+  contentHash: "2c1507d286a5dcef2b413d34db23efba5065327e305caabf91a2aef66fead0fe",
+});
 
 export type VendorRoleAssentContext = {
   actorPrincipalId: string;
@@ -163,6 +176,24 @@ async function loadExactContents(
   );
 }
 
+async function loadExactContentByKey(
+  db: any,
+  contentKey: string,
+  ensure = false,
+): Promise<GovernedContentVersionLike> {
+  if (ensure) await ensureBetaRoleAssentContent(db);
+  const source = betaRoleAssentContent(contentKey);
+  const record = await db.governedContentVersion.findUnique({
+    where: {
+      contentKey_version: {
+        contentKey: source.contentKey,
+        version: source.version,
+      },
+    },
+  });
+  return exactContentRecord(source, record);
+}
+
 export async function loadVendorRoleAssentContext(input: {
   db: any;
   userId: string;
@@ -188,6 +219,10 @@ export async function loadVendorRoleAssentContext(input: {
     },
   });
   if (!membership) throw new Error("VENDOR_ROLE_ASSENT_AUTHORITY_STALE");
+  return vendorRoleAssentContext(membership);
+}
+
+function vendorRoleAssentContext(membership: any): VendorRoleAssentContext {
   const context = {
     version: 1,
     vendorId: membership.vendorId,
@@ -212,6 +247,34 @@ export async function loadVendorRoleAssentContext(input: {
     context,
     contextHash: legalEvidenceSha256(context),
   };
+}
+
+async function loadVendorRegistrationRoleAssentContext(input: {
+  db: any;
+  userId: string;
+  vendorId: string;
+  membershipId: string;
+}): Promise<VendorRoleAssentContext> {
+  const membership = await input.db.vendorMembership.findFirst({
+    where: {
+      id: input.membershipId,
+      userId: input.userId,
+      vendorId: input.vendorId,
+      role: "MANAGER",
+      status: { in: ["PENDING", "ACTIVE"] },
+    },
+    select: {
+      id: true,
+      userId: true,
+      vendorId: true,
+      role: true,
+      status: true,
+      membershipGeneration: true,
+      vendor: { select: { name: true, businessName: true } },
+    },
+  });
+  if (!membership) throw new Error("VENDOR_REGISTRATION_ASSENT_AUTHORITY_STALE");
+  return vendorRoleAssentContext(membership);
 }
 
 function employeeLegalContext(context: EmployeeDecisionContext) {
@@ -498,6 +561,100 @@ export async function recordVendorRoleAssent(input: {
   });
 }
 
+export async function recordVendorRegistrationRoleAssent(input: {
+  db: any;
+  userId: string;
+  vendorId: string;
+  membershipId: string;
+  acknowledgements: {
+    authority: boolean;
+    terms: boolean;
+    privacy: boolean;
+    electronicRecords: boolean;
+  };
+  displayedContentSetHash: string;
+  emailVerificationCompleted: boolean;
+  smsOptIn: boolean;
+  requestId?: string;
+  userAgent?: string | null;
+}) {
+  assertEnabled();
+  const expectedSetHash = roleAssentContentSetHash("VENDOR");
+  if (input.displayedContentSetHash !== expectedSetHash) {
+    throw new Error("ROLE_ASSENT_CONTENT_STALE");
+  }
+  if (
+    !input.acknowledgements.authority ||
+    !input.acknowledgements.terms ||
+    !input.acknowledgements.privacy ||
+    !input.acknowledgements.electronicRecords
+  ) {
+    throw new Error("VENDOR_ROLE_ASSENT_ACKNOWLEDGEMENTS_REQUIRED");
+  }
+  const smsPolicy = betaOnboardingDocumentByKey(BETA_ONBOARDING_CONTENT_KEYS.SMS);
+  const requestId = String(input.requestId || randomUUID()).trim();
+  const decidedAt = new Date();
+  return runSerializable(input.db, async (tx) => {
+    const context = await loadVendorRegistrationRoleAssentContext({ ...input, db: tx });
+    const verificationState = input.emailVerificationCompleted
+      ? "EMAIL_VERIFIED"
+      : "EMAIL_VERIFICATION_PENDING";
+    const evidence = await appendDecisionBundle({
+      tx,
+      role: "VENDOR",
+      actorPrincipalId: context.actorPrincipalId,
+      actorUserId: context.actorUserId,
+      actorRole: context.actorRole,
+      vendorId: context.vendorId,
+      membershipId: context.membershipId,
+      contextType: context.contextType,
+      contextId: context.contextId,
+      context: context.context,
+      decision: "ASSENT",
+      verificationMethod: input.emailVerificationCompleted
+        ? "AUTHENTICATED_VERIFIED_VENDOR_REGISTRATION"
+        : "VENDOR_REGISTRATION_PRE_EMAIL_VERIFICATION",
+      verificationContext: {
+        registrationContext: "VENDOR_REGISTRATION",
+        membershipId: context.membershipId,
+        membershipGeneration: context.membershipGeneration,
+        actorRole: context.actorRole,
+        authorityAcknowledged: true,
+        emailVerificationCompleted: input.emailVerificationCompleted,
+        verificationState,
+        smsOptIn: input.smsOptIn,
+        smsPolicy: {
+          contentKey: smsPolicy.contentKey,
+          version: smsPolicy.version,
+          contentHash: smsPolicy.contentHash,
+        },
+        userAgentHash: input.userAgent ? legalEvidenceSha256(input.userAgent) : null,
+      },
+      requestId,
+      request: {
+        registrationContext: "VENDOR_REGISTRATION",
+        decision: "ASSENT",
+        acknowledgements: input.acknowledgements,
+        displayedContentSetHash: input.displayedContentSetHash,
+        smsOptIn: input.smsOptIn,
+        smsPolicyVersion: smsPolicy.version,
+        smsPolicyContentHash: smsPolicy.contentHash,
+      },
+      decidedAt,
+    });
+    return {
+      decision: "ASSENT" as const,
+      current: true,
+      evidenceIds: evidence.map((item) => String(item.id)),
+      decidedAt,
+      contentSetHash: expectedSetHash,
+      contextHash: context.contextHash,
+      vendorName: context.vendorName,
+      verificationState,
+    };
+  });
+}
+
 export async function recordEmployeeRoleAssent(input: {
   db: any;
   userId: string;
@@ -674,35 +831,78 @@ export async function getManagerWorkRecordAttestationStatus(input: {
   db: any;
   context: ManagerWorkRecordAttestationContext;
 }) {
-  let content: GovernedContentVersionLike;
+  let content: GovernedContentVersionLike | null = null;
   try {
-    content = (await loadExactContents(input.db, "VENDOR", false))[2];
+    content = await loadExactContentByKey(
+      input.db,
+      ROLE_ASSENT_CONTENT_KEYS.MANAGER_WORK_RECORD_ATTESTATION,
+      false,
+    );
   } catch {
-    return { current: false, decision: null, decidedAt: null, evidenceIds: [] };
+    content = null;
   }
-  const chainKey = roleAssentChainKey({
-    actorPrincipalId: input.context.actorPrincipalId,
-    actorRole: input.context.actorRole,
-    contentKey: content.contentKey,
-    contextType: input.context.contextType,
-    contextId: input.context.contextId,
-  });
-  const evidence = await input.db.roleAssentEvidence.findFirst({
-    where: { chainKey },
-    orderBy: [{ sequence: "desc" }, { decidedAt: "desc" }],
-  });
-  return {
-    current:
+  const currentChainKey = content
+    ? roleAssentChainKey({
+        actorPrincipalId: input.context.actorPrincipalId,
+        actorRole: input.context.actorRole,
+        contentKey: content.contentKey,
+        contextType: input.context.contextType,
+        contextId: input.context.contextId,
+      })
+    : null;
+  const evidence = currentChainKey
+    ? await input.db.roleAssentEvidence.findFirst({
+        where: { chainKey: currentChainKey },
+        orderBy: [{ sequence: "desc" }, { decidedAt: "desc" }],
+      })
+    : null;
+  const current = Boolean(
+    content &&
       evidence?.decision === "ASSENT" &&
       evidence.contextHash === input.context.contextHash &&
       evidence.contentVersionId === content.id &&
+      evidence.policyVersion === content.version &&
       evidence.contentHash === content.contentHash,
+  );
+  if (current) {
+    return {
+      current: true,
+      decision: "ASSENT" as const,
+      decidedAt: evidence.decidedAt,
+      evidenceIds: [String(evidence.id)],
+      historicalContract: false,
+    };
+  }
+
+  // Draft.3 embedded this exact attestation in the Vendor document. Preserve
+  // that accepted historical contract without using it for new writes.
+  const legacyChainKey = roleAssentChainKey({
+    actorPrincipalId: input.context.actorPrincipalId,
+    actorRole: input.context.actorRole,
+    contentKey: LEGACY_MANAGER_ATTESTATION_CONTRACT.contentKey,
+    contextType: input.context.contextType,
+    contextId: input.context.contextId,
+  });
+  const legacyEvidence = await input.db.roleAssentEvidence.findFirst({
+    where: { chainKey: legacyChainKey },
+    orderBy: [{ sequence: "desc" }, { decidedAt: "desc" }],
+  });
+  const legacyCurrent = Boolean(
+    legacyEvidence?.decision === "ASSENT" &&
+      legacyEvidence.contextHash === input.context.contextHash &&
+      legacyEvidence.policyKey === LEGACY_MANAGER_ATTESTATION_CONTRACT.contentKey &&
+      legacyEvidence.policyVersion === LEGACY_MANAGER_ATTESTATION_CONTRACT.version &&
+      legacyEvidence.contentHash === LEGACY_MANAGER_ATTESTATION_CONTRACT.contentHash,
+  );
+  return {
+    current: legacyCurrent,
     decision:
-      evidence?.decision === "ASSENT" || evidence?.decision === "DECLINE"
-        ? evidence.decision
+      legacyEvidence?.decision === "ASSENT" || legacyEvidence?.decision === "DECLINE"
+        ? legacyEvidence.decision
         : null,
-    decidedAt: evidence?.decidedAt || null,
-    evidenceIds: evidence ? [String(evidence.id)] : [],
+    decidedAt: legacyEvidence?.decidedAt || null,
+    evidenceIds: legacyEvidence ? [String(legacyEvidence.id)] : [],
+    historicalContract: legacyCurrent,
   };
 }
 
@@ -722,7 +922,8 @@ export async function recordManagerWorkRecordAttestation(input: {
   if (!input.authorityConfirmed) {
     throw new Error("MANAGER_WORK_RECORD_ATTESTATION_REQUIRED");
   }
-  if (input.displayedContentSetHash !== roleAssentContentSetHash("VENDOR")) {
+  const managerPresentation = managerWorkRecordAttestationPresentation();
+  if (input.displayedContentSetHash !== managerPresentation.contentSetHash) {
     throw new Error("ROLE_ASSENT_CONTENT_STALE");
   }
   await assertCurrentVendorRoleAssent(input);
@@ -733,8 +934,11 @@ export async function recordManagerWorkRecordAttestation(input: {
     if (context.contextHash !== input.displayedContextHash) {
       throw new Error("MANAGER_WORK_RECORD_ATTESTATION_STALE");
     }
-    const contents = await loadExactContents(tx, "VENDOR", true);
-    const content = contents[2];
+    const content = await loadExactContentByKey(
+      tx,
+      ROLE_ASSENT_CONTENT_KEYS.MANAGER_WORK_RECORD_ATTESTATION,
+      true,
+    );
     const chainKey = roleAssentChainKey({
       actorPrincipalId: context.actorPrincipalId,
       actorRole: context.actorRole,
@@ -830,5 +1034,10 @@ export async function hasCurrentManagerWorkRecordAttestation(input: {
 
 export function betaRoleAssentApiPresentation(role: "VENDOR" | "EMPLOYEE") {
   assertEnabled();
-  return roleAssentPresentation(role);
+  return {
+    ...roleAssentPresentation(role),
+    ...(role === "VENDOR"
+      ? { vendorAcknowledgements: BETA_ONBOARDING_LEGAL_PACKAGE.vendorAcknowledgements }
+      : {}),
+  };
 }

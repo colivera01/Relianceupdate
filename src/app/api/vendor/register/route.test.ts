@@ -10,6 +10,7 @@ const hoisted = vi.hoisted(() => {
   const serviceCreateMany = vi.fn();
   const vendorCreate = vi.fn();
   const vendorMembershipCreate = vi.fn();
+  const recordVendorRegistrationRoleAssent = vi.fn();
 
   const prisma = {
     user: {
@@ -44,6 +45,7 @@ const hoisted = vi.hoisted(() => {
     serviceCreateMany,
     vendorCreate,
     vendorMembershipCreate,
+    recordVendorRegistrationRoleAssent,
   };
 });
 
@@ -104,6 +106,15 @@ vi.mock("@/lib/ai/vendor-approval-review-store", () => ({
   generateVendorApprovalAiStoredResult: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/legal/beta-role-assent-content", () => ({
+  roleAssentContentSetHash: vi.fn(() => "vendor-content-set-hash"),
+}));
+
+vi.mock("@/lib/legal/role-assent-service", () => ({
+  recordVendorRegistrationRoleAssent:
+    hoisted.recordVendorRegistrationRoleAssent,
+}));
+
 async function readJson(response: Response) {
   return response.json() as Promise<Record<string, any>>;
 }
@@ -112,7 +123,17 @@ function createVendorRegisterRequest(body: Record<string, unknown>) {
   const request = new Request("http://localhost/api/vendor/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      legalContentSetHash: "vendor-content-set-hash",
+      vendorAcknowledgements: {
+        authority: true,
+        terms: true,
+        privacy: true,
+        electronicRecords: true,
+      },
+      smsConsent: false,
+      ...body,
+    }),
   }) as Request & { nextUrl?: URL };
   request.nextUrl = new URL("http://localhost/api/vendor/register");
   return request as any;
@@ -158,6 +179,11 @@ describe("POST /api/vendor/register", () => {
     hoisted.serviceCreateMany.mockReset();
     hoisted.vendorCreate.mockReset();
     hoisted.vendorMembershipCreate.mockReset();
+    hoisted.recordVendorRegistrationRoleAssent.mockReset();
+    hoisted.recordVendorRegistrationRoleAssent.mockResolvedValue({
+      current: true,
+      evidenceIds: ["vendor-assent-1"],
+    });
 
     hoisted.userFindUnique.mockImplementation(async ({ where }: any) => {
       if (where?.email) return null;
@@ -272,6 +298,52 @@ describe("POST /api/vendor/register", () => {
         ]),
       })
     );
+    expect(hoisted.recordVendorRegistrationRoleAssent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        vendorId: "vendor-1",
+        membershipId: "membership-1",
+        displayedContentSetHash: "vendor-content-set-hash",
+        emailVerificationCompleted: false,
+        smsOptIn: false,
+        acknowledgements: {
+          authority: true,
+          terms: true,
+          privacy: true,
+          electronicRecords: true,
+        },
+      }),
+    );
+  });
+
+  it("fails closed before creating an account when a Vendor acknowledgment is missing", async () => {
+    const response = await POST(
+      createVendorRegisterRequest({
+        vendorAcknowledgements: {
+          authority: true,
+          terms: true,
+          privacy: false,
+          electronicRecords: true,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).code).toBe(
+      "VENDOR_ROLE_ASSENT_ACKNOWLEDGEMENTS_REQUIRED",
+    );
+    expect(hoisted.userCreate).not.toHaveBeenCalled();
+    expect(hoisted.vendorCreate).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before creating an account when the displayed Vendor package is stale", async () => {
+    const response = await POST(
+      createVendorRegisterRequest({ legalContentSetHash: "stale-package" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).code).toBe("ROLE_ASSENT_CONTENT_STALE");
+    expect(hoisted.userCreate).not.toHaveBeenCalled();
   });
 
   it("accepts a historical category alias but stores the canonical category label", async () => {

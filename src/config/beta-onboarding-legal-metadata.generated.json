@@ -1,0 +1,116 @@
+{
+  "formatVersion": 1,
+  "packageKey": "reliance-beta-onboarding-legal-2026-10-14.1",
+  "packageSha256": "9c04ea7ee73d86028ed394423b313731ece2ac9ed2a43e57036a62c0824ded20",
+  "authorizationScope": "BETA_REGISTRATION_AND_ROLE_ASSENT_ONLY",
+  "globallyEffective": false,
+  "counselApproved": false,
+  "canonicalSupportEmail": "Relianceorg.support@gmail.com",
+  "vendorAcknowledgements": [
+    {
+      "key": "authority",
+      "label": "I am authorized to act for and bind the identified Vendor organization."
+    },
+    {
+      "key": "terms",
+      "label": "I agree to the exact Reliance Terms of Use version shown."
+    },
+    {
+      "key": "privacy",
+      "label": "I acknowledge that I reviewed the exact Reliance Privacy Notice version shown."
+    },
+    {
+      "key": "electronicRecords",
+      "label": "I consent to receive and retain these terms, notices, receipts, and related records electronically."
+    }
+  ],
+  "contentSets": {
+    "customer": {
+      "documentIds": [
+        "terms",
+        "privacy",
+        "sms"
+      ],
+      "contentSetHash": "1a2e68107c6916d1c3578bef1dbeb77297a5ba73d35b09e7a4f07baa2ea83cf1"
+    },
+    "vendor": {
+      "documentIds": [
+        "terms",
+        "privacy",
+        "vendor-organization"
+      ],
+      "contentSetHash": "fb59e4e2d0a0f78f19e2bd0cfc7f6e3348d9327fee2eabced6650de749848c5a"
+    },
+    "employee": {
+      "documentIds": [
+        "terms",
+        "privacy",
+        "employee-service-order"
+      ],
+      "contentSetHash": "c80d5723328419359daa2141c52f864623f664ef6a1cf38b3158254511e7797f"
+    }
+  },
+  "entries": [
+    {
+      "documentId": "terms",
+      "contentKey": "reliance.terms-of-use",
+      "audienceRole": "ALL_USERS",
+      "version": "reliance-terms-2026-10-14-onboarding.1",
+      "contentHash": "50d6302242ffbeffc847a846ec691b98485fbff7d853f6d08003dfe4c13fa90d",
+      "viewerHref": "/legal/onboarding/terms",
+      "downloadHref": "/api/legal/onboarding/terms?download=1"
+    },
+    {
+      "documentId": "privacy",
+      "contentKey": "reliance.privacy-notice",
+      "audienceRole": "ALL_USERS",
+      "version": "reliance-privacy-2026-10-14-onboarding.1",
+      "contentHash": "4c488be23b878b2c2f665f5a7d6ddd3f5f4aad5e52b9bd9abfd0d1b48664e912",
+      "viewerHref": "/legal/onboarding/privacy",
+      "downloadHref": "/api/legal/onboarding/privacy?download=1"
+    },
+    {
+      "documentId": "sms",
+      "contentKey": "reliance.transactional-sms-notice",
+      "audienceRole": "ALL_USERS",
+      "version": "reliance-transactional-sms-2026-10-14-onboarding.1",
+      "contentHash": "d12f8b5bb3743e1e7e8c149f6430041d92319136b9988aca80fdc799532e49d8",
+      "viewerHref": "/legal/onboarding/sms",
+      "downloadHref": "/api/legal/onboarding/sms?download=1"
+    },
+    {
+      "documentId": "vendor-organization",
+      "contentKey": "reliance.vendor-role-assent",
+      "audienceRole": "VENDOR",
+      "version": "reliance-vendor-organization-agreement-2026-10-14-onboarding.1",
+      "contentHash": "7a7712691bd2cfe31fd3f41d2411b7f5fc6f75c10004f0ee4d028335fa1cce8d",
+      "viewerHref": "/legal/onboarding/vendor-organization",
+      "downloadHref": "/api/legal/onboarding/vendor-organization?download=1"
+    },
+    {
+      "documentId": "employee-service-order",
+      "contentKey": "reliance.employee-accountless-role-assent",
+      "audienceRole": "EMPLOYEE",
+      "version": "reliance-employee-accountless-assent-2026-10-14-onboarding.1",
+      "contentHash": "afb85d4f6c38d8ba9e10e009d5a4596a7c5b3667ae05fe1e8372fbfc82078a19",
+      "viewerHref": "/legal/onboarding/employee-service-order",
+      "downloadHref": "/api/legal/onboarding/employee-service-order?download=1"
+    },
+    {
+      "documentId": "manager-work-record-attestation",
+      "contentKey": "reliance.manager-work-record-attestation",
+      "audienceRole": "VENDOR",
+      "version": "reliance-manager-work-record-attestation-2026-10-14-onboarding.1",
+      "contentHash": "40758b4f323241177cbdbc9f4b7c01a151953785e10b603b2d3040ca143c596a",
+      "viewerHref": "/legal/onboarding/manager-work-record-attestation",
+      "downloadHref": "/api/legal/onboarding/manager-work-record-attestation?download=1",
+      "presentation": {
+        "title": "Manager Work Record attestation required before Service Order release",
+        "attestationText": "I am authorized to manage this Work Record for the Vendor shown. I confirm that the assigned service professional and the job, location, recording boundary, participant roles, audio setting, purpose, and stages entered by the Vendor are accurate to the best of my knowledge. I understand that I cannot make the Customer's recording or Public choice, an Employee's job-specific Recording Participation choice, or an Employee's standing Public participation choice.",
+        "confirmationText": "I confirm this exact current Work Record, assignment, and recording context for the identified Vendor.",
+        "disclaimerText": "This attestation is an operational Vendor statement. It is not Employee consent, Customer authorization, Reliance Audit, or certification of workmanship, safety, licensure, insurance, or code compliance.",
+        "actionLabel": "Confirm Work Record Attestation"
+      }
+    }
+  ]
+}

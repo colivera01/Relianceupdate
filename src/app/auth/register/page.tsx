@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ import {
   User, 
   Shield, 
   ArrowLeft, 
+  Check,
   CheckCircle, 
   Mail, 
   Lock, 
@@ -60,9 +61,20 @@ import {
   VENDOR_REGISTRATION_CATEGORY_OPTIONS,
 } from '@/config/service-templates';
 import { LEGAL_BUSINESS_STRUCTURE_OPTIONS } from '@/config/vendor-registration';
+import onboardingLegalMetadata from '@/config/beta-onboarding-legal-metadata.generated.json';
 
 // reCAPTCHA Configuration - Update this single location if site key changes
 const RECAPTCHA_SITE_KEY = '6LdAapYrAAAAAACfyJlrW40cSZBS7mm_W8r3Mjkiw';
+
+const ONBOARDING_LEGAL_DOCUMENTS = Object.fromEntries(
+  onboardingLegalMetadata.entries.map((entry) => [entry.documentId, entry]),
+);
+const EMPTY_VENDOR_ACKNOWLEDGEMENTS = {
+  authority: false,
+  terms: false,
+  privacy: false,
+  electronicRecords: false,
+};
 
 // US States list for dropdown selection
 const US_STATES = [
@@ -971,6 +983,11 @@ function RegisterPageInner() {
     termsAccepted: false,
     privacyAcknowledged: false,
   });
+  const [vendorAcknowledgements, setVendorAcknowledgements] = useState(
+    EMPTY_VENDOR_ACKNOWLEDGEMENTS,
+  );
+  const vendorLegalRequestId = useRef('');
+  const vendorLegalComplete = Object.values(vendorAcknowledgements).every(Boolean);
   const registerIntroCopy =
     userType === 'vendor'
       ? 'Create your vendor account and launch your dashboard.'
@@ -1047,6 +1064,8 @@ function RegisterPageInner() {
       termsAccepted: false,
       privacyAcknowledged: false,
     });
+    setVendorAcknowledgements(EMPTY_VENDOR_ACKNOWLEDGEMENTS);
+    vendorLegalRequestId.current = '';
     setBusinessHours(defaultBusinessHours());
     setCitySuggestions([]);
     setShowCitySuggestions(false);
@@ -1326,14 +1345,11 @@ function RegisterPageInner() {
     else if (formData.phone.trim() && !/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
       newErrors.phone = 'Please enter a valid phone number (e.g., 555-123-4567)';
     }
-    if (userType === 'vendor' && formData.phone.trim() && !formData.smsConsent) {
-      newErrors.smsConsent = 'Check the SMS consent box before continuing with a mobile phone number.';
-    }
     if (userType === 'user' && !customerPolicyChoices.termsAccepted) {
       newErrors.termsAccepted = 'Agree to the Terms of Use before continuing.';
     }
     if (userType === 'user' && !customerPolicyChoices.privacyAcknowledged) {
-      newErrors.privacyAcknowledged = 'Acknowledge the Privacy Policy before continuing.';
+      newErrors.privacyAcknowledged = 'Acknowledge the Privacy Notice before continuing.';
     }
 
     if (!formData.password) newErrors.password = 'Password is required';
@@ -1383,6 +1399,10 @@ function RegisterPageInner() {
       if (foundedYear < 1900 || foundedYear > currentYear) {
         newErrors.foundedYear = `Founded year must be between 1900 and ${currentYear}`;
       }
+    }
+    if (!Object.values(vendorAcknowledgements).every(Boolean)) {
+      newErrors.vendorAcknowledgements =
+        'Complete all four Vendor organization acknowledgments before creating the account.';
     }
     
     setErrors(newErrors);
@@ -1507,6 +1527,16 @@ function RegisterPageInner() {
           userType === 'user' ? String(customerPolicyChoices.termsAccepted) : undefined,
         privacyAcknowledged:
           userType === 'user' ? String(customerPolicyChoices.privacyAcknowledged) : undefined,
+        legalContentSetHash:
+          userType === 'vendor'
+            ? onboardingLegalMetadata.contentSets.vendor.contentSetHash
+            : onboardingLegalMetadata.contentSets.customer.contentSetHash,
+        vendorAcknowledgements:
+          userType === 'vendor' ? vendorAcknowledgements : undefined,
+        legalRequestId:
+          userType === 'vendor'
+            ? (vendorLegalRequestId.current ||= crypto.randomUUID())
+            : undefined,
         userType,
         registrationNextPath: safeNextPath,
         recaptchaToken: token // Include reCAPTCHA token if available
@@ -2153,11 +2183,7 @@ function RegisterPageInner() {
                       )}
                       <label
                         htmlFor="smsConsent"
-                        className={`mt-3 flex gap-3 rounded-xl border p-3 text-sm leading-6 ${
-                          userType === 'vendor' && errors.smsConsent
-                            ? 'border-red-400 bg-red-950/25 text-red-100'
-                            : 'border-blue-300/35 bg-blue-950/35 text-blue-50'
-                        }`}
+                        className="mt-3 flex gap-3 rounded-xl border border-blue-300/35 bg-blue-950/35 p-3 text-sm leading-6 text-blue-50"
                       >
                         <input
                           id="smsConsent"
@@ -2168,9 +2194,7 @@ function RegisterPageInner() {
                         />
                         <span>
                           <span className="font-semibold text-white">
-                            {userType === 'user'
-                              ? 'SMS notifications (optional)'
-                              : 'I agree to receive transactional SMS from Reliance.'}
+                            SMS notifications (optional)
                           </span>{' '}
                           Reliance may text me account access, service-record updates, invite links,
                           customer video consent requests, approved video availability, review reminders,
@@ -2178,27 +2202,21 @@ function RegisterPageInner() {
                           rates may apply. Reply STOP to opt out or HELP for help.
                           {userType === 'user'
                             ? ' I can create and use my customer account without choosing SMS. Email remains my required account channel. See '
-                            : ' This SMS consent is required when a mobile phone number is provided. See '}
-                          <Link href={buildPolicyDocumentHref('/sms-policy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                            : ' I can create and use my Vendor account without choosing SMS. Email remains available. See '}
+                          <Link href={buildPolicyDocumentHref(ONBOARDING_LEGAL_DOCUMENTS.sms.viewerHref, registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             SMS Policy
                           </Link>
                           ,{' '}
-                          <Link href={buildPolicyDocumentHref('/privacy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
-                            Privacy Policy
+                          <Link href={buildPolicyDocumentHref(ONBOARDING_LEGAL_DOCUMENTS.privacy.viewerHref, registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                            Privacy Notice
                           </Link>
                           , and{' '}
-                          <Link href={buildPolicyDocumentHref('/terms', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                          <Link href={buildPolicyDocumentHref(ONBOARDING_LEGAL_DOCUMENTS.terms.viewerHref, registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             Terms
                           </Link>
                           .
                         </span>
                       </label>
-                      {userType === 'vendor' && errors.smsConsent && (
-                        <p className="text-red-500 text-sm mt-1 flex items-center">
-                          <AlertCircle className="w-4 h-4 mr-1" />
-                          {errors.smsConsent}
-                        </p>
-                      )}
                       {userType === 'user' && (
                         <div className="mt-3 space-y-3">
                           <label
@@ -2224,7 +2242,7 @@ function RegisterPageInner() {
                             />
                             <span>
                               I agree to the{' '}
-                              <Link href={buildPolicyDocumentHref('/terms', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                              <Link href={buildPolicyDocumentHref(ONBOARDING_LEGAL_DOCUMENTS.terms.viewerHref, registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                                 Terms of Use
                               </Link>
                               .
@@ -2259,8 +2277,8 @@ function RegisterPageInner() {
                             />
                             <span>
                               I acknowledge the{' '}
-                              <Link href={buildPolicyDocumentHref('/privacy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
-                                Privacy Policy
+                              <Link href={buildPolicyDocumentHref(ONBOARDING_LEGAL_DOCUMENTS.privacy.viewerHref, registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                                Privacy Notice
                               </Link>
                               .
                             </span>
@@ -2541,7 +2559,7 @@ function RegisterPageInner() {
                       onClick={handleNextStep} 
                       className="w-full"
                       disabled={!formData.firstName || !formData.lastName || !formData.email || 
-                               !formData.phone || (userType === 'vendor' && !formData.smsConsent) ||
+                               !formData.phone ||
                                (userType === 'user' &&
                                  (!customerPolicyChoices.termsAccepted ||
                                   !customerPolicyChoices.privacyAcknowledged)) ||
@@ -3270,6 +3288,102 @@ function RegisterPageInner() {
                           You can edit these hours later from Vendor Profile. Customers will see whether the business is open now when hours are listed.
                         </p>
                       </div>
+
+                      <section className={vendorPanelClass} aria-labelledby="vendor-organization-agreement-title">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-100/70">
+                            Required Vendor agreement
+                          </p>
+                          <h3 id="vendor-organization-agreement-title" className="mt-2 text-lg font-semibold text-white">
+                            Review the current Vendor organization package
+                          </h3>
+                          <p className="mt-2 text-sm leading-6 text-white/70">
+                            These exact versions apply to the Vendor organization identified in this registration.
+                          </p>
+                        </div>
+
+                        <div className="mt-4 divide-y divide-white/10 border-y border-white/10">
+                          {['terms', 'privacy', 'vendor-organization'].map((documentId) => {
+                            const document = ONBOARDING_LEGAL_DOCUMENTS[documentId];
+                            const label = documentId === 'terms'
+                              ? 'Reliance Terms of Use'
+                              : documentId === 'privacy'
+                                ? 'Reliance Privacy Notice'
+                                : 'Vendor Organization Agreement';
+                            return (
+                              <div key={documentId} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-white">{label}</p>
+                                  <p className="break-all text-xs text-white/55">Version {document.version}</p>
+                                </div>
+                                <div className="flex shrink-0 gap-3 text-sm font-semibold">
+                                  <Link
+                                    href={buildPolicyDocumentHref(document.viewerHref, registrationReturnPath)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-200 underline"
+                                  >
+                                    Review
+                                  </Link>
+                                  <Link
+                                    href={document.downloadHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-200 underline"
+                                  >
+                                    Download
+                                  </Link>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <fieldset className="mt-5 space-y-3">
+                          <legend className="font-semibold text-white">Required acknowledgments</legend>
+                          {onboardingLegalMetadata.vendorAcknowledgements.map(({ key, label }) => {
+                            const acknowledgementKey = key as keyof typeof vendorAcknowledgements;
+                            const checked = vendorAcknowledgements[acknowledgementKey];
+                            return (
+                              <label
+                                key={key}
+                                htmlFor={`vendor-registration-${key}`}
+                                className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm leading-6 text-white/82 focus-within:border-blue-300/70"
+                              >
+                                <input
+                                  id={`vendor-registration-${key}`}
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    setVendorAcknowledgements((current) => ({
+                                      ...current,
+                                      [acknowledgementKey]: event.target.checked,
+                                    }));
+                                    setErrors((current) => ({ ...current, vendorAcknowledgements: '' }));
+                                  }}
+                                  className="peer sr-only"
+                                />
+                                <span
+                                  aria-hidden="true"
+                                  className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border border-blue-200/55 bg-slate-950 shadow-inner transition peer-checked:border-blue-200 peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-300 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-slate-950"
+                                >
+                                  {checked ? <Check className="h-4 w-4 text-white" strokeWidth={3} /> : null}
+                                </span>
+                                <span>{label}</span>
+                              </label>
+                            );
+                          })}
+                        </fieldset>
+                        {errors.vendorAcknowledgements ? (
+                          <p role="alert" className="mt-3 flex items-start gap-2 text-sm text-red-200">
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                            {errors.vendorAcknowledgements}
+                          </p>
+                        ) : null}
+                        <p className="mt-4 text-xs leading-5 text-white/55">
+                          SMS remains optional. Manager Work Record attestation is separate and occurs only for an applicable job.
+                        </p>
+                      </section>
                     </div>
 
                     <div className="flex gap-4">
@@ -3285,7 +3399,7 @@ function RegisterPageInner() {
                          type="submit" 
                          className="flex-1"
                                                 disabled={!formData.businessName || !formData.businessType || !formData.category ||
-                                !formData.businessBio || !formData.foundedYear || isSubmitting}
+                                !formData.businessBio || !formData.foundedYear || !vendorLegalComplete || isSubmitting}
                        >
                          {isSubmitting ? (
                            <div className="flex items-center">

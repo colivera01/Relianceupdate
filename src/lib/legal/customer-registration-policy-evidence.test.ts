@@ -40,18 +40,17 @@ describe("customer registration policy evidence", () => {
 
     expect(Object.values(CUSTOMER_REGISTRATION_POLICIES)).toHaveLength(3);
     for (const policy of Object.values(CUSTOMER_REGISTRATION_POLICIES)) {
-      expect(policy.version).toBe("beta-2026-08-01");
+      expect(policy.version).toContain("2026-10-14-onboarding.1");
       expect(policy.contentHash).toMatch(/^[a-f0-9]{64}$/);
       expect(policy.contentSnapshot.length).toBeGreaterThan(100);
-      expect(policy.sourceRevision).toBe(
-        "684dc79364b22aa984e7ed990feaedfd9bc9f406"
-      );
+      expect(policy.sourceRevision).toBe("reliance-beta-onboarding-legal-2026-10-14.1");
     }
   });
 
   it("stores one policy reference set and records an SMS opt-out without policy duplication", async () => {
     const {
       CUSTOMER_REGISTRATION_POLICIES,
+      CUSTOMER_REGISTRATION_CONTENT_SET_HASH,
       recordCustomerRegistrationEvidence,
     } = await import("./customer-registration-policy-evidence");
 
@@ -75,6 +74,7 @@ describe("customer registration policy evidence", () => {
       userId: "customer-1",
       actorEmail: "Customer@Example.com",
       smsOptIn: false,
+      displayedContentSetHash: CUSTOMER_REGISTRATION_CONTENT_SET_HASH,
       registeredAt: new Date("2026-08-04T12:00:00.000Z"),
     });
 
@@ -91,9 +91,9 @@ describe("customer registration policy evidence", () => {
         registrationIp: "198.51.100.24",
         userAgent: "Reliance registration test browser",
         verificationMethod: "EMAIL_VERIFICATION_LINK",
-        termsPolicyVersionId: "policy_terms_beta_2026_08_01",
-        privacyPolicyVersionId: "policy_privacy_beta_2026_08_01",
-        smsPolicyVersionId: "policy_sms_beta_2026_08_01",
+        termsPolicyVersionId: "policy_reliance_terms_2026_10_14_onboarding_1",
+        privacyPolicyVersionId: "policy_reliance_privacy_2026_10_14_onboarding_1",
+        smsPolicyVersionId: "policy_reliance_transactional_sms_2026_10_14_onboarding_1",
       }),
     });
     expect(hoisted.evidenceCreate.mock.calls[0][0].data).not.toHaveProperty(
@@ -102,7 +102,10 @@ describe("customer registration policy evidence", () => {
   });
 
   it("refuses to reuse a policy version whose immutable hash differs", async () => {
-    const { recordCustomerRegistrationEvidence } = await import(
+    const {
+      CUSTOMER_REGISTRATION_CONTENT_SET_HASH,
+      recordCustomerRegistrationEvidence,
+    } = await import(
       "./customer-registration-policy-evidence"
     );
     hoisted.policyUpsert.mockResolvedValue({
@@ -116,8 +119,27 @@ describe("customer registration policy evidence", () => {
         userId: "customer-1",
         actorEmail: "customer@example.com",
         smsOptIn: false,
+        displayedContentSetHash: CUSTOMER_REGISTRATION_CONTENT_SET_HASH,
       })
     ).rejects.toThrow("POLICY_VERSION_HASH_MISMATCH");
+    expect(hoisted.evidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a displayed registration package that is no longer current", async () => {
+    const { recordCustomerRegistrationEvidence } = await import(
+      "./customer-registration-policy-evidence"
+    );
+
+    await expect(
+      recordCustomerRegistrationEvidence({
+        request: new Request("https://beta.relianceonline.org/api/customer/register"),
+        userId: "customer-1",
+        actorEmail: "customer@example.com",
+        smsOptIn: false,
+        displayedContentSetHash: "0".repeat(64),
+      }),
+    ).rejects.toThrow("CUSTOMER_REGISTRATION_CONTENT_STALE");
+    expect(hoisted.policyUpsert).not.toHaveBeenCalled();
     expect(hoisted.evidenceCreate).not.toHaveBeenCalled();
   });
 });

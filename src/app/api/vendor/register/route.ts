@@ -21,6 +21,8 @@ import {
   VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
 } from "@/lib/ai/vendor-approval-review-store";
 import { normalizeBusinessHours, serializeBusinessHours } from "@/lib/business-hours";
+import { roleAssentContentSetHash } from "@/lib/legal/beta-role-assent-content";
+import { recordVendorRegistrationRoleAssent } from "@/lib/legal/role-assent-service";
 
 type SelectedServiceInput = {
   name: string;
@@ -73,6 +75,33 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const userId = await getUserIdFromRequest(request);
+    const legalAcknowledgements = {
+      authority: body?.vendorAcknowledgements?.authority === true,
+      terms: body?.vendorAcknowledgements?.terms === true,
+      privacy: body?.vendorAcknowledgements?.privacy === true,
+      electronicRecords: body?.vendorAcknowledgements?.electronicRecords === true,
+    };
+    const displayedLegalContentSetHash = String(body?.legalContentSetHash || "").trim();
+    const expectedLegalContentSetHash = roleAssentContentSetHash("VENDOR");
+    const smsOptIn = parseBooleanFlag(body?.smsConsent);
+    if (displayedLegalContentSetHash !== expectedLegalContentSetHash) {
+      return NextResponse.json(
+        {
+          error: "The Vendor agreement changed. Reload and review the current versions.",
+          code: "ROLE_ASSENT_CONTENT_STALE",
+        },
+        { status: 409 },
+      );
+    }
+    if (!Object.values(legalAcknowledgements).every(Boolean)) {
+      return NextResponse.json(
+        {
+          error: "Complete every required Vendor acknowledgment before creating the account.",
+          code: "VENDOR_ROLE_ASSENT_ACKNOWLEDGEMENTS_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
     const businessName = String(body?.businessName || "").trim();
     const rawBusinessType = String(body?.businessType || "").trim();
     const customBusinessType = String(body?.customBusinessType || "").trim();
@@ -350,6 +379,19 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        await recordVendorRegistrationRoleAssent({
+          db: tx,
+          userId: resolvedUserId,
+          vendorId: String(existingManagerMembership.vendorId),
+          membershipId: String(membership.id),
+          acknowledgements: legalAcknowledgements,
+          displayedContentSetHash: displayedLegalContentSetHash,
+          emailVerificationCompleted: Boolean(userId),
+          smsOptIn,
+          requestId: String(body?.legalRequestId || "").trim() || undefined,
+          userAgent: request.headers.get("user-agent"),
+        });
+
         return {
           vendorId: String(existingManagerMembership.vendorId),
           membershipId: String(membership.id),
@@ -386,6 +428,19 @@ export async function POST(request: NextRequest) {
             role: "MANAGER",
             status: "PENDING",
           },
+        });
+
+        await recordVendorRegistrationRoleAssent({
+          db: tx,
+          userId: resolvedUserId,
+          vendorId: String(vendor.id),
+          membershipId: String(membership.id),
+          acknowledgements: legalAcknowledgements,
+          displayedContentSetHash: displayedLegalContentSetHash,
+          emailVerificationCompleted: Boolean(userId),
+          smsOptIn,
+          requestId: String(body?.legalRequestId || "").trim() || undefined,
+          userAgent: request.headers.get("user-agent"),
         });
 
         return { vendorId: String(vendor.id), membershipId: String(membership.id) };
@@ -475,6 +530,24 @@ export async function POST(request: NextRequest) {
           code: "REGISTRATION_SERVICE_UNAVAILABLE",
         },
         { status: 503 }
+      );
+    }
+
+    const legalCode = error instanceof Error ? error.message : "";
+    if (
+      legalCode === "ROLE_ASSENT_CONTENT_STALE" ||
+      legalCode === "VENDOR_REGISTRATION_ASSENT_AUTHORITY_STALE" ||
+      legalCode === "VENDOR_ROLE_ASSENT_ACKNOWLEDGEMENTS_REQUIRED"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            legalCode === "ROLE_ASSENT_CONTENT_STALE"
+              ? "The Vendor agreement changed. Reload and review the current versions."
+              : "Vendor registration assent could not be verified. Review the current registration and try again.",
+          code: legalCode,
+        },
+        { status: legalCode === "ROLE_ASSENT_CONTENT_STALE" ? 409 : 400 },
       );
     }
 

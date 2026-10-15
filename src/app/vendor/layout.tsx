@@ -1,4 +1,5 @@
 'use client';
+import { useCallback, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Users,
@@ -85,6 +86,10 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   } = useVendorProfile();
   const { availableRoles, userId } = useAvailableRoles('vendor');
   const pathname = usePathname() || '';
+  const [vendorAssentLocked, setVendorAssentLocked] = useState(true);
+  const handleVendorAssentAccessState = useCallback((locked: boolean) => {
+    setVendorAssentLocked(locked);
+  }, []);
   const isVendorManagerWorkflow = isVendorManagerWorkflowPath(pathname);
   const hasLiveVendorAccess =
     Boolean(vendorProfile?.id) ||
@@ -102,6 +107,9 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     sidebarLinks[8],
     sidebarLinks[5],
   ];
+  const operationalNavigationLocked = Boolean(
+    authUser?.id && vendorProfile?.id && vendorAssentLocked,
+  );
 
   if (isVendorOnboardingRoute) {
     return <div className="min-h-screen">{children}</div>;
@@ -315,10 +323,24 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
               ...sidebarLinks,
               { label: 'Support & Help', icon: HelpCircle, href: vendorSupportHref, iconClassName: 'text-cyan-200' },
             ].map((link) => {
+              const isSupportLink = link.label === 'Support & Help';
               const isActive =
-                link.label === 'Support & Help'
+                isSupportLink
                   ? pathname === '/vendor/support' || pathname.startsWith('/vendor/support/')
                   : pathname === link.href || pathname.startsWith(`${link.href}/`);
+              if (operationalNavigationLocked && !isSupportLink) {
+                return (
+                  <span
+                    key={link.label}
+                    aria-disabled="true"
+                    title="Complete the Vendor Organization Agreement to unlock this area."
+                    className="flex cursor-not-allowed items-center gap-3 rounded-2xl px-3 py-2.5 text-base font-medium text-white/35"
+                  >
+                    <link.icon size={18} className="shrink-0 text-white/30" />
+                    <span className="flex-1 truncate">{link.label}</span>
+                  </span>
+                );
+              }
               return (
                 <Link
                 key={link.label}
@@ -389,6 +411,8 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
               <VendorRoleAssentGate
                 userId={String(authUser.id)}
                 vendorId={String(vendorProfile.id)}
+                allowChildrenWhileLocked={pathname === '/vendor/support' || pathname.startsWith('/vendor/support/')}
+                onAccessStateChange={handleVendorAssentAccessState}
               >
                 {content}
               </VendorRoleAssentGate>
@@ -400,8 +424,11 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         aria-label="Vendor mobile navigation"
         className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[#050a13]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-18px_45px_rgba(2,6,14,0.42)] backdrop-blur-xl md:hidden"
       >
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
-          {mobileVendorLinks.map((link) => {
+        <div className={`mx-auto grid max-w-md gap-1 ${operationalNavigationLocked ? 'grid-cols-1' : 'grid-cols-5'}`}>
+          {(operationalNavigationLocked
+            ? [{ label: 'Support & Help', icon: HelpCircle, href: vendorSupportHref, iconClassName: 'text-cyan-200' }]
+            : mobileVendorLinks
+          ).map((link) => {
             const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
             return (
               <Link

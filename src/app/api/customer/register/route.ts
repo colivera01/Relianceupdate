@@ -15,6 +15,7 @@ import {
 } from "@/lib/customer-booking-claim";
 import { claimCustomerBookingWithinTransaction } from "@/lib/customer-booking-claim-service";
 import {
+  assertCurrentCustomerRegistrationContentSet,
   parseRegistrationBoolean,
   recordCustomerRegistrationEvidence,
 } from "@/lib/legal/customer-registration-policy-evidence";
@@ -74,12 +75,25 @@ export async function POST(request: NextRequest) {
       termsAccepted,
       privacyAcknowledged,
       smsConsent,
+      legalContentSetHash,
     } = body;
     const safeNextPath = sanitizeAuthNextPath(registrationNextPath);
     const serviceVideoIntent = getCustomerServiceVideoIntent(safeNextPath);
     const acceptedTerms = parseRegistrationBoolean(termsAccepted);
     const acknowledgedPrivacy = parseRegistrationBoolean(privacyAcknowledged);
     const smsOptIn = parseRegistrationBoolean(smsConsent);
+
+    try {
+      assertCurrentCustomerRegistrationContentSet(legalContentSetHash);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "The registration terms changed. Reload and review the current versions.",
+          code: "CUSTOMER_REGISTRATION_CONTENT_STALE",
+        },
+        { status: 409 },
+      );
+    }
 
     if (!acceptedTerms) {
       return NextResponse.json(
@@ -94,7 +108,7 @@ export async function POST(request: NextRequest) {
     if (!acknowledgedPrivacy) {
       return NextResponse.json(
         {
-          error: "You must acknowledge the Privacy Policy to create a customer account.",
+          error: "You must acknowledge the Privacy Notice to create a customer account.",
           code: "CUSTOMER_PRIVACY_ACKNOWLEDGMENT_REQUIRED",
         },
         { status: 400 }
@@ -384,6 +398,7 @@ export async function POST(request: NextRequest) {
             userId: customerId,
             actorEmail: normalizedEmail,
             smsOptIn,
+            displayedContentSetHash: String(legalContentSetHash || ""),
             db: tx,
           });
 

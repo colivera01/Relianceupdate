@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 import {
-  betaRoleAssentApiPresentation,
   getManagerWorkRecordAttestationStatus,
   loadManagerWorkRecordAttestationContext,
   recordManagerWorkRecordAttestation,
 } from "@/lib/legal/role-assent-service";
+import { managerWorkRecordAttestationPresentation } from "@/lib/legal/beta-role-assent-content";
 import { requireVendorManager } from "@/lib/membership-auth";
 import { authorizationErrorResponse } from "@/lib/request-actor";
 import { prisma } from "@/server/db";
@@ -42,12 +42,14 @@ export async function GET(request: Request, routeContext: Context) {
       bookingId: jobId,
     });
     const status = await getManagerWorkRecordAttestationStatus({ db: prisma as any, context });
+    const presentation = managerWorkRecordAttestationPresentation();
     return NextResponse.json({
       success: true,
       status,
       contextHash: context.contextHash,
       context: context.context,
-      contentSetHash: betaRoleAssentApiPresentation("VENDOR").contentSetHash,
+      contentSetHash: presentation.contentSetHash,
+      presentation,
     });
   } catch (error) {
     return failure(error);

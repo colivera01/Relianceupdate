@@ -14,6 +14,13 @@ export type BetaRoleAssentContent = {
   sourceCounselApproved: false;
   contentSnapshot: string;
   contentHash: string;
+  presentation?: {
+    title: string;
+    attestationText: string;
+    confirmationText: string;
+    disclaimerText: string;
+    actionLabel: string;
+  };
 };
 
 const bundle = generated as {
@@ -33,6 +40,7 @@ export const ROLE_ASSENT_CONTENT_KEYS = {
   PRIVACY: "reliance.privacy-notice",
   VENDOR: "reliance.vendor-role-assent",
   EMPLOYEE: "reliance.employee-accountless-role-assent",
+  MANAGER_WORK_RECORD_ATTESTATION: "reliance.manager-work-record-attestation",
 } as const;
 
 export function isBetaRoleAssentEnabled(): boolean {
@@ -95,5 +103,29 @@ export function roleAssentPresentation(role: "VENDOR" | "EMPLOYEE") {
         audienceRole,
       }),
     ),
+  };
+}
+
+export function managerWorkRecordAttestationPresentation() {
+  const content = betaRoleAssentContent(
+    ROLE_ASSENT_CONTENT_KEYS.MANAGER_WORK_RECORD_ATTESTATION,
+  );
+  if (!content.presentation) {
+    throw new Error("MANAGER_WORK_RECORD_ATTESTATION_PRESENTATION_MISSING");
+  }
+  return {
+    packageKey: bundle.packageKey,
+    packageSha256: bundle.packageSha256,
+    contentSetHash: legalEvidenceSha256([
+      {
+        contentKey: content.contentKey,
+        version: content.version,
+        contentHash: content.contentHash,
+      },
+    ]),
+    contentKey: content.contentKey,
+    version: content.version,
+    contentHash: content.contentHash,
+    ...content.presentation,
   };
 }

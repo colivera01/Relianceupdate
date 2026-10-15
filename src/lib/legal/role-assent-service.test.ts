@@ -15,9 +15,14 @@ import {
   loadVendorRoleAssentContext,
   recordEmployeeRoleAssent,
   recordManagerWorkRecordAttestation,
+  recordVendorRegistrationRoleAssent,
   recordVendorRoleAssent,
 } from "./role-assent-service";
-import { roleAssentContentSetHash } from "./beta-role-assent-content";
+import {
+  ROLE_ASSENT_CONTENT_KEYS,
+  managerWorkRecordAttestationPresentation,
+  roleAssentContentSetHash,
+} from "./beta-role-assent-content";
 
 function fixture() {
   const contents: any[] = [];
@@ -113,6 +118,12 @@ function fixture() {
           ),
         ),
       ),
+      findUnique: vi.fn(async ({ where }) => {
+        const key = where.contentKey_version;
+        return contents.find(
+          (item) => item.contentKey === key.contentKey && item.version === key.version,
+        ) || null;
+      }),
     },
     roleAssentEvidence: {
       findUnique: vi.fn(async ({ where }) =>
@@ -142,7 +153,9 @@ function fixture() {
             item.userId === where.userId &&
             item.vendorId === where.vendorId &&
             item.role === where.role &&
-            item.status === where.status,
+            (typeof where.status === "object"
+              ? where.status.in.includes(item.status)
+              : item.status === where.status),
         ) || null;
       }),
       findUnique: vi.fn(async ({ where }) =>
@@ -179,6 +192,49 @@ afterEach(() => {
 });
 
 describe("beta role-assent evidence service", () => {
+  it("records a pre-verification Vendor registration bundle that remains current after membership activation", async () => {
+    const data = fixture();
+    data.manager.status = "PENDING";
+
+    const result = await recordVendorRegistrationRoleAssent({
+      db: data.db,
+      userId: data.manager.userId,
+      vendorId: data.manager.vendorId,
+      membershipId: data.manager.id,
+      acknowledgements: {
+        authority: true,
+        terms: true,
+        privacy: true,
+        electronicRecords: true,
+      },
+      displayedContentSetHash: roleAssentContentSetHash("VENDOR"),
+      emailVerificationCompleted: false,
+      smsOptIn: false,
+      requestId: "vendor-registration-1",
+      userAgent: "registration-browser",
+    });
+
+    expect(result).toMatchObject({
+      current: true,
+      verificationState: "EMAIL_VERIFICATION_PENDING",
+    });
+    expect(data.evidence).toHaveLength(3);
+    expect(data.evidence.every((item) => item.verificationMethod === "VENDOR_REGISTRATION_PRE_EMAIL_VERIFICATION")).toBe(true);
+    expect(data.evidence.every((item) => item.verificationContextJson.includes('"smsOptIn":false'))).toBe(true);
+
+    data.manager.status = "ACTIVE";
+    const context = await loadVendorRoleAssentContext({
+      db: data.db,
+      userId: data.manager.userId,
+      vendorId: data.manager.vendorId,
+      membershipId: data.manager.id,
+    });
+    await expect(getVendorRoleAssentStatus({ db: data.db, context })).resolves.toMatchObject({
+      current: true,
+      decision: "ASSENT",
+    });
+  });
+
   it("records separate exact Vendor Terms, Privacy, and authority evidence and invalidates it on authority change", async () => {
     const data = fixture();
     const result = await recordVendorRoleAssent({
@@ -312,11 +368,14 @@ describe("beta role-assent evidence service", () => {
       membershipId: data.manager.id,
       bookingId: data.booking.id,
       displayedContextHash: context.contextHash,
-      displayedContentSetHash: roleAssentContentSetHash("VENDOR"),
+      displayedContentSetHash: managerWorkRecordAttestationPresentation().contentSetHash,
       authorityConfirmed: true,
       requestId: "attestation-1",
     });
     await expect(getManagerWorkRecordAttestationStatus({ db: data.db, context })).resolves.toMatchObject({ current: true });
+    expect(data.evidence.at(-1)?.policyKey).toBe(
+      ROLE_ASSENT_CONTENT_KEYS.MANAGER_WORK_RECORD_ATTESTATION,
+    );
     data.metadata.vendor_job_assignment_generation = 4;
     data.booking.customerMetadata = JSON.stringify(data.metadata);
     const replaced = await loadManagerWorkRecordAttestationContext({

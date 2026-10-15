@@ -20,6 +20,8 @@
     "legal:retention:dry-run": "cross-env TS_NODE_COMPILER_OPTIONS={\"module\":\"CommonJS\",\"moduleResolution\":\"Node\"} ts-node --transpile-only scripts/legal/read-retention-dry-run.ts",
     "legal:drafts:manifest": "node scripts/legal/build-prospective-content-manifest.mjs",
     "legal:drafts:verify": "node scripts/legal/build-prospective-content-manifest.mjs --check",
+    "legal:onboarding:generate": "node scripts/legal/build-beta-onboarding-content.mjs",
+    "legal:onboarding:verify": "node scripts/legal/build-beta-onboarding-content.mjs --check",
     "legal:role-assent:generate": "node scripts/legal/build-beta-role-assent-content.mjs",
     "legal:role-assent:verify": "node scripts/legal/build-beta-role-assent-content.mjs --check",
     "test:rv8:protected": "node scripts/release/run_rv8_protected_regression_gate.cjs",

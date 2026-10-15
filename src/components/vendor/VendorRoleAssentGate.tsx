@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Loader2, ShieldCheck, XCircle } from "lucide-react";
+import { Check, CheckCircle2, HelpCircle, Loader2, LogOut, ShieldCheck, XCircle } from "lucide-react";
+import Link from "next/link";
 
 import { RoleAssentDocumentViewer } from "@/components/legal/RoleAssentDocumentViewer";
 import { getClientSessionHeaders } from "@/lib/client-session";
@@ -19,6 +20,10 @@ type AssentView = {
       contentSnapshot: string;
       audienceRole: string;
     }>;
+    vendorAcknowledgements: Array<{
+      key: "authority" | "terms" | "privacy" | "electronicRecords";
+      label: string;
+    }>;
   };
 };
 
@@ -33,6 +38,8 @@ export function VendorRoleAssentGate(props: {
   userId: string;
   vendorId: string;
   children: React.ReactNode;
+  allowChildrenWhileLocked?: boolean;
+  onAccessStateChange?: (locked: boolean) => void;
 }) {
   const [view, setView] = useState<AssentView | null>(null);
   const [bypass, setBypass] = useState(false);
@@ -80,6 +87,11 @@ export function VendorRoleAssentGate(props: {
     void load();
   }, [props.userId, props.vendorId]);
 
+  const unlocked = bypass || Boolean(view?.status.current);
+  useEffect(() => {
+    props.onAccessStateChange?.(!unlocked);
+  }, [props.onAccessStateChange, unlocked]);
+
   async function submit(decision: "ASSENT" | "DECLINE") {
     if (!view) return;
     setWorking(true);
@@ -110,7 +122,9 @@ export function VendorRoleAssentGate(props: {
     }
   }
 
-  if (bypass || view?.status.current) return <>{props.children}</>;
+  if (unlocked || (props.allowChildrenWhileLocked && !loading)) {
+    return <>{props.children}</>;
+  }
   if (loading) {
     return (
       <div className="flex items-center gap-2 py-10 text-sm text-white/80">
@@ -150,24 +164,29 @@ export function VendorRoleAssentGate(props: {
 
       <fieldset className="mt-6 space-y-3 border-t border-slate-200 pt-5">
         <legend className="font-semibold">Required acknowledgments</legend>
-        {[
-          ["authority", "I am authorized to bind the identified Vendor and am acting for that organization."],
-          ["terms", "I agree to the exact Reliance Terms of Use version shown."],
-          ["privacy", "I acknowledge that I reviewed the exact Reliance Privacy Notice version shown."],
-          ["electronicRecords", "I consent to receive and retain these terms, notices, receipts, and related records electronically."],
-        ].map(([key, label]) => (
-          <label key={key} className="flex items-start gap-3 text-sm leading-6 text-slate-700">
-            <input
-              type="checkbox"
-              checked={acknowledgements[key as keyof typeof acknowledgements]}
-              onChange={(event) =>
-                setAcknowledgements((current) => ({ ...current, [key]: event.target.checked }))
-              }
-              className="mt-1 h-4 w-4"
-            />
-            <span>{label}</span>
-          </label>
-        ))}
+        {view.presentation.vendorAcknowledgements.map(({ key, label }) => {
+          const checked = acknowledgements[key];
+          return (
+            <label key={key} className="flex cursor-pointer items-start gap-3 border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700 focus-within:border-blue-600">
+              <input
+                id={`vendor-gate-${key}`}
+                type="checkbox"
+                checked={checked}
+                onChange={(event) =>
+                  setAcknowledgements((current) => ({ ...current, [key]: event.target.checked }))
+                }
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden="true"
+                className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border border-slate-500 bg-white transition peer-checked:border-blue-800 peer-checked:bg-blue-700 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-600 peer-focus-visible:ring-offset-2"
+              >
+                {checked ? <Check className="h-4 w-4 text-white" strokeWidth={3} /> : null}
+              </span>
+              <span>{label}</span>
+            </label>
+          );
+        })}
       </fieldset>
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -195,6 +214,14 @@ export function VendorRoleAssentGate(props: {
         </p>
       ) : null}
       {error ? <p role="alert" className="mt-4 text-sm text-rose-700">{error}</p> : null}
+      <div className="mt-6 flex flex-wrap gap-4 border-t border-slate-200 pt-5 text-sm font-semibold">
+        <Link href="/vendor/support" className="inline-flex items-center gap-2 text-blue-800 underline">
+          <HelpCircle className="h-4 w-4" aria-hidden="true" /> Support &amp; Help
+        </Link>
+        <Link href="/logout" className="inline-flex items-center gap-2 text-slate-700 underline">
+          <LogOut className="h-4 w-4" aria-hidden="true" /> Log Out
+        </Link>
+      </div>
     </section>
   );
 }

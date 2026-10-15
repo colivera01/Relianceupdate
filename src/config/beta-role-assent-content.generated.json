@@ -1,18 +1,18 @@
 {
   "formatVersion": 1,
-  "packageKey": "reliance-legal-content-drafts-2026-10-13-draft.3",
-  "packageSha256": "581d51137b2e592700612485604613702244211ca941d4e81bfcdbd2b4f4fb80",
+  "packageKey": "reliance-beta-onboarding-legal-2026-10-14.1",
+  "packageSha256": "9c04ea7ee73d86028ed394423b313731ece2ac9ed2a43e57036a62c0824ded20",
   "authorizationScope": "BETA_ROLE_ASSENT_SURFACES_ONLY",
   "globallyEffective": false,
   "counselApproved": false,
-  "generatedFromCommit": "a9446e05cf30cdc5bc1d9951bf88f60e9a6b4095",
+  "generatedFromCommit": "github-issue-1-comment-6180609703",
   "entries": [
     {
       "sourceFile": "docs/legal-content-drafts/2026-10-13-draft.3/terms-of-use.draft.md",
       "contentKey": "reliance.terms-of-use",
       "contentClass": "POLICY",
       "audienceRole": "ALL_USERS",
-      "version": "reliance-terms-2026-10-13-draft.3",
+      "version": "reliance-terms-2026-10-14-onboarding.1",
       "sourceGovernanceStatus": "DRAFT",
       "sourceRuntimeEffective": false,
       "sourceCounselApproved": false,
@@ -24,7 +24,7 @@
       "contentKey": "reliance.privacy-notice",
       "contentClass": "POLICY",
       "audienceRole": "ALL_USERS",
-      "version": "reliance-privacy-2026-10-13-draft.3",
+      "version": "reliance-privacy-2026-10-14-onboarding.1",
       "sourceGovernanceStatus": "DRAFT",
       "sourceRuntimeEffective": false,
       "sourceCounselApproved": false,
@@ -36,24 +36,43 @@
       "contentKey": "reliance.vendor-role-assent",
       "contentClass": "POLICY",
       "audienceRole": "VENDOR",
-      "version": "reliance-vendor-assent-2026-10-13-draft.3",
+      "version": "reliance-vendor-organization-agreement-2026-10-14-onboarding.1",
       "sourceGovernanceStatus": "DRAFT",
       "sourceRuntimeEffective": false,
       "sourceCounselApproved": false,
-      "contentSnapshot": "# Vendor and Vendor Manager Assent\n\n## Vendor responsibilities and Reliance platform terms\n\nYou are accepting for the Vendor organization identified on this screen. By continuing, you confirm that you are authorized to bind that organization to the version shown and to receive this record electronically.\n\nI confirm that:\n\n1. I have authority to act for the identified Vendor organization.\n2. The Vendor is responsible for the services it performs, its personnel, required licenses and insurance, workplace obligations, and the truthfulness of information it submits.\n3. Reliance is a technology platform and does not certify workmanship, job-site safety, code compliance, licensure, or professional quality.\n4. The Vendor will assign only the correct current Employee or service professional and will keep contact and assignment information accurate.\n5. The Vendor will not accept or decline recording participation or standing Public participation for an Employee, and will not make a Customer's recording or Public-visibility choice.\n6. The Vendor will not retaliate against, coerce, or misrepresent the decision of an Employee who declines optional Reliance recording or optional standing Public participation.\n7. The Vendor will use the current Service Order and reassignment or scope-replacement process. A stale link, prior assignment, prior assessment, or prior Employee decision cannot authorize a current context.\n8. The Vendor will not direct recording of minors, unrelated adults, bystanders, private conversations, private documents or screens, credentials, access codes, or security information.\n9. Audio may be recorded only when the current scope includes audio and all legally required parties have authorized it.\n10. The Vendor will use Reliance reports, reviews, Public controls, and evidence only for legitimate platform purposes and will not falsify or suppress evidence.\n11. The Vendor has reviewed the linked Terms and Privacy Notice and can retain a copy of the exact versions shown.\n\n**Terms checkbox:** I am authorized to bind the identified Vendor and agree to the exact Reliance Terms of Use version shown.\n\n**Privacy checkbox:** I acknowledge that I reviewed the exact Reliance Privacy Notice version shown and understand the described processing for the Vendor relationship.\n\n**Electronic-record checkbox:** I consent to receive these Vendor terms, notices, receipts, and related records electronically and can access and retain the versions shown.\n\n**Button:** Agree for Vendor\n\n## Job-specific Manager attestation\n\n**Attestation:** I am authorized to manage this Work Record for the Vendor shown. I confirm that the assigned service professional and the job, location, recording boundary, participant roles, audio setting, purpose, and stages entered by the Vendor are accurate to the best of my knowledge. I understand that I cannot make the Customer's recording or Public choice, an Employee's job-specific Recording Participation choice, or an Employee's standing Public participation choice.\n\n**Button:** Confirm Work Record Attestation\n\nThis attestation is an operational Vendor statement. It is not Employee consent, Customer authorization, Reliance Audit, or certification of workmanship, safety, licensure, insurance, or code compliance.\n\n## Decline\n\n**Button:** I do not agree\n\nDeclining does not submit assent. Features that require Vendor assent will remain unavailable. Contact Reliance if you need help or believe this request was sent to the wrong person.\n\n## Electronic record\n\nBy selecting Agree for Vendor, you intend to sign electronically and receive these records electronically. You can access and retain the versions shown.\n",
-      "contentHash": "2c1507d286a5dcef2b413d34db23efba5065327e305caabf91a2aef66fead0fe"
+      "contentSnapshot": "# Vendor Organization Agreement\n\n## Vendor responsibilities and Reliance platform terms\n\nYou are accepting for the Vendor organization identified on this screen. By continuing, you confirm that you are authorized to bind that organization to the version shown and to receive this record electronically.\n\nI confirm that:\n\n1. I have authority to act for the identified Vendor organization.\n2. The Vendor is responsible for the services it performs, its personnel, required licenses and insurance, workplace obligations, and the truthfulness of information it submits.\n3. Reliance is a technology platform and does not certify workmanship, job-site safety, code compliance, licensure, or professional quality.\n4. The Vendor will assign only the correct current Employee or service professional and will keep contact and assignment information accurate.\n5. The Vendor will not accept or decline recording participation or standing Public participation for an Employee, and will not make a Customer's recording or Public-visibility choice.\n6. The Vendor will not retaliate against, coerce, or misrepresent the decision of an Employee who declines optional Reliance recording or optional standing Public participation.\n7. The Vendor will use the current Service Order and reassignment or scope-replacement process. A stale link, prior assignment, prior assessment, or prior Employee decision cannot authorize a current context.\n8. The Vendor will not direct recording of minors, unrelated adults, bystanders, private conversations, private documents or screens, credentials, access codes, or security information.\n9. Audio may be recorded only when the current scope includes audio and all legally required parties have authorized it.\n10. The Vendor will use Reliance reports, reviews, Public controls, and evidence only for legitimate platform purposes and will not falsify or suppress evidence.\n11. The Vendor has reviewed the linked Terms and Privacy Notice and can retain a copy of the exact versions shown.\n\n**authority:** I am authorized to act for and bind the identified Vendor organization.\n\n**terms:** I agree to the exact Reliance Terms of Use version shown.\n\n**privacy:** I acknowledge that I reviewed the exact Reliance Privacy Notice version shown.\n\n**electronicRecords:** I consent to receive and retain these terms, notices, receipts, and related records electronically.\n\n**Button:** Agree for Vendor\n\n## Decline\n\n**Button:** I do not agree\n\nDeclining does not submit assent. Features that require Vendor assent will remain unavailable. Contact Reliance if you need help or believe this request was sent to the wrong person.\n\n## Electronic record\n\nBy selecting Agree for Vendor, you intend to sign electronically and receive these records electronically. You can access and retain the versions shown.\n",
+      "contentHash": "7a7712691bd2cfe31fd3f41d2411b7f5fc6f75c10004f0ee4d028335fa1cce8d"
     },
     {
       "sourceFile": "docs/legal-content-drafts/2026-10-13-draft.3/employee-accountless-assent.draft.md",
       "contentKey": "reliance.employee-accountless-role-assent",
       "contentClass": "POLICY",
       "audienceRole": "EMPLOYEE",
-      "version": "reliance-employee-accountless-assent-2026-10-13-draft.3",
+      "version": "reliance-employee-accountless-assent-2026-10-14-onboarding.1",
       "sourceGovernanceStatus": "DRAFT",
       "sourceRuntimeEffective": false,
       "sourceCounselApproved": false,
       "contentSnapshot": "# Before you use this Service Order\n\nThe Vendor shown on this Service Order identified you as the assigned service professional for this Work Record. Reliance Technologies LLC provides the Service Order and, when separately authorized, the recording workflow. This page is for your own verified Employee context. Do not use another person's link or make a decision for someone else.\n\nBy affirmatively agreeing, you acknowledge that:\n\n1. You may use the current Service Order only for the assigned Work Record and Vendor shown.\n2. The Service Order link is an entry credential and may require a one-time verification step. It may expire or become stale after reassignment or scope replacement.\n3. You will protect the link, one-time code, and verified session and will not share them.\n4. Reliance may process the minimum identity, Vendor membership, assignment, Service Order, security, and evidence information needed to verify your access and operate the workflow.\n5. Any job-specific Recording Participation choice is separate and will be presented before recording. Accepting this accountless notice does not allow recording.\n6. Standing Public Service Video Participation is also separate and optional. It is not required to open a Service Order or perform Private Proof work.\n7. A Vendor or Manager cannot accept, decline, or override your personal recording or standing Public choice.\n8. Reliance recording authorization does not certify workmanship, job-site safety, licensure, code compliance, or employment status.\n9. You must stop or avoid recording if a minor, unrelated adult, bystander, private conversation, private document or screen, credential, access code, or security information could be captured.\n10. You have access to the linked Terms and Privacy Notice and can retain a copy of the exact versions shown.\n\n**Identity checkbox:** I am the verified assigned person for this Service Order and am acting only for myself.\n\n**Terms checkbox:** I agree to the exact Reliance Terms of Use version shown for my use of this accountless Service Order.\n\n**Privacy checkbox:** I acknowledge that I reviewed the exact Reliance Privacy Notice version shown and understand the described processing for this Service Order.\n\n**Electronic-record checkbox:** I consent to receive this notice, the Service Order, decision receipts, and related records electronically and can access and retain the versions shown.\n\n**Button:** Agree and continue\n\n## Correction and decline\n\n**Button:** This Service Order is not for me\n\nUse this when the link was sent to the wrong person or you are not the assigned person. It is an identity or assignment correction, not a refusal to participate in recording and not acceptance of any term.\n\n**Button:** I do not agree\n\nDeclining does not submit assent or a recording choice. The verified Service Order flow cannot continue. Contact Reliance for help. This is not your job-specific recording decision.\n\n## Electronic record\n\nBy selecting Agree and continue, you intend to sign electronically and receive these records electronically. You can access and retain the versions shown.\n",
       "contentHash": "afb85d4f6c38d8ba9e10e009d5a4596a7c5b3667ae05fe1e8372fbfc82078a19"
+    },
+    {
+      "sourceFile": "docs/legal-content-drafts/2026-10-13-draft.3/vendor-assent.draft.md",
+      "contentKey": "reliance.manager-work-record-attestation",
+      "contentClass": "POLICY",
+      "audienceRole": "VENDOR",
+      "version": "reliance-manager-work-record-attestation-2026-10-14-onboarding.1",
+      "sourceGovernanceStatus": "DRAFT",
+      "sourceRuntimeEffective": false,
+      "sourceCounselApproved": false,
+      "contentSnapshot": "# Manager Work Record Attestation\n\nI am authorized to manage this Work Record for the Vendor shown. I confirm that the assigned service professional and the job, location, recording boundary, participant roles, audio setting, purpose, and stages entered by the Vendor are accurate to the best of my knowledge. I understand that I cannot make the Customer's recording or Public choice, an Employee's job-specific Recording Participation choice, or an Employee's standing Public participation choice.\n\n**Confirmation:** I confirm this exact current Work Record, assignment, and recording context for the identified Vendor.\n\nThis attestation is an operational Vendor statement. It is not Employee consent, Customer authorization, Reliance Audit, or certification of workmanship, safety, licensure, insurance, or code compliance.\n\n**Button:** Confirm Work Record Attestation\n",
+      "contentHash": "40758b4f323241177cbdbc9f4b7c01a151953785e10b603b2d3040ca143c596a",
+      "presentation": {
+        "title": "Manager Work Record attestation required before Service Order release",
+        "attestationText": "I am authorized to manage this Work Record for the Vendor shown. I confirm that the assigned service professional and the job, location, recording boundary, participant roles, audio setting, purpose, and stages entered by the Vendor are accurate to the best of my knowledge. I understand that I cannot make the Customer's recording or Public choice, an Employee's job-specific Recording Participation choice, or an Employee's standing Public participation choice.",
+        "confirmationText": "I confirm this exact current Work Record, assignment, and recording context for the identified Vendor.",
+        "disclaimerText": "This attestation is an operational Vendor statement. It is not Employee consent, Customer authorization, Reliance Audit, or certification of workmanship, safety, licensure, insurance, or code compliance.",
+        "actionLabel": "Confirm Work Record Attestation"
+      }
     }
   ]
 }
