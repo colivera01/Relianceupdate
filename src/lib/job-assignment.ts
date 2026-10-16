@@ -407,6 +407,54 @@ export function isServiceOrderReleasedForCurrentContext(
   );
 }
 
+export type ServiceOrderReleaseState = {
+  assignmentGeneration: number;
+  assignedMembershipIds: string[];
+  currentMembershipIds: string[];
+  staleMembershipIds: string[];
+  anyReleased: boolean;
+  current: boolean;
+};
+
+export function resolveServiceOrderReleaseState(
+  value: string | null | undefined,
+  input: {
+    assessmentId: string | null;
+    assessmentGeneration: number | null;
+    scopeHash: string | null;
+  },
+): ServiceOrderReleaseState {
+  const metadata = parseCustomerMetadata(value);
+  const assignment = parseAssignmentMetadata(value);
+  const compliance = parseRecordingComplianceMetadata(value);
+  const assignmentGeneration = Math.max(
+    1,
+    Number(metadata.vendor_job_assignment_generation || 1),
+  );
+  const currentMembershipIds = assignment.assignedMembershipIds.filter((membershipId) =>
+    isServiceOrderReleasedForCurrentContext(value, {
+      membershipId,
+      assignmentGeneration,
+      assessmentId: input.assessmentId,
+      assessmentGeneration: input.assessmentGeneration,
+      scopeHash: input.scopeHash,
+    }),
+  );
+  const currentSet = new Set(currentMembershipIds);
+  return {
+    assignmentGeneration,
+    assignedMembershipIds: assignment.assignedMembershipIds,
+    currentMembershipIds,
+    staleMembershipIds: assignment.assignedMembershipIds.filter(
+      (membershipId) => !currentSet.has(membershipId),
+    ),
+    anyReleased: compliance.releasedMembershipIds.length > 0,
+    current:
+      assignment.assignedMembershipIds.length > 0 &&
+      currentMembershipIds.length === assignment.assignedMembershipIds.length,
+  };
+}
+
 export function setStageProgressMetadata(
   value: string | null | undefined,
   stage: "INTRO" | "IN_PROGRESS" | "COMPLETED"

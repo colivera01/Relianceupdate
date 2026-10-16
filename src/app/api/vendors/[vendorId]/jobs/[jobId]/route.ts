@@ -3,7 +3,10 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveOperationalClientLabel } from "@/lib/operational-client";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
-import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
+import {
+  parseRecordingComplianceMetadata,
+  resolveServiceOrderReleaseState,
+} from "@/lib/job-assignment";
 import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
@@ -173,6 +176,14 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
       capability: "observe",
       actorKind: membership.role === "MANAGER" ? "VENDOR_MANAGER" : "EMPLOYEE",
     });
+    const serviceOrderReleaseState = resolveServiceOrderReleaseState(
+      booking.customerMetadata,
+      {
+        assessmentId: permissionGate.assessmentId ?? null,
+        assessmentGeneration: permissionGate.assessmentGeneration ?? null,
+        scopeHash: permissionGate.scopeHash ?? null,
+      },
+    );
     const operationalPhase = resolveOperationalPhase({
       bookingStatus: booking.status,
       customerMetadata: booking.customerMetadata,
@@ -199,6 +210,9 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           permissionRequired: permissionGate.permissionRequired,
           permissionStatus: permissionGate.permissionState,
           serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
+          serviceOrderCurrent: serviceOrderReleaseState.current,
+          serviceOrderAnyReleased: serviceOrderReleaseState.anyReleased,
+          managerAttestationRequiredForRelease: !serviceOrderReleaseState.current,
           audioAllowed: permissionGate.audioAllowed,
           employeeParticipation: permissionGate.employeeParticipation || null,
         },

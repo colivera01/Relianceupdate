@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, ClipboardCheck, Loader2 } from "lucide-react";
+import { resolveVendorServiceOrderPresentation } from "@/lib/vendor-service-order-presentation";
 
 type View = {
   status: { current: boolean; decidedAt: string | null };
@@ -26,12 +27,18 @@ export function ManagerWorkRecordAttestation(props: {
   vendorId: string;
   bookingId: string;
   headers: Record<string, string>;
+  serviceOrderCurrent: boolean;
 }) {
   const [view, setView] = useState<View | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const serviceOrderPresentation = resolveVendorServiceOrderPresentation({
+    serviceOrderCurrent: props.serviceOrderCurrent,
+    serviceOrderAnyReleased: props.serviceOrderCurrent,
+    managerAttestationCurrent: view?.status.current === true,
+  });
 
   async function load() {
     setLoading(true);
@@ -91,6 +98,17 @@ export function ManagerWorkRecordAttestation(props: {
     return <p className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" /> Checking Manager attestation...</p>;
   }
   if (!view) {
+    if (props.serviceOrderCurrent) {
+      return (
+        <div className="flex items-start gap-3 text-emerald-900">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-semibold">{serviceOrderPresentation.attestationTitle}</p>
+            <p className="mt-1 text-sm">{serviceOrderPresentation.attestationDetail}</p>
+          </div>
+        </div>
+      );
+    }
     return <p role="alert" className="text-sm text-rose-700">{error}</p>;
   }
   if (view.status.current) {
@@ -100,6 +118,17 @@ export function ManagerWorkRecordAttestation(props: {
         <div>
           <p className="font-semibold">Current Manager Work Record attestation confirmed</p>
           <p className="mt-1 text-sm">The attestation is bound to assignment generation {view.context.assignmentGeneration}, assessment generation {view.context.assessmentGeneration}, and the current recording scope.</p>
+        </div>
+      </div>
+    );
+  }
+  if (serviceOrderPresentation.attestationMode === "GRANDFATHERED_CURRENT_RELEASE") {
+    return (
+      <div className="flex items-start gap-3 text-emerald-900">
+        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+        <div>
+          <p className="font-semibold">{serviceOrderPresentation.attestationTitle}</p>
+          <p className="mt-1 text-sm">{serviceOrderPresentation.attestationDetail}</p>
         </div>
       </div>
     );

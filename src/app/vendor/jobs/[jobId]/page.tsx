@@ -63,6 +63,9 @@ type JobLike = {
     permissionRequired?: boolean;
     permissionStatus?: string | null;
     serviceOrderReleasedAt?: string | null;
+    serviceOrderCurrent?: boolean;
+    serviceOrderAnyReleased?: boolean;
+    managerAttestationRequiredForRelease?: boolean;
     audioAllowed?: boolean;
     employeeParticipation?: {
       required: boolean;
@@ -250,7 +253,7 @@ export default function VendorJobDetailPage() {
       assigned: Boolean(job?.assignedEmployees?.length),
       allVideosPresent: allStagesExist,
       nextStageLabel: nextStage,
-      serviceOrderSent: Boolean(job?.recordingCompliance?.serviceOrderReleasedAt),
+      serviceOrderSent: job?.recordingCompliance?.serviceOrderCurrent === true,
       consentRecipientLabel: job?.customerEmail || job?.customerPhone || "the customer",
     });
   }, [allStagesExist, job, nextMissingStage, normalizedStatus]);
@@ -726,6 +729,7 @@ export default function VendorJobDetailPage() {
                     vendorId={effectiveVendorId}
                     bookingId={job.id}
                     headers={headers}
+                    serviceOrderCurrent={job.recordingCompliance?.serviceOrderCurrent === true}
                   />
                 </CardContent>
               </Card>

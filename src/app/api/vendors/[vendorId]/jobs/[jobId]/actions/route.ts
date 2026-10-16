@@ -21,6 +21,7 @@ import {
 import {
   normalizeRecordingLocationChoice,
   parseRecordingComplianceMetadata,
+  resolveServiceOrderReleaseState,
   validateRecordingLocationSnapshot,
 } from "@/lib/job-assignment";
 import {
@@ -131,6 +132,11 @@ function toSafeRecordingCompliance(
   gate: RecordingPermissionGate
 ) {
   const compliance = parseRecordingComplianceMetadata(value);
+  const releaseState = resolveServiceOrderReleaseState(value, {
+    assessmentId: gate.assessmentId ?? null,
+    assessmentGeneration: gate.assessmentGeneration ?? null,
+    scopeHash: gate.scopeHash ?? null,
+  });
   return {
     location: gate.location,
     consentAccepted: gate.verifiedAllowed,
@@ -145,6 +151,9 @@ function toSafeRecordingCompliance(
     locationVerified: compliance.locationVerified,
     locationVerifiedAt: compliance.locationVerifiedAt,
     serviceOrderReleasedAt: compliance.serviceOrderReleasedAt,
+    serviceOrderCurrent: releaseState.current,
+    serviceOrderAnyReleased: releaseState.anyReleased,
+    managerAttestationRequiredForRelease: !releaseState.current,
     releasedMembershipIds: compliance.releasedMembershipIds,
     addressSnapshot: compliance.addressSnapshot,
   };

@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/server/db";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
 import {
   isServiceOrderReleasedForCurrentContext,
   parseAssignmentMetadata,
   parseRecordingComplianceMetadata,
+  resolveServiceOrderReleaseState,
 } from "@/lib/job-assignment";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
@@ -54,6 +56,18 @@ function initialDeliveryKind(context: CurrentReleaseContext, membershipId: strin
   ].join(":");
 }
 
+function resendDeliveryKind(context: CurrentReleaseContext, membershipId: string) {
+  return [
+    "EMPLOYEE_SERVICE_ORDER_RESEND_V2",
+    context.assignmentGeneration,
+    context.assessmentGeneration ?? 0,
+    context.assessmentId || "legacy",
+    context.scopeHash || "legacy",
+    membershipId,
+    randomUUID(),
+  ].join(":");
+}
+
 /**
  * Converges assignment-first and permission-first workflows on one idempotent
  * initial Service Order delivery. BookingNotification's unique booking/kind
@@ -84,28 +98,6 @@ export async function releaseEmployeeServiceOrderWhenReady(
   const compliance = parseRecordingComplianceMetadata(booking.customerMetadata);
   if (!assignment.assignedMembershipIds.length) {
     return { ready: false, alreadyReleased: false, deliveryInProgress: false, sentCount: 0, releasedMembershipIds: [], results: [] };
-  }
-
-  if (
-    !(await hasCurrentManagerWorkRecordAttestation({
-      db: prisma as any,
-      bookingId: booking.id,
-      vendorId: input.vendorId,
-    }))
-  ) {
-    return {
-      ready: false,
-      alreadyReleased: false,
-      deliveryInProgress: false,
-      sentCount: 0,
-      releasedMembershipIds: compliance.releasedMembershipIds,
-      results: [],
-      blocked: {
-        code: "MANAGER_WORK_RECORD_ATTESTATION_REQUIRED",
-        why: "The current Work Record has not been attested by an authorized Vendor Manager.",
-        resolution: "Review the exact assignment and recording scope, then confirm the Manager Work Record attestation before sending the Service Order.",
-      },
-    };
   }
 
   const gate = await loadRecordingPermissionGate({
@@ -160,6 +152,35 @@ export async function releaseEmployeeServiceOrderWhenReady(
     assessmentGeneration: gate.assessmentGeneration,
     scopeHash: gate.scopeHash,
   };
+  const releaseState = resolveServiceOrderReleaseState(booking.customerMetadata, {
+    assessmentId: releaseContext.assessmentId,
+    assessmentGeneration: releaseContext.assessmentGeneration,
+    scopeHash: releaseContext.scopeHash,
+  });
+  const redeliverCurrentRelease = Boolean(input.forceResend && releaseState.current);
+
+  if (
+    !releaseState.current &&
+    !(await hasCurrentManagerWorkRecordAttestation({
+      db: prisma as any,
+      bookingId: booking.id,
+      vendorId: input.vendorId,
+    }))
+  ) {
+    return {
+      ready: false,
+      alreadyReleased: false,
+      deliveryInProgress: false,
+      sentCount: 0,
+      releasedMembershipIds: compliance.releasedMembershipIds,
+      results: [],
+      blocked: {
+        code: "MANAGER_WORK_RECORD_ATTESTATION_REQUIRED",
+        why: "The current Work Record has not been attested by an authorized Vendor Manager.",
+        resolution: "Review the exact assignment and recording scope, then confirm the Manager Work Record attestation before sending the Service Order.",
+      },
+    };
+  }
   const released = new Set<string>(
     compliance.releasedMembershipIds.filter((membershipId) =>
       assignment.assignedMembershipIds.includes(membershipId),
@@ -171,20 +192,33 @@ export async function releaseEmployeeServiceOrderWhenReady(
   const jobTitle = String(booking.title || booking.service?.name || "Assigned service");
 
   for (const member of members) {
-    if (
-      !input.forceResend &&
-      isServiceOrderReleasedForCurrentContext(booking.customerMetadata, {
-        membershipId: member.id,
-        ...releaseContext,
-      })
-    ) {
+    const memberReleaseCurrent = isServiceOrderReleasedForCurrentContext(
+      booking.customerMetadata,
+      { membershipId: member.id, ...releaseContext },
+    );
+    const isCurrentRedelivery = redeliverCurrentRelease && memberReleaseCurrent;
+    if (memberReleaseCurrent && !isCurrentRedelivery) {
       results.push({ membershipId: member.id, alreadyReleased: true });
       continue;
     }
 
     let claimId: string | null = null;
     let notificationKind: string | null = null;
-    if (!input.forceResend) {
+    if (isCurrentRedelivery) {
+      notificationKind = resendDeliveryKind(releaseContext, member.id);
+      const claim = await prisma.bookingNotification.create({
+        data: {
+          bookingId: booking.id,
+          kind: notificationKind,
+          status: "SENDING",
+          attemptCount: 1,
+          lastAttemptAt: new Date(),
+          idempotencyKey: `${booking.id}:${notificationKind}`,
+        },
+        select: { id: true },
+      });
+      claimId = claim.id;
+    } else {
       notificationKind = initialDeliveryKind(releaseContext, member.id);
       try {
         const claim = await prisma.bookingNotification.create({
@@ -281,8 +315,16 @@ export async function releaseEmployeeServiceOrderWhenReady(
           : { status: "FAILED", channelsJson: JSON.stringify(delivery.channels), lastError: "No configured delivery channel succeeded" },
       });
     }
-    if (delivery.anySuccess) releasesToPersist.set(member.id, notificationKind);
-    results.push({ membershipId: member.id, anySuccess: delivery.anySuccess, channels: delivery.channels });
+    if (delivery.anySuccess && !isCurrentRedelivery) {
+      releasesToPersist.set(member.id, notificationKind);
+    }
+    results.push({
+      membershipId: member.id,
+      notificationId: claimId,
+      redelivery: isCurrentRedelivery,
+      anySuccess: delivery.anySuccess,
+      channels: delivery.channels,
+    });
   }
 
   if (releasesToPersist.size > 0) {
@@ -381,7 +423,6 @@ export async function releaseEmployeeServiceOrderWhenReady(
   const sentCount = results.filter((result) => result.anySuccess === true).length;
   const deliveryInProgress = results.some((result) => result.deliveryInProgress === true);
   const alreadyReleased =
-    !input.forceResend &&
     sentCount === 0 &&
     !deliveryInProgress &&
     results.length > 0 &&

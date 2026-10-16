@@ -47,6 +47,7 @@ import {
 } from '@/lib/vendor-team-members';
 import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation, shouldShowPermissionRefreshFeedback } from '@/lib/vendor-job-lifecycle-presentation';
 import { getMaterialWorkRecordEditFields } from '@/lib/vendor-job-material-edit';
+import { resolveVendorServiceOrderPresentation } from '@/lib/vendor-service-order-presentation';
 
 function parseDate(value: string | number | Date | null | undefined): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -320,6 +321,10 @@ export default function VendorJobs() {
     const isAssigned = isJobAssignedForVideoUpload(job);
     const requiresConsent = snapshot?.permissionRequired === true;
     const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
+    const serviceOrderPresentation = resolveVendorServiceOrderPresentation({
+      serviceOrderCurrent: snapshot?.serviceOrderCurrent === true,
+      serviceOrderAnyReleased: snapshot?.serviceOrderAnyReleased === true,
+    });
     return resolveVendorJobLifecyclePresentation({
       status,
       operationalPhase: phase,
@@ -337,7 +342,7 @@ export default function VendorJobs() {
       assigned: isAssigned,
       allVideosPresent: !nextStage,
       nextStageLabel: stageLabel,
-      serviceOrderSent: Boolean(snapshot?.serviceOrderReleasedAt),
+      serviceOrderSent: serviceOrderPresentation.serviceOrderSent,
       consentRecipientLabel: formatCustomerConsentRecipient(job),
     });
   };
@@ -602,6 +607,9 @@ export default function VendorJobs() {
         locationVerified: boolean;
         savedAt: string;
         serviceOrderReleasedAt?: string | null;
+        serviceOrderCurrent?: boolean;
+        serviceOrderAnyReleased?: boolean;
+        managerAttestationRequiredForRelease?: boolean;
         releasedMembershipIds?: string[];
         permissionRequired?: boolean;
         permissionStatus?: string;
@@ -1510,6 +1518,9 @@ export default function VendorJobs() {
       locationVerified: boolean;
       savedAt: string;
       serviceOrderReleasedAt?: string | null;
+      serviceOrderCurrent?: boolean;
+      serviceOrderAnyReleased?: boolean;
+      managerAttestationRequiredForRelease?: boolean;
       releasedMembershipIds?: string[];
       permissionRequired?: boolean;
       permissionStatus?: string;
@@ -1550,6 +1561,18 @@ export default function VendorJobs() {
           partial.serviceOrderReleasedAt !== undefined
             ? partial.serviceOrderReleasedAt || null
             : existing?.serviceOrderReleasedAt || null,
+        serviceOrderCurrent:
+          partial.serviceOrderCurrent !== undefined
+            ? partial.serviceOrderCurrent
+            : existing?.serviceOrderCurrent,
+        serviceOrderAnyReleased:
+          partial.serviceOrderAnyReleased !== undefined
+            ? partial.serviceOrderAnyReleased
+            : existing?.serviceOrderAnyReleased,
+        managerAttestationRequiredForRelease:
+          partial.managerAttestationRequiredForRelease !== undefined
+            ? partial.managerAttestationRequiredForRelease
+            : existing?.managerAttestationRequiredForRelease,
         releasedMembershipIds:
           partial.releasedMembershipIds !== undefined
             ? (Array.isArray(partial.releasedMembershipIds) ? partial.releasedMembershipIds : [])
@@ -1599,6 +1622,9 @@ export default function VendorJobs() {
       locationVerified: boolean;
       savedAt: string;
       serviceOrderReleasedAt?: string | null;
+      serviceOrderCurrent?: boolean;
+      serviceOrderAnyReleased?: boolean;
+      managerAttestationRequiredForRelease?: boolean;
       releasedMembershipIds?: string[];
     }
   ) => {
@@ -1641,6 +1667,10 @@ export default function VendorJobs() {
           String(serverSnapshot?.locationVerifiedAt || serverSnapshot?.serviceOrderReleasedAt || job?.updatedAt || '').trim() ||
           new Date().toISOString(),
         serviceOrderReleasedAt: serverSnapshot?.serviceOrderReleasedAt || null,
+        serviceOrderCurrent: serverSnapshot?.serviceOrderCurrent === true,
+        serviceOrderAnyReleased: serverSnapshot?.serviceOrderAnyReleased === true,
+        managerAttestationRequiredForRelease:
+          serverSnapshot?.managerAttestationRequiredForRelease === true,
         releasedMembershipIds: Array.isArray(serverSnapshot?.releasedMembershipIds)
           ? serverSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
           : [],
@@ -1687,6 +1717,10 @@ export default function VendorJobs() {
           String(serverSnapshot?.locationVerifiedAt || serverSnapshot?.serviceOrderReleasedAt || job?.updatedAt || '').trim() ||
           new Date().toISOString(),
         serviceOrderReleasedAt: serverSnapshot?.serviceOrderReleasedAt || null,
+        serviceOrderCurrent: serverSnapshot?.serviceOrderCurrent === true,
+        serviceOrderAnyReleased: serverSnapshot?.serviceOrderAnyReleased === true,
+        managerAttestationRequiredForRelease:
+          serverSnapshot?.managerAttestationRequiredForRelease === true,
         releasedMembershipIds: Array.isArray(serverSnapshot?.releasedMembershipIds)
           ? serverSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
           : [],
@@ -1704,6 +1738,14 @@ export default function VendorJobs() {
     }
     console.info('[recording-compliance] no saved snapshot', { requestedKeys: keys });
     return null;
+  };
+
+  const getServiceOrderPresentationForJob = (job: any) => {
+    const snapshot = getSavedRecordingComplianceForJob(job);
+    return resolveVendorServiceOrderPresentation({
+      serviceOrderCurrent: snapshot?.serviceOrderCurrent === true,
+      serviceOrderAnyReleased: snapshot?.serviceOrderAnyReleased === true,
+    });
   };
 
   useEffect(() => {
@@ -1868,6 +1910,10 @@ export default function VendorJobs() {
           : Boolean(locationVerified || existingSnapshot?.locationVerified),
       savedAt: overrides.savedAt || new Date().toISOString(),
       serviceOrderReleasedAt: existingSnapshot?.serviceOrderReleasedAt || null,
+      serviceOrderCurrent: existingSnapshot?.serviceOrderCurrent === true,
+      serviceOrderAnyReleased: existingSnapshot?.serviceOrderAnyReleased === true,
+      managerAttestationRequiredForRelease:
+        existingSnapshot?.managerAttestationRequiredForRelease === true,
       releasedMembershipIds: Array.isArray(existingSnapshot?.releasedMembershipIds)
         ? existingSnapshot.releasedMembershipIds
         : [],
@@ -1894,6 +1940,10 @@ export default function VendorJobs() {
           String(backendSnapshot.locationVerifiedAt || backendSnapshot.serviceOrderReleasedAt || '').trim() ||
           snapshot.savedAt,
         serviceOrderReleasedAt: backendSnapshot.serviceOrderReleasedAt || null,
+        serviceOrderCurrent: backendSnapshot.serviceOrderCurrent === true,
+        serviceOrderAnyReleased: backendSnapshot.serviceOrderAnyReleased === true,
+        managerAttestationRequiredForRelease:
+          backendSnapshot.managerAttestationRequiredForRelease === true,
         releasedMembershipIds: Array.isArray(backendSnapshot.releasedMembershipIds)
           ? backendSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
           : snapshot.releasedMembershipIds,
@@ -1922,6 +1972,10 @@ export default function VendorJobs() {
           String(backendSnapshot.locationVerifiedAt || backendSnapshot.serviceOrderReleasedAt || '').trim() ||
           snapshot.savedAt,
         serviceOrderReleasedAt: backendSnapshot.serviceOrderReleasedAt || null,
+        serviceOrderCurrent: backendSnapshot.serviceOrderCurrent === true,
+        serviceOrderAnyReleased: backendSnapshot.serviceOrderAnyReleased === true,
+        managerAttestationRequiredForRelease:
+          backendSnapshot.managerAttestationRequiredForRelease === true,
         releasedMembershipIds: Array.isArray(backendSnapshot.releasedMembershipIds)
           ? backendSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
           : snapshot.releasedMembershipIds,
@@ -7757,6 +7811,12 @@ export default function VendorJobs() {
                 >
                   {compliancePrerequisiteMessage}
                 </div>
+                {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderAnyReleased === true &&
+                getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent !== true ? (
+                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    Manager Work Record attestation is required before sending the updated Service Order because the Employee assignment or recording scope changed.
+                  </div>
+                ) : null}
                 
                 {/* Business Address - send employee service order */}
                 {location === 'business' && assignmentSatisfiedForCompliance && (
@@ -7776,13 +7836,13 @@ export default function VendorJobs() {
                       onClick={handleSendEmployeeServiceOrder}
                       disabled={
                         !(getCanContinueCompliance() && assignmentSatisfiedForCompliance) ||
-                        Boolean(getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt)
+                        getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent === true
                       }
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt
+                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent === true
                         ? 'Service Order Sent'
-                        : 'Send Service Order'}
+                        : getServiceOrderPresentationForJob(selectedJob).actionLabel}
                     </Button>
                   </div>
                 )}
@@ -7805,13 +7865,13 @@ export default function VendorJobs() {
                       onClick={handleSendEmployeeServiceOrder}
                       disabled={
                         !(getCanContinueCompliance() && assignmentSatisfiedForCompliance) ||
-                        Boolean(getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt)
+                        getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent === true
                       }
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt
+                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent === true
                         ? 'Service Order Sent'
-                        : 'Send Service Order'}
+                        : getServiceOrderPresentationForJob(selectedJob).actionLabel}
                     </Button>
                   </div>
                 )}
@@ -7834,13 +7894,13 @@ export default function VendorJobs() {
                       onClick={handleSendEmployeeServiceOrder}
                       disabled={
                         !(getCanContinueCompliance() && assignmentSatisfiedForCompliance) ||
-                        Boolean(getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt)
+                        getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent === true
                       }
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt
+                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderCurrent === true
                         ? 'Service Order Sent'
-                        : 'Send Service Order'}
+                        : getServiceOrderPresentationForJob(selectedJob).actionLabel}
                     </Button>
                   </div>
                 )}
@@ -8552,12 +8612,15 @@ export default function VendorJobs() {
                                     className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                                     onClick={() => {
                                       setActiveJobActionMenuId(null);
-                                      void handleResendEmployeeServiceOrder(job);
+                                      void handleResendEmployeeServiceOrder(
+                                        job,
+                                        getSavedRecordingComplianceForJob(job)?.serviceOrderCurrent === true,
+                                      );
                                     }}
                                     disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                    title="Resend the employee's secure service order link by email/SMS when available."
+                                    title={getServiceOrderPresentationForJob(job).actionDescription}
                                   >
-                                    Resend Service Order Link
+                                    {getServiceOrderPresentationForJob(job).actionLabel}
                                   </button>
                                 ) : null}
                                 {String(job?.recordingCompliance?.locationAttemptStatus || '').toUpperCase() === 'FAILED' &&

@@ -165,7 +165,7 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
       sentCount: 0,
       blocked: { code: "MANAGER_WORK_RECORD_ATTESTATION_REQUIRED" },
     });
-    expect(h.gate).not.toHaveBeenCalled();
+    expect(h.gate).toHaveBeenCalledTimes(1);
     expect(h.notificationCreate).not.toHaveBeenCalled();
     expect(h.send).not.toHaveBeenCalled();
   });
@@ -303,6 +303,7 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
         },
       }),
     });
+    h.managerAttestation.mockResolvedValue(false);
 
     const result = await releaseEmployeeServiceOrderWhenReady({
       bookingId: "booking-1",
@@ -312,6 +313,7 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
     });
 
     expect(result).toMatchObject({ ready: true, alreadyReleased: true, sentCount: 0 });
+    expect(h.managerAttestation).not.toHaveBeenCalled();
     expect(h.notificationCreate).not.toHaveBeenCalled();
     expect(h.send).not.toHaveBeenCalled();
   });
@@ -431,7 +433,32 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
     expect(h.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("allows an explicit manager resend without creating another initial-delivery claim", async () => {
+  it("redelivers an exact current pre-gate release without fabricating Manager attestation", async () => {
+    const releasedAt = "2026-09-17T20:00:00.000Z";
+    const currentMetadata = JSON.stringify({
+      ...JSON.parse(metadata),
+      vendor_job_service_order_released_membership_ids: ["member-1"],
+      vendor_job_service_order_released_at: releasedAt,
+      vendor_job_service_order_release_contexts: {
+        "member-1": {
+          version: 2,
+          assignmentGeneration: 2,
+          assessmentId: "assessment-2",
+          assessmentGeneration: 2,
+          scopeHash: "scope-hash-2",
+          notificationKind:
+            "EMPLOYEE_SERVICE_ORDER_INITIAL_V2:2:2:assessment-2:scope-hash-2:member-1",
+          releasedAt,
+        },
+      },
+    });
+    h.bookingFindFirst.mockResolvedValue({
+      ...(await h.bookingFindFirst()),
+      customerMetadata: currentMetadata,
+    });
+    h.bookingFindUnique.mockResolvedValue({ customerMetadata: currentMetadata });
+    h.managerAttestation.mockResolvedValue(false);
+
     const result = await releaseEmployeeServiceOrderWhenReady({
       bookingId: "booking-1",
       vendorId: "vendor-1",
@@ -441,8 +468,97 @@ describe("releaseEmployeeServiceOrderWhenReady", () => {
     });
 
     expect(result).toMatchObject({ ready: true, sentCount: 1 });
-    expect(h.notificationCreate).not.toHaveBeenCalled();
+    expect(h.managerAttestation).not.toHaveBeenCalled();
+    expect(h.notificationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: expect.stringMatching(
+            /^EMPLOYEE_SERVICE_ORDER_RESEND_V2:2:2:assessment-2:scope-hash-2:member-1:/,
+          ),
+        }),
+      }),
+    );
     expect(h.send).toHaveBeenCalledTimes(1);
+    expect(result.results[0]).toMatchObject({ redelivery: true, anySuccess: true });
+    expect(h.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("keeps current permission restrictions authoritative during exact-context resend", async () => {
+    h.bookingFindFirst.mockResolvedValue({
+      ...(await h.bookingFindFirst()),
+      customerMetadata: JSON.stringify({
+        ...JSON.parse(metadata),
+        vendor_job_service_order_released_membership_ids: ["member-1"],
+        vendor_job_service_order_release_contexts: {
+          "member-1": {
+            version: 2,
+            assignmentGeneration: 2,
+            assessmentId: "assessment-2",
+            assessmentGeneration: 2,
+            scopeHash: "scope-hash-2",
+          },
+        },
+      }),
+    });
+    h.gate.mockResolvedValue({
+      block: {
+        code: "VERIFIED_PERMISSION_REQUIRED",
+        why: "Permission is not current.",
+        resolution: "Restore current permission.",
+      },
+    });
+
+    const result = await releaseEmployeeServiceOrderWhenReady({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      actorUserId: "manager-1",
+      baseUrl: "https://beta.relianceonline.org",
+      forceResend: true,
+    });
+
+    expect(result).toMatchObject({
+      ready: false,
+      blocked: { code: "VERIFIED_PERMISSION_REQUIRED" },
+    });
+    expect(h.managerAttestation).not.toHaveBeenCalled();
+    expect(h.notificationCreate).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it("requires exact current Manager attestation when force resend targets a stale scope", async () => {
+    h.bookingFindFirst.mockResolvedValue({
+      ...(await h.bookingFindFirst()),
+      customerMetadata: JSON.stringify({
+        ...JSON.parse(metadata),
+        vendor_job_service_order_released_membership_ids: ["member-1"],
+        vendor_job_service_order_release_contexts: {
+          "member-1": {
+            version: 2,
+            assignmentGeneration: 2,
+            assessmentId: "assessment-1",
+            assessmentGeneration: 1,
+            scopeHash: "scope-hash-1",
+          },
+        },
+      }),
+    });
+    h.managerAttestation.mockResolvedValue(false);
+
+    const result = await releaseEmployeeServiceOrderWhenReady({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      actorUserId: "manager-1",
+      baseUrl: "https://beta.relianceonline.org",
+      forceResend: true,
+    });
+
+    expect(result).toMatchObject({
+      ready: false,
+      blocked: { code: "MANAGER_WORK_RECORD_ATTESTATION_REQUIRED" },
+    });
+    expect(h.managerAttestation).toHaveBeenCalledTimes(1);
+    expect(h.notificationCreate).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
   });
 
   it("does not describe a failed initial delivery as already released", async () => {

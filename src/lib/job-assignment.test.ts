@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isServiceOrderReleasedForCurrentContext,
   parseAssignmentMetadata,
+  resolveServiceOrderReleaseState,
   validateRecordingLocationSnapshot,
 } from "@/lib/job-assignment";
 import { buildRecordingLocationSnapshot } from "@/lib/recording-location-snapshot";
@@ -101,6 +102,46 @@ describe("isServiceOrderReleasedForCurrentContext", () => {
         exactContext,
       ),
     ).toBe(true);
+  });
+
+  it("resolves one canonical exact-current state for every assigned Employee", () => {
+    const state = resolveServiceOrderReleaseState(
+      JSON.stringify({
+        vendor_job_assigned_membership_ids: ["member-1", "member-2"],
+        vendor_job_assignment_generation: 2,
+        vendor_job_service_order_released_membership_ids: ["member-1", "member-2"],
+        vendor_job_service_order_release_contexts: {
+          "member-1": {
+            version: 2,
+            assignmentGeneration: 2,
+            assessmentId: "assessment-2",
+            assessmentGeneration: 2,
+            scopeHash: "scope-hash-2",
+          },
+          "member-2": {
+            version: 2,
+            assignmentGeneration: 1,
+            assessmentId: "assessment-2",
+            assessmentGeneration: 2,
+            scopeHash: "scope-hash-2",
+          },
+        },
+      }),
+      {
+        assessmentId: "assessment-2",
+        assessmentGeneration: 2,
+        scopeHash: "scope-hash-2",
+      },
+    );
+
+    expect(state).toEqual({
+      assignmentGeneration: 2,
+      assignedMembershipIds: ["member-1", "member-2"],
+      currentMembershipIds: ["member-1"],
+      staleMembershipIds: ["member-2"],
+      anyReleased: true,
+      current: false,
+    });
   });
 });
 

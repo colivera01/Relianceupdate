@@ -57,6 +57,9 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       location: "business",
       permissionRequired: false,
       permissionState: "not_required",
+      assessmentId: "assessment-2",
+      assessmentGeneration: 2,
+      scopeHash: "scope-hash-2",
     } as any);
     vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue(null);
     vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue(null);
@@ -116,6 +119,58 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       serviceName: "Metro Apartment Deep Clean",
       serviceType: "Metro Apartment Deep Clean",
       notes: [{ text: "Call before arrival" }],
+    });
+  });
+
+  it("returns the canonical exact-context Service Order release state", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-current-release",
+      title: "Outlet Installation",
+      clientName: "Controlled Customer",
+      status: "PENDING",
+      date: new Date("2026-10-12T15:00:00.000Z"),
+      createdAt: new Date("2026-10-12T14:00:00.000Z"),
+      updatedAt: new Date("2026-10-12T16:00:00.000Z"),
+      customerMetadata: JSON.stringify({
+        vendor_job_recording_location: "business",
+        vendor_job_assigned_membership_ids: ["employee-1"],
+        vendor_job_assigned_employees: ["Reliance Test"],
+        vendor_job_assignment_generation: 4,
+        vendor_job_service_order_released_membership_ids: ["employee-1"],
+        vendor_job_service_order_released_at: "2026-10-12T15:30:00.000Z",
+        vendor_job_service_order_release_contexts: {
+          "employee-1": {
+            version: 2,
+            assignmentGeneration: 4,
+            assessmentId: "assessment-2",
+            assessmentGeneration: 2,
+            scopeHash: "scope-hash-2",
+            notificationKind: "initial-kind",
+            releasedAt: "2026-10-12T15:30:00.000Z",
+          },
+        },
+      }),
+      rejectionReason: null,
+      rejectedAt: null,
+      service: { name: "Outlet Installation" },
+      user: { name: "Controlled Customer", email: null, phone: null },
+    } as any);
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-current-release"),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-current-release" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        recordingCompliance: {
+          serviceOrderReleasedAt: "2026-10-12T15:30:00.000Z",
+          serviceOrderCurrent: true,
+          serviceOrderAnyReleased: true,
+          managerAttestationRequiredForRelease: false,
+        },
+      },
     });
   });
 

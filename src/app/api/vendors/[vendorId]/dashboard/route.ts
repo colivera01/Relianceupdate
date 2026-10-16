@@ -22,7 +22,10 @@ import {
   countableReviewWhere,
   vendorOperationalBookingWhere,
 } from "@/lib/metrics-exclusion";
-import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
+import {
+  parseRecordingComplianceMetadata,
+  resolveServiceOrderReleaseState,
+} from "@/lib/job-assignment";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { listUnreadVendorManagerNotifications } from "@/lib/vendor-manager-notifications";
@@ -778,6 +781,14 @@ export async function GET(
         capability: "observe",
         actorKind: "VENDOR_MANAGER",
       });
+      const serviceOrderReleaseState = resolveServiceOrderReleaseState(
+        booking.customerMetadata,
+        {
+          assessmentId: permissionGate.assessmentId ?? null,
+          assessmentGeneration: permissionGate.assessmentGeneration ?? null,
+          scopeHash: permissionGate.scopeHash ?? null,
+        },
+      );
       const clientLabel = resolveOperationalClientLabel({
         clientName: booking.clientName,
         userName: booking.user?.name,
@@ -816,6 +827,9 @@ export async function GET(
           canonicalBlock: permissionGate.block,
           employeeParticipation: permissionGate.employeeParticipation || null,
           serviceOrderReleasedAt: legacyCompliance.serviceOrderReleasedAt,
+          serviceOrderCurrent: serviceOrderReleaseState.current,
+          serviceOrderAnyReleased: serviceOrderReleaseState.anyReleased,
+          managerAttestationRequiredForRelease: !serviceOrderReleaseState.current,
           releasedMembershipIds: legacyCompliance.releasedMembershipIds,
         },
         rejectionReason: booking.rejectionReason || null,
