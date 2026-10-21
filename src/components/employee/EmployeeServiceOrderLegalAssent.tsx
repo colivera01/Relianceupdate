@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Loader2, ShieldCheck, UserRoundX, XCircle } from "lucide-react";
+import { Check, CheckCircle2, Loader2, ShieldCheck, UserRoundX, XCircle } from "lucide-react";
 
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
 import { RoleAssentDocumentViewer } from "@/components/legal/RoleAssentDocumentViewer";
@@ -161,19 +161,35 @@ export function EmployeeServiceOrderLegalAssent(props: {
             ["terms", "I agree to the exact Reliance Terms of Use version shown for this Service Order."],
             ["privacy", "I acknowledge that I reviewed the exact Reliance Privacy Notice version shown."],
             ["electronicRecords", "I consent to receive and retain this notice, the Service Order, decision receipts, and related records electronically."],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-start gap-3 text-sm leading-6 text-slate-700">
-              <input
-                type="checkbox"
-                checked={acknowledgements[key as keyof typeof acknowledgements]}
-                onChange={(event) =>
-                  setAcknowledgements((current) => ({ ...current, [key]: event.target.checked }))
-                }
-                className="mt-1 h-4 w-4"
-              />
-              <span>{label}</span>
-            </label>
-          ))}
+          ].map(([key, label]) => {
+            const checked = acknowledgements[key as keyof typeof acknowledgements];
+            return (
+              <label
+                key={key}
+                htmlFor={`employee-service-order-${key}`}
+                className={`flex cursor-pointer items-start gap-3 border p-3 text-sm leading-6 text-slate-700 transition focus-within:border-blue-700 ${
+                  checked ? "border-blue-700 bg-blue-50" : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <input
+                  id={`employee-service-order-${key}`}
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) =>
+                    setAcknowledgements((current) => ({ ...current, [key]: event.target.checked }))
+                  }
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden="true"
+                  className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border border-slate-500 bg-white transition peer-checked:border-blue-800 peer-checked:bg-blue-700 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-600 peer-focus-visible:ring-offset-2"
+                >
+                  {checked ? <Check className="h-4 w-4 text-white" strokeWidth={3} /> : null}
+                </span>
+                <span>{label}</span>
+              </label>
+            );
+          })}
         </fieldset>
 
         {!choice ? (

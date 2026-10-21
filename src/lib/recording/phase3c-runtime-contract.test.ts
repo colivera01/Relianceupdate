@@ -71,4 +71,12 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(legalGate).not.toContain('decision="ALLOW"');
     expect(legalGate).not.toContain("EMPLOYEE_STANDING_PUBLIC_MEDIA");
   });
+
+  it("renders an explicit high-contrast checked state for every legal acknowledgment", () => {
+    const legalGate = read("src/components/employee/EmployeeServiceOrderLegalAssent.tsx");
+    expect(legalGate).toContain('className="peer sr-only"');
+    expect(legalGate).toContain("peer-checked:bg-blue-700");
+    expect(legalGate).toContain('<Check className="h-4 w-4 text-white" strokeWidth={3} />');
+    expect(legalGate).toContain('checked ? "border-blue-700 bg-blue-50"');
+  });
 });
