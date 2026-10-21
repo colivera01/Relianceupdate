@@ -30,8 +30,10 @@ import {
 } from "@/lib/service-video-audio-capture";
 import { tutorialGuides } from "@/lib/user-guidance";
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
+import { EmployeeStageSafetyCheck } from "@/components/employee/EmployeeStageSafetyCheck";
 import { EmployeeV2ServiceOrderPanel } from "@/components/employee/EmployeeV2ServiceOrderPanel";
 import type { EmployeeV2ServiceOrderView } from "@/lib/recording/employee-v2-service-order";
+import { isEmployeeStageSafetyResolvableBlock } from "@/lib/recording/employee-stage-safety-contract";
 import { getEmployeeWorkspaceLoadFailure } from "@/lib/employee-runtime-errors";
 
 type EmployeeJob = {
@@ -1223,19 +1225,56 @@ export default function EmployeeJobsPage() {
     setError(null);
     setActionMessage(null);
     setRecordingOpeningKey(nextRecordingKey);
-    const needsLocationProof = employeePhoneLocationRequired(job);
+    const usesV2StageSafety = Boolean(job.recordingCompliance?.v2ServiceOrder);
+    const needsLocationProof = !usesV2StageSafety && employeePhoneLocationRequired(job);
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
         status: "uploading",
-        message: needsLocationProof
-          ? "Checking location before opening the camera."
-          : "Opening the camera.",
+        message: usesV2StageSafety
+          ? "Confirming the current stage safety and location check."
+          : needsLocationProof
+            ? "Checking location before opening the camera."
+            : "Opening the camera.",
       },
     }));
     clearCapturedDraft();
     let locationProof: LocationProof | null = null;
-    if (needsLocationProof) {
+    if (usesV2StageSafety) {
+      try {
+        const accessResponse = await fetch(
+          `/api/employee/jobs/${encodeURIComponent(job.id)}/recording-access`,
+          {
+            method: "POST",
+            headers: employeeRequestHeaders(),
+            body: JSON.stringify({ recordingStage: stage }),
+          },
+        );
+        const accessBody = await accessResponse.json().catch(() => ({}));
+        if (!accessResponse.ok || accessBody?.recordingGate?.recordingUnlocked !== true) {
+          throw new Error(
+            accessBody?.blocked?.resolution ||
+              accessBody?.message ||
+              accessBody?.error ||
+              "Complete a fresh safety and location check for this stage.",
+          );
+        }
+      } catch (error) {
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Recording access changed. Complete a fresh stage check.",
+          },
+        }));
+        setRecordingOpeningKey(null);
+        await loadJobs();
+        return;
+      }
+    } else if (needsLocationProof) {
       try {
         locationProof = await requestLocationProof(job, stage);
       } catch (error) {
@@ -1422,8 +1461,16 @@ export default function EmployeeJobsPage() {
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
     const awaitingManagerReview = normalizedStatus === "AWAITING_REVIEW";
     const correctionRequested = isCorrectionRequested(job);
-    const recordingBlocked = !job.recordingCompliance?.recordingUnlocked;
-    const canonicalBlock = job.recordingCompliance?.canonicalBlock || null;
+    const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
+    const helperText = historyMode ? null : submitHelperText(job);
+    const selectedStageKey =
+      focusedStageByJobId[job.id] || getNextEmployeeCaptureStage(job.stageProgress);
+    const selectedStage = STAGES.find((stage) => stage.key === selectedStageKey) || STAGES[0];
+    const selectedStageAccess = getStageRecordingAccess(job, selectedStage.key);
+    const selectedStageBlocked = !selectedStageAccess.recordingUnlocked;
+    const recordingBlocked = selectedStageBlocked;
+    const canonicalBlock =
+      selectedStageAccess.canonicalBlock || job.recordingCompliance?.canonicalBlock || null;
     const v2ParticipationDecisionBlock = Boolean(
       job.recordingCompliance?.v2ServiceOrder &&
       canonicalBlock &&
@@ -1433,15 +1480,9 @@ export default function EmployeeJobsPage() {
         "EMPLOYEE_RECORDING_PARTICIPATION_STALE",
       ].includes(canonicalBlock.code),
     );
-    const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
-    const helperText = historyMode ? null : submitHelperText(job);
-    const selectedStageKey =
-      focusedStageByJobId[job.id] || getNextEmployeeCaptureStage(job.stageProgress);
-    const selectedStage = STAGES.find((stage) => stage.key === selectedStageKey) || STAGES[0];
-    const selectedStageAccess = getStageRecordingAccess(job, selectedStage.key);
-    const selectedStageBlocked = !selectedStageAccess.recordingUnlocked;
-    const canResolveLocationFromStage =
-      selectedStageAccess.canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
+    const selectedStageSafetyResolvable = isEmployeeStageSafetyResolvableBlock(
+      selectedStageAccess.canonicalBlock?.code,
+    );
     const showUploadControls =
       !historyMode &&
       !selectedStageBlocked &&
@@ -1899,6 +1940,9 @@ export default function EmployeeJobsPage() {
                 const stageBlocked = !stageAccess.recordingUnlocked;
                 const stageCanResolveLocation =
                   stageAccess.canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
+                const stageCanResolveSafety = isEmployeeStageSafetyResolvableBlock(
+                  stageAccess.canonicalBlock?.code,
+                );
                 const stageCorrectionRequested =
                   job.recordingCompliance?.correctionRequestedStages?.includes(stage.key) === true;
                 const canStartThisStage =
@@ -1922,7 +1966,7 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={
-                      (stageBlocked && !stageCanResolveLocation) ||
+                      (stageBlocked && !stageCanResolveLocation && !stageCanResolveSafety) ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
                     className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
@@ -1972,9 +2016,11 @@ export default function EmployeeJobsPage() {
                                   ? "Correction requested - tap to replace"
                                   : "Correction requested - tap to record"
                             : stageBlocked
-                            ? stageCanResolveLocation
-                              ? "Verify location to record"
-                              : "Recording locked"
+                            ? stageCanResolveSafety
+                              ? "Complete safety check"
+                              : stageCanResolveLocation
+                                ? "Verify location to record"
+                                : "Recording locked"
                             : getStageCardActionLabel({
                                 isOpening: isOpeningThisStage,
                                 isUploading: isUploadingThisStage,
@@ -2043,6 +2089,25 @@ export default function EmployeeJobsPage() {
                     ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
                     : captureSupportCopy}
               </p>
+
+              {selectedStageBlocked &&
+              selectedStageSafetyResolvable &&
+              hasCaptureToken &&
+              job.recordingCompliance?.v2ServiceOrder ? (
+                <EmployeeStageSafetyCheck
+                  bookingId={job.id}
+                  stage={selectedStage.key}
+                  stageLabel={selectedStage.label}
+                  serviceLocation={job.recordingCompliance.serviceLocation}
+                  headers={employeeRequestHeaders()}
+                  onComplete={async () => {
+                    setActionMessage(
+                      `${selectedStage.label} safety and location checks passed. The current stage can now open the camera.`,
+                    );
+                    await loadJobs();
+                  }}
+                />
+              ) : null}
 
               {selectedStageDone ? (
                 <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3">

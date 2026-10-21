@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   loadRecordingPermissionGate: vi.fn(),
   verifyJobRecordingLocation: vi.fn(),
   recordJobRecordingLocationAttempt: vi.fn(),
+  persistV2StageLocationAttempt: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -23,6 +24,10 @@ vi.mock("@/lib/employee-capture-token", () => ({
 vi.mock("@/lib/job-assignment", () => ({
   parseAssignmentMetadata: vi.fn(() => ({ assignedMembershipIds: ["membership-1"] })),
   parseRecordingComplianceMetadata: vi.fn(() => ({ releasedMembershipIds: ["membership-1"] })),
+  validateRecordingLocationSnapshot: vi.fn(() => ({
+    ok: true,
+    snapshot: { snapshotEvidenceHash: "a".repeat(64) },
+  })),
 }));
 
 vi.mock("@/lib/job-recording-location", () => ({
@@ -34,6 +39,10 @@ vi.mock("@/lib/job-recording-location", () => ({
   })),
   verifyJobRecordingLocation: mocks.verifyJobRecordingLocation,
   recordJobRecordingLocationAttempt: mocks.recordJobRecordingLocationAttempt,
+}));
+
+vi.mock("@/lib/recording/v2-safety-location", () => ({
+  persistV2StageLocationAttempt: mocks.persistV2StageLocationAttempt,
 }));
 
 vi.mock("@/lib/consent/recording-gate", () => ({
@@ -62,21 +71,26 @@ describe("employee recording location verification", () => {
       distanceMeters: 12,
     });
     mocks.recordJobRecordingLocationAttempt.mockResolvedValue({ id: "attempt-1" });
+    mocks.persistV2StageLocationAttempt.mockResolvedValue({ id: "attempt-v2-1" });
     mocks.loadRecordingPermissionGate
       .mockResolvedValueOnce({
         assessmentId: "assessment-1",
-        blockCode: "LOCATION_VERIFICATION_REQUIRED",
+        assessmentGeneration: 2,
+        assessmentContractVersion: "recording-assessment-v4-multiscope-safety-v1",
+        assignmentGeneration: 4,
+        location: "residence",
+        blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
         block: {
-          why: "The employee device has not verified the saved service location.",
+          why: "A current matching employee runtime-safety check is required.",
           responsibleParticipant: "EMPLOYEE",
-          resolution: "Allow precise location and verify the saved service address.",
+          resolution: "Complete a fresh safety and location check for this stage.",
         },
       })
       .mockResolvedValueOnce({
         assessmentId: "assessment-1",
-        blockCode: null,
-        block: null,
-        recordingUnlocked: true,
+        blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+        block: { resolution: "Complete a fresh safety and location check for this stage." },
+        recordingUnlocked: false,
       });
   });
 
@@ -97,15 +111,24 @@ describe("employee recording location verification", () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mocks.recordJobRecordingLocationAttempt).toHaveBeenCalledWith(
+    expect(mocks.persistV2StageLocationAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingId: "booking-1",
         assessmentId: "assessment-1",
+        assessmentGeneration: 2,
+        assignmentGeneration: 4,
         membershipId: "membership-1",
         actorUserId: "employee-1",
+        stage: "STARTING_CONDITION",
+        snapshotEvidenceHash: "a".repeat(64),
       }),
     );
-    expect(json.recordingGate).toMatchObject({ recordingUnlocked: true, blockCode: null });
+    expect(mocks.recordJobRecordingLocationAttempt).not.toHaveBeenCalled();
+    expect(json.locationAttemptId).toBe("attempt-v2-1");
+    expect(json.recordingGate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+    });
     expect(mocks.loadRecordingPermissionGate).toHaveBeenCalledWith(
       expect.objectContaining({ recordingStage: "INTRO" }),
     );
@@ -143,5 +166,21 @@ describe("employee recording location verification", () => {
     expect(json.code).toBe("MANAGER_REVIEW_IN_PROGRESS");
     expect(mocks.verifyJobRecordingLocation).not.toHaveBeenCalled();
     expect(mocks.recordJobRecordingLocationAttempt).not.toHaveBeenCalled();
+    expect(mocks.persistV2StageLocationAttempt).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing or unsupported stage before creating location evidence", async () => {
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/booking-1/verify-location", {
+        method: "POST",
+        body: JSON.stringify({ latitude: 28.7, longitude: -81.3, accuracyMeters: 20 }),
+      }),
+      { params: Promise.resolve({ jobId: "booking-1" }) },
+    );
+
+    expect(response.status).toBe(422);
+    expect(mocks.bookingFindUnique).not.toHaveBeenCalled();
+    expect(mocks.persistV2StageLocationAttempt).not.toHaveBeenCalled();
   });
 });

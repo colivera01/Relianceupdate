@@ -83,6 +83,71 @@ const locationBlockedJob = {
   },
 };
 
+const stageSafetyBlock = {
+  code: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+  why: "A stage-specific employee safety and location check is required before recording.",
+  responsibleParticipant: "EMPLOYEE",
+  resolution: "Complete a fresh safety and location check for this stage.",
+  serviceMayContinue: true,
+};
+
+const v2SafetyBlockedJob = {
+  ...blockedJob,
+  id: "epic4-v2-stage-safety-job",
+  title: "Controlled V2 stage safety check",
+  membershipId: "membership-v2-1",
+  recordingCompliance: {
+    ...blockedJob.recordingCompliance,
+    location: "vendor_business",
+    serviceLocation: "407 Boxwood Circle, Winter Springs, FL, 32708",
+    locationVerified: true,
+    serviceOrderReleasedAt: "2026-10-21T14:04:00.000Z",
+    permissionStatus: "allowed",
+    certificationActive: true,
+    canonicalBlock: stageSafetyBlock,
+    stageRecordingAccess: Object.fromEntries(
+      ["INTRO", "IN_PROGRESS", "COMPLETED"].map((stage) => [
+        stage,
+        { recordingUnlocked: false, canonicalBlock: stageSafetyBlock },
+      ]),
+    ),
+    v2ServiceOrder: {
+      contractVersion: "employee-v2-service-order-runtime-v1",
+      contextHash: "controlled-v2-stage-safety-context",
+      serviceOrderCurrent: true,
+      scope: {
+        locationType: "Vendor business",
+        serviceLocation: "407 Boxwood Circle, Winter Springs, FL, 32708",
+        recordingBoundary: "Service area only",
+        boundaryExplanation: null,
+        audio: "Video only",
+        intentionalParticipants: ["Assigned service professional"],
+        recordingSubjects: ["Service area or equipment"],
+        stages: ["Starting Condition", "Work in Progress", "Final Result"],
+        privateUseNotice: "This job-specific choice permits Reliance recording only. It does not authorize Public use.",
+      },
+      participation: {
+        required: true,
+        employeeStatus: "ALLOWED",
+        otherRequiredEmployeesPending: 0,
+        canDecide: false,
+      },
+      policy: {
+        identifier: "employee-recording-participation-counsel-review-required-v1",
+        classification: "COUNSEL_REVIEW_PENDING",
+        counselReviewRequired: true,
+        allow: { label: "Allow recording participation", text: "Controlled allow text", textHash: "allow-hash" },
+        decline: { label: "Decline recording participation", text: "Controlled decline text", textHash: "decline-hash" },
+      },
+      nextState: {
+        status: "WAITING",
+        title: "Stage safety check required",
+        detail: "Complete the current stage safety and location check before recording.",
+      },
+    },
+  },
+};
+
 async function installJobsResponse(
   page: Page,
   options: { jobs?: unknown[]; delayMs?: number; status?: number; error?: string } = {}
@@ -167,7 +232,7 @@ test.describe("Epic 4 canonical recording gate UX", () => {
     await page.unrouteAll({ behavior: "wait" });
     await installJobsResponse(page, { status: 503, error: "Assigned jobs are temporarily unavailable." });
     await page.reload();
-    await expect(page.getByText("Employee workspace temporarily unavailable")).toBeVisible();
+    await expect(page.getByText("Employee workspace could not be loaded")).toBeVisible();
     await capture(page, "Desktop", "04-assigned-work-failure.png");
   });
 
@@ -215,6 +280,90 @@ test.describe("Epic 4 canonical recording gate UX", () => {
 
     await startingCondition.click();
     await expect.poll(() => verificationRequestCount).toBe(1);
+  });
+
+  test("shows visible safety acknowledgments and unlocks only the checked V2 stage", async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({ latitude: 28.6989, longitude: -81.3081 });
+
+    let safetyPassed = false;
+    await page.route("**/api/employee/legal-assent?**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, status: { current: true } }),
+      });
+    });
+    await page.route("**/api/employee/jobs?**", async (route) => {
+      const recordingCompliance = safetyPassed
+        ? {
+            ...v2SafetyBlockedJob.recordingCompliance,
+            recordingUnlocked: true,
+            canonicalBlock: null,
+            stageRecordingAccess: {
+              ...v2SafetyBlockedJob.recordingCompliance.stageRecordingAccess,
+              INTRO: { recordingUnlocked: true, canonicalBlock: null },
+            },
+          }
+        : v2SafetyBlockedJob.recordingCompliance;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          jobs: [{ ...v2SafetyBlockedJob, recordingCompliance }],
+          pendingServiceOrder: false,
+        }),
+      });
+    });
+    await page.route(`**/api/employee/jobs/${v2SafetyBlockedJob.id}/verify-location`, async (route) => {
+      const body = route.request().postDataJSON();
+      expect(body.recordingStage).toBe("INTRO");
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          verified: true,
+          locationAttemptId: "location-attempt-v2-1",
+          recordingGate: { recordingUnlocked: false, blockCode: stageSafetyBlock.code },
+        }),
+      });
+    });
+    await page.route(`**/api/employee/jobs/${v2SafetyBlockedJob.id}/safety-check`, async (route) => {
+      const body = route.request().postDataJSON();
+      expect(body.recordingStage).toBe("INTRO");
+      expect(body.locationAttemptId).toBe("location-attempt-v2-1");
+      expect(Object.values(body.acknowledgments)).toEqual([true, true, true, true, true]);
+      safetyPassed = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          recordingGate: { recordingUnlocked: true, blockCode: null, block: null },
+        }),
+      });
+    });
+
+    await page.goto(`/employee/jobs?jobId=${v2SafetyBlockedJob.id}&ct=${CAPTURE_TOKEN}`);
+    await expect(page.getByRole("heading", { name: "Complete safety and location check" })).toBeVisible();
+    const acknowledgments = page.getByRole("checkbox");
+    await expect(acknowledgments).toHaveCount(5);
+    await expect(page.getByRole("button", { name: "Verify location and complete check" })).toBeDisabled();
+
+    for (let index = 0; index < 5; index += 1) {
+      const acknowledgment = acknowledgments.nth(index);
+      await acknowledgment.locator("xpath=..").click();
+      await expect(acknowledgment).toBeChecked();
+      await expect(acknowledgment.locator("xpath=following-sibling::span[1]").locator("svg")).toBeVisible();
+    }
+
+    await page.getByRole("button", { name: "Verify location and complete check" }).click();
+    await expect(page.getByText("Starting Condition safety and location checks passed.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Starting Condition/ }).getByText("Tap to record Before", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Complete safety and location check" })).toHaveCount(0);
   });
 
   test("explains a declined residence block on desktop", async ({ page }) => {

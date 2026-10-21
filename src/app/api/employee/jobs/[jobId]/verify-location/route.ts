@@ -3,13 +3,20 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
-import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import {
+  parseAssignmentMetadata,
+  validateRecordingLocationSnapshot,
+} from "@/lib/job-assignment";
 import {
   parseRecordingLocationProof,
   recordJobRecordingLocationAttempt,
   verifyJobRecordingLocation,
 } from "@/lib/job-recording-location";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
+import { isEmployeeStageSafetyResolvableBlock } from "@/lib/recording/employee-stage-safety-contract";
+import { requiredSafetyCheckForStage } from "@/lib/recording/employee-safety";
+import { persistV2StageLocationAttempt } from "@/lib/recording/v2-safety-location";
 
 type RouteContext = { params: Promise<{ jobId: string }> };
 
@@ -18,6 +25,13 @@ export async function POST(request: Request, context: RouteContext) {
     const { jobId } = await context.params;
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const recordingStage = String(body.recordingStage || "").trim().toUpperCase();
+    const safetyRequirement = requiredSafetyCheckForStage(recordingStage);
+    if (!safetyRequirement) {
+      return NextResponse.json(
+        { success: false, code: "RECORDING_STAGE_REQUIRED", message: "Choose a valid Service Video stage." },
+        { status: 422 },
+      );
+    }
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
       select: {
@@ -45,12 +59,23 @@ export async function POST(request: Request, context: RouteContext) {
       vendorId: booking.vendorId,
       bookingId: booking.id,
     });
-    await assertV2EmployeeServiceOrderEntry({
-      db: prisma,
-      bookingId: booking.id,
-      vendorId: booking.vendorId,
-      tokenAccess,
-    });
+    try {
+      await assertV2EmployeeServiceOrderEntry({
+        db: prisma,
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        tokenAccess,
+      });
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED",
+          message: "Open and complete the current secure Service Order requirements before verifying location.",
+        },
+        { status: 403 },
+      );
+    }
     const membership = tokenAccess || (await requireVendorMembership(request, booking.vendorId));
     const assignment = parseAssignmentMetadata(booking.customerMetadata);
     if (!assignment.assignedMembershipIds.includes(membership.membershipId)) {
@@ -72,7 +97,8 @@ export async function POST(request: Request, context: RouteContext) {
     });
     if (
       gateBeforeVerification.blockCode &&
-      !["LOCATION_VERIFICATION_REQUIRED", "LOCATION_EXCEPTION_PENDING"].includes(gateBeforeVerification.blockCode)
+      !["LOCATION_VERIFICATION_REQUIRED", "LOCATION_EXCEPTION_PENDING"].includes(gateBeforeVerification.blockCode) &&
+      !isEmployeeStageSafetyResolvableBlock(gateBeforeVerification.blockCode)
     ) {
       return NextResponse.json(recordingGateErrorBody(gateBeforeVerification), { status: 409 });
     }
@@ -87,15 +113,47 @@ export async function POST(request: Request, context: RouteContext) {
       vendorLocation: booking.vendor,
       proof,
     });
-    await recordJobRecordingLocationAttempt({
-      bookingId: booking.id,
-      vendorId: booking.vendorId,
-      membershipId: membership.membershipId,
-      assessmentId: gateBeforeVerification.assessmentId,
-      actorUserId: membership.userId || tokenAccess?.userId || null,
-      proof,
-      result,
-    });
+    let locationAttempt;
+    if (
+      gateBeforeVerification.assessmentContractVersion ===
+      RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+    ) {
+      const locationSnapshot = validateRecordingLocationSnapshot(
+        booking.customerMetadata,
+        gateBeforeVerification.location,
+      );
+      if (
+        !locationSnapshot.ok ||
+        !locationSnapshot.snapshot.snapshotEvidenceHash ||
+        !gateBeforeVerification.assessmentGeneration ||
+        !gateBeforeVerification.assignmentGeneration
+      ) {
+        return NextResponse.json(recordingGateErrorBody(gateBeforeVerification), { status: 409 });
+      }
+      locationAttempt = await persistV2StageLocationAttempt({
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        membershipId: membership.membershipId,
+        assessmentId: gateBeforeVerification.assessmentId,
+        assessmentGeneration: gateBeforeVerification.assessmentGeneration,
+        assignmentGeneration: gateBeforeVerification.assignmentGeneration,
+        stage: safetyRequirement.stage,
+        snapshotEvidenceHash: locationSnapshot.snapshot.snapshotEvidenceHash,
+        actorUserId: membership.userId || tokenAccess?.userId || null,
+        proof,
+        result,
+      });
+    } else {
+      locationAttempt = await recordJobRecordingLocationAttempt({
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        membershipId: membership.membershipId,
+        assessmentId: gateBeforeVerification.assessmentId,
+        actorUserId: membership.userId || tokenAccess?.userId || null,
+        proof,
+        result,
+      });
+    }
     if (!result.ok) {
       const blockedGate = await loadRecordingPermissionGate({
         bookingId: booking.id,
@@ -127,15 +185,10 @@ export async function POST(request: Request, context: RouteContext) {
       verified: true,
       location: result.location,
       distanceMeters: Math.round(result.distanceMeters),
+      locationAttemptId: locationAttempt.id,
       recordingGate,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "EMPLOYEE_V2_SERVICE_ORDER_ENTRY_REQUIRED") {
-      return NextResponse.json(
-        { success: false, code: "EMPLOYEE_SERVICE_ORDER_ACCESS_REQUIRED", message: "Open the current secure Service Order link before verifying location." },
-        { status: 403 },
-      );
-    }
     console.error("[employee/jobs/verify-location] POST error", error);
     return NextResponse.json(
       { success: false, code: "LOCATION_VERIFICATION_FAILED", message: "Location verification could not be completed. Try again." },

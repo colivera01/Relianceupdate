@@ -193,18 +193,16 @@ export async function GET(request: Request): Promise<NextResponse> {
       const stageRecordingAccess = Object.fromEntries(
         await Promise.all(
           (["INTRO", "IN_PROGRESS", "COMPLETED"] as StageKey[]).map(async (stage) => {
-            const stageGate = permissionGate.correctionRequestedStages.length
-              ? await loadRecordingPermissionGate({
-                  bookingId: booking.id,
-                  vendorId: booking.vendorId,
-                  customerMetadata: booking.customerMetadata,
-                  membershipId,
-                  surface: "employee_jobs",
-                  capability: "record",
-                  actorKind: "EMPLOYEE",
-                  recordingStage: stage,
-                })
-              : permissionGate;
+            const stageGate = await loadRecordingPermissionGate({
+              bookingId: booking.id,
+              vendorId: booking.vendorId,
+              customerMetadata: booking.customerMetadata,
+              membershipId,
+              surface: "employee_jobs",
+              capability: "record",
+              actorKind: "EMPLOYEE",
+              recordingStage: stage,
+            });
             return [
               stage,
               {

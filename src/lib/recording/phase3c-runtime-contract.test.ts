@@ -33,6 +33,8 @@ describe("Phase 3C dormant Employee runtime contract", () => {
       "src/app/api/employee/jobs/[jobId]/start/route.ts",
       "src/app/api/employee/jobs/[jobId]/recording-certification/route.ts",
       "src/app/api/employee/jobs/[jobId]/verify-location/route.ts",
+      "src/app/api/employee/jobs/[jobId]/safety-check/route.ts",
+      "src/app/api/employee/jobs/[jobId]/recording-access/route.ts",
       "src/app/api/employee/jobs/[jobId]/stage/route.ts",
       "src/app/api/employee/jobs/[jobId]/complete/route.ts",
       "src/app/api/vendors/[vendorId]/media/sessions/route.ts",
@@ -78,5 +80,32 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(legalGate).toContain("peer-checked:bg-blue-700");
     expect(legalGate).toContain('<Check className="h-4 w-4 text-white" strokeWidth={3} />');
     expect(legalGate).toContain('checked ? "border-blue-700 bg-blue-50"');
+  });
+
+  it("resolves every Service Video stage through its own canonical recording gate", () => {
+    const route = read("src/app/api/employee/jobs/route.ts");
+    expect(route).toContain('recordingStage: stage');
+    expect(route).not.toContain('permissionGate.correctionRequestedStages.length\n              ? await loadRecordingPermissionGate');
+  });
+
+  it("requires fresh stage-bound location and immutable safety evidence before opening the camera", () => {
+    const locationRoute = read("src/app/api/employee/jobs/[jobId]/verify-location/route.ts");
+    const safetyRoute = read("src/app/api/employee/jobs/[jobId]/safety-check/route.ts");
+    const page = read("src/app/employee/jobs/page.tsx");
+    const safetyCheck = read("src/components/employee/EmployeeStageSafetyCheck.tsx");
+
+    expect(locationRoute).toContain("persistV2StageLocationAttempt");
+    expect(locationRoute).toContain("stage: safetyRequirement.stage");
+    expect(locationRoute).toContain("locationAttemptId: locationAttempt.id");
+    expect(safetyRoute).toContain("appendEmployeeRecordingSafetyEvidence");
+    expect(safetyRoute).toContain("assertV2EmployeeServiceOrderEntry");
+    expect(safetyRoute).toContain("recordingStage");
+    expect(page).toContain("EmployeeStageSafetyCheck");
+    expect(page).toContain("isEmployeeStageSafetyResolvableBlock");
+    expect(safetyCheck).toContain("Verify location and complete check");
+    expect(safetyCheck).toContain("/verify-location");
+    expect(safetyCheck).toContain("/safety-check");
+    expect(page).toContain("/recording-access");
+    expect(page).toContain("usesV2StageSafety");
   });
 });

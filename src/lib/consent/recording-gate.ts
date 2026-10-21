@@ -935,17 +935,31 @@ export async function loadCanonicalRecordingGate(input: {
       const materialChange =
         v2Safety.code === "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED" ||
         v2Safety.code === "V2_RUNTIME_SAFETY_PLAN_CHANGE_REQUIRED";
+      const initialCheckRequired =
+        v2Safety.code === "V2_RUNTIME_SAFETY_CHECK_REQUIRED" ||
+        v2Safety.code === "V2_RUNTIME_SAFETY_STAGE_REQUIRED";
+      const currentBindingRequired =
+        v2Safety.code === "V2_RUNTIME_SAFETY_BINDING_STALE" ||
+        v2Safety.code === "V2_RUNTIME_SAFETY_LOCATION_BINDING_STALE";
       decision = blocked(base, {
         code: v2Safety.code || "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
         why: materialChange
           ? "The onsite recording plan would expand or conflict with the approved V2 recording scope."
           : v2Safety.code === "V2_RUNTIME_SAFETY_BLOCKED"
             ? "The latest employee runtime-safety check found an unresolved condition."
-            : "A current matching employee runtime-safety check is required for this Service Video stage.",
+            : currentBindingRequired
+              ? "The prior safety or location check does not match the exact current Service Order stage."
+              : initialCheckRequired
+                ? "A stage-specific employee safety and location check is required before recording."
+                : "A current matching employee runtime-safety check is required for this Service Video stage.",
         responsibleParticipant: materialChange ? "VENDOR_MANAGER" : "EMPLOYEE",
         resolution: materialChange
           ? "Do not record. A future material-change workflow must create a new assessment and permission chain."
-          : "Correct, remove, wait for, or reframe the unsafe condition, then perform a new safety check for this stage.",
+          : v2Safety.code === "V2_RUNTIME_SAFETY_BLOCKED"
+            ? "Correct, remove, wait for, or reframe the unsafe condition, then complete a fresh safety and location check for this stage."
+            : v2Safety.code === "V2_RUNTIME_SAFETY_STAGE_REQUIRED"
+              ? "Choose a Service Video stage below, then complete its safety and location check."
+              : "Complete a fresh safety and location check for this stage.",
         serviceMayContinue: true,
       }, true);
     } else if (capability === "record" && authoritativeLocationAttempt?.status !== "VERIFIED" && authoritativeLocationException?.status !== "APPROVED") {
