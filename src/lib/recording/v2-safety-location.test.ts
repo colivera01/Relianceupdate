@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildV2StageLocationEvidence,
+  persistV2StageLocationAttempt,
   validateV2SafetyLocationAttempt,
+  V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
   V2_STAGE_LOCATION_EVIDENCE_VERSION,
   V2SafetyLocationError,
 } from "./v2-safety-location";
@@ -69,7 +71,7 @@ function locationRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function validate(row: ReturnType<typeof locationRow>, overrides: Record<string, unknown> = {}) {
+async function validate(row: Record<string, any>, overrides: Record<string, unknown> = {}) {
   const tx = {
     recordingLocationAttempt: { findFirst: vi.fn().mockResolvedValue(row) },
   };
@@ -82,7 +84,7 @@ async function validate(row: ReturnType<typeof locationRow>, overrides: Record<s
 }
 
 async function expectCode(
-  row: ReturnType<typeof locationRow>,
+  row: Record<string, any>,
   code: string,
   overrides: Record<string, unknown> = {},
 ) {
@@ -101,6 +103,85 @@ describe("V2 stage-specific location evidence", () => {
       evidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       row: { id: identity.locationAttemptId, stage: "STARTING_CONDITION" },
     });
+  });
+
+  it("normalizes coordinates before hashing and persistence", async () => {
+    const create = vi.fn(async ({ data }: any) => data);
+    const latitude = 28.123456789012345;
+    const longitude = -81.98765432109876;
+    const result = await persistV2StageLocationAttempt({
+      bookingId: identity.bookingId,
+      vendorId: identity.vendorId,
+      assessmentId: identity.assessmentId,
+      assessmentGeneration: identity.assessmentGeneration,
+      membershipId: identity.membershipId,
+      assignmentGeneration: identity.assignmentGeneration,
+      stage: identity.stage,
+      snapshotEvidenceHash: identity.snapshotEvidenceHash,
+      actorUserId: "employee-1",
+      proof: {
+        latitude,
+        longitude,
+        accuracyMeters: 5,
+        capturedAt: "2026-08-27T20:00:00.000Z",
+      },
+      result: { ok: true, location: "business", distanceMeters: 12 },
+      now: new Date("2026-08-27T20:00:01.000Z"),
+      tx: { recordingLocationAttempt: { create } },
+    });
+
+    expect(result.latitude).toBe(28.1234568);
+    expect(result.longitude).toBe(-81.9876543);
+    expect(JSON.parse(result.canonicalJson).proof).toMatchObject({
+      latitude: result.latitude,
+      longitude: result.longitude,
+    });
+    expect(result.evidenceVersion).toBe(V2_STAGE_LOCATION_EVIDENCE_VERSION);
+  });
+
+  it("accepts current evidence after a sub-precision SQL coordinate round trip", async () => {
+    const row = locationRow({ latitude: 28.123456789012345 });
+    row.latitude += 3.552713678800501e-15;
+
+    await expect(validate(row)).resolves.toMatchObject({
+      row: { id: identity.locationAttemptId },
+    });
+  });
+
+  it("preserves strict validation for historical v1 evidence", async () => {
+    const row = locationRow({ latitude: 28.123456789012345 });
+    const historical = buildV2StageLocationEvidence({
+      attemptId: row.id,
+      bookingId: row.bookingId,
+      vendorId: row.vendorId,
+      assessmentId: row.assessmentId,
+      assessmentGeneration: row.assessmentGeneration,
+      membershipId: row.membershipId,
+      assignmentGeneration: row.assignmentGeneration,
+      stage: row.stage,
+      snapshotEvidenceHash: row.snapshotEvidenceHash,
+      evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
+      status: row.status,
+      resultCode: row.resultCode,
+      method: row.method,
+      distanceMeters: row.distanceMeters,
+      accuracyMeters: row.accuracyMeters,
+      latitude: 28.123456789012345,
+      longitude: row.longitude,
+      capturedAt: row.capturedAt,
+      attemptedAt: row.attemptedAt,
+    });
+
+    await expectCode(
+      {
+        ...row,
+        evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
+        canonicalJson: historical.canonicalJson,
+        evidenceHash: historical.evidenceHash,
+        latitude: 28.123456789012348,
+      },
+      "V2_LOCATION_EVIDENCE_INVALID",
+    );
   });
 
   it.each([

@@ -9,9 +9,17 @@ import {
 import { stableJsonV2 } from "./assessment-v2";
 import type { EmployeeRecordingSafetyStage } from "./employee-safety";
 
-export const V2_STAGE_LOCATION_EVIDENCE_VERSION =
+export const V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION =
   "recording-location-attempt-v2-stage-safety-v1" as const;
+export const V2_STAGE_LOCATION_EVIDENCE_VERSION =
+  "recording-location-attempt-v2-stage-safety-v2" as const;
 export const V2_STAGE_LOCATION_MAX_AGE_MS = 5 * 60 * 1000;
+
+const V2_STAGE_LOCATION_EVIDENCE_VERSIONS = new Set<string>([
+  V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
+  V2_STAGE_LOCATION_EVIDENCE_VERSION,
+]);
+const V2_STAGE_LOCATION_COORDINATE_DECIMALS = 7;
 
 type V2StageLocationIdentity = {
   bookingId: string;
@@ -61,6 +69,7 @@ function canonicalTimestamp(value: Date | string, label: string): string {
 }
 
 export function buildV2StageLocationEvidence(input: V2StageLocationIdentity & {
+  evidenceVersion?: string;
   attemptId: string;
   status: string;
   resultCode: string;
@@ -72,8 +81,13 @@ export function buildV2StageLocationEvidence(input: V2StageLocationIdentity & {
   capturedAt: Date | string;
   attemptedAt: Date | string;
 }) {
+  const evidenceVersion = input.evidenceVersion || V2_STAGE_LOCATION_EVIDENCE_VERSION;
+  const canonicalCoordinate = (value: number) =>
+    evidenceVersion === V2_STAGE_LOCATION_EVIDENCE_VERSION
+      ? Number(value.toFixed(V2_STAGE_LOCATION_COORDINATE_DECIMALS))
+      : value;
   const evidence = {
-    contractVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+    contractVersion: evidenceVersion,
     attemptId: input.attemptId,
     workRecord: { bookingId: input.bookingId, vendorId: input.vendorId },
     assessment: { id: input.assessmentId, generation: input.assessmentGeneration },
@@ -81,8 +95,8 @@ export function buildV2StageLocationEvidence(input: V2StageLocationIdentity & {
     stage: input.stage,
     target: { snapshotEvidenceHash: input.snapshotEvidenceHash },
     proof: {
-      latitude: input.latitude,
-      longitude: input.longitude,
+      latitude: canonicalCoordinate(input.latitude),
+      longitude: canonicalCoordinate(input.longitude),
       accuracyMeters: input.accuracyMeters,
       capturedAt: canonicalTimestamp(input.capturedAt, "capturedAt"),
     },
@@ -150,8 +164,8 @@ export async function persistV2StageLocationAttempt(input: V2StageLocationIdenti
       method: "DEVICE_GEOLOCATION",
       distanceMeters,
       accuracyMeters: Math.round(accuracyMeters),
-      latitude,
-      longitude,
+      latitude: canonical.evidence.proof.latitude,
+      longitude: canonical.evidence.proof.longitude,
       capturedAt,
       actorUserId: input.actorUserId,
       attemptedAt,
@@ -211,11 +225,12 @@ export async function validateV2SafetyLocationAttempt(input: V2StageLocationIden
   ) {
     fail("V2_LOCATION_ATTEMPT_STALE", "A fresh stage location attempt is required.");
   }
-  if (row.evidenceVersion !== V2_STAGE_LOCATION_EVIDENCE_VERSION) {
+  if (!V2_STAGE_LOCATION_EVIDENCE_VERSIONS.has(String(row.evidenceVersion || ""))) {
     fail("V2_LOCATION_EVIDENCE_VERSION_INVALID", "The stage location evidence version is invalid.");
   }
   const canonical = buildV2StageLocationEvidence({
     ...input,
+    evidenceVersion: row.evidenceVersion,
     attemptId: row.id,
     status: row.status,
     resultCode: row.resultCode,
