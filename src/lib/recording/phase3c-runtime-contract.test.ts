@@ -82,6 +82,14 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(legalGate).toContain('checked ? "border-blue-700 bg-blue-50"');
   });
 
+  it("renders an explicit high-contrast checked state for Manager Work Record attestation", () => {
+    const managerAttestation = read("src/components/vendor/ManagerWorkRecordAttestation.tsx");
+    expect(managerAttestation).toContain('className="peer sr-only"');
+    expect(managerAttestation).toContain("peer-checked:bg-blue-700");
+    expect(managerAttestation).toContain('<Check className="h-4 w-4 text-white" strokeWidth={3} />');
+    expect(managerAttestation).toContain('confirmed ? "border-blue-700 bg-blue-50"');
+  });
+
   it("resolves every Service Video stage through its own canonical recording gate", () => {
     const route = read("src/app/api/employee/jobs/route.ts");
     expect(route).toContain('recordingStage: stage');

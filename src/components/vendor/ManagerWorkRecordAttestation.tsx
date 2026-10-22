@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, ClipboardCheck, Loader2 } from "lucide-react";
+import { Check, CheckCircle2, ClipboardCheck, Loader2 } from "lucide-react";
 import { resolveVendorServiceOrderPresentation } from "@/lib/vendor-service-order-presentation";
 
 type View = {
@@ -143,8 +143,25 @@ export function ManagerWorkRecordAttestation(props: {
           <p className="mt-2 text-xs text-slate-500">{view.presentation.disclaimerText}</p>
         </div>
       </div>
-      <label className="mt-4 flex items-start gap-3 text-sm leading-6 text-slate-700">
-        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1 h-4 w-4" />
+      <label
+        htmlFor="manager-work-record-attestation-confirmation"
+        className={`mt-4 flex cursor-pointer items-start gap-3 border p-3 text-sm leading-6 text-slate-700 transition focus-within:border-blue-700 ${
+          confirmed ? "border-blue-700 bg-blue-50" : "border-slate-200 bg-slate-50"
+        }`}
+      >
+        <input
+          id="manager-work-record-attestation-confirmation"
+          type="checkbox"
+          checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)}
+          className="peer sr-only"
+        />
+        <span
+          aria-hidden="true"
+          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border border-slate-500 bg-white transition peer-checked:border-blue-800 peer-checked:bg-blue-700 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-600 peer-focus-visible:ring-offset-2"
+        >
+          {confirmed ? <Check className="h-4 w-4 text-white" strokeWidth={3} /> : null}
+        </span>
         <span>{view.presentation.confirmationText}</span>
       </label>
       <button
