@@ -15,6 +15,7 @@ import {
 
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
 import { EmployeeServiceOrderLegalAssent } from "@/components/employee/EmployeeServiceOrderLegalAssent";
+import { buildEmployeeServiceOrderSteps } from "@/lib/employee-service-order-guidance";
 import type { EmployeeV2ServiceOrderView } from "@/lib/recording/employee-v2-service-order";
 
 type Decision = "ALLOW" | "DECLINE";
@@ -29,47 +30,20 @@ export function EmployeeV2ServiceOrderPanel(props: {
   onCancel: () => void;
   onComplete: (body: any) => void | Promise<void>;
   onLegalAssented: () => void | Promise<void>;
+  safetyAndLocationComplete: boolean;
+  completedStageCount: number;
+  totalStageCount: number;
 }) {
   const status = props.view.participation.employeeStatus;
   const [legalAssentCurrent, setLegalAssentCurrent] = useState<boolean | null>(null);
-  const participationComplete = status === "ALLOWED";
-  const participationDeclined = status === "DECLINED";
 
-  const requiredSteps = [
-    {
-      label: "Service Order agreement",
-      detail: legalAssentCurrent
-        ? "Your verified agreement is complete."
-        : legalAssentCurrent === null
-          ? "Checking your current agreement."
-          : "Review the documents and verify your agreement.",
-      state: legalAssentCurrent ? "complete" : legalAssentCurrent === null ? "checking" : "current",
-    },
-    {
-      label: "Recording participation for this job",
-      detail: participationComplete
-        ? "Your verified choice is saved for this exact Service Order."
-        : participationDeclined
-          ? "You declined recording participation for this Service Order."
-          : legalAssentCurrent
-            ? "Allow or decline, then verify using the available contact method shown."
-            : "Available after the Service Order agreement.",
-      state: participationComplete
-        ? "complete"
-        : participationDeclined
-          ? "blocked"
-          : legalAssentCurrent
-            ? "current"
-            : "waiting",
-    },
-    {
-      label: "Safety and location check",
-      detail: participationComplete
-        ? "Continue below to complete or review the current safety and location check."
-        : "Available after recording participation is allowed.",
-      state: participationComplete ? "current" : "waiting",
-    },
-  ] as const;
+  const requiredSteps = buildEmployeeServiceOrderSteps({
+    legalAssentCurrent,
+    participationStatus: status,
+    safetyAndLocationComplete: props.safetyAndLocationComplete,
+    completedStageCount: props.completedStageCount,
+    totalStageCount: props.totalStageCount,
+  });
 
   return (
     <section className="mt-4 border-y border-blue-300/25 py-5" aria-labelledby={`v2-recording-${props.bookingId}`}>
@@ -156,7 +130,7 @@ export function EmployeeV2ServiceOrderPanel(props: {
       <EmployeeServiceOrderLegalAssent
         membershipId={props.membershipId}
         bookingId={props.bookingId}
-        contextHash={props.view.contextHash}
+        contextKey={props.view.contextHash}
         headers={props.headers}
         onAssented={props.onLegalAssented}
         onStatusChange={setLegalAssentCurrent}
@@ -170,7 +144,7 @@ export function EmployeeV2ServiceOrderPanel(props: {
           <UserRoundCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-200" aria-hidden="true" />
         )}
         <div>
-          <p className="text-xs font-semibold uppercase text-blue-200">Step 2 of 3</p>
+          <p className="text-xs font-semibold uppercase text-blue-200">Recording participation for this job</p>
           <p className="font-semibold text-white">{props.view.nextState.title}</p>
           <p className="mt-1 text-sm leading-6 text-blue-50/80">{props.view.nextState.detail}</p>
         </div>

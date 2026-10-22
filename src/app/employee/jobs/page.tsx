@@ -38,8 +38,13 @@ import {
 } from "@/lib/service-video-audio-capture";
 import { tutorialGuides } from "@/lib/user-guidance";
 import { EmployeeVerifiedDecision } from "@/components/employee/EmployeeVerifiedDecision";
+import { EmployeeServiceOrderLegalAssent } from "@/components/employee/EmployeeServiceOrderLegalAssent";
 import { EmployeeStageSafetyCheck } from "@/components/employee/EmployeeStageSafetyCheck";
 import { EmployeeV2ServiceOrderPanel } from "@/components/employee/EmployeeV2ServiceOrderPanel";
+import {
+  buildEmployeeServiceOrderSteps,
+  employeeStageLockCopy,
+} from "@/lib/employee-service-order-guidance";
 import type { EmployeeV2ServiceOrderView } from "@/lib/recording/employee-v2-service-order";
 import { isEmployeeStageSafetyResolvableBlock } from "@/lib/recording/employee-stage-safety-contract";
 import { getEmployeeWorkspaceLoadFailure } from "@/lib/employee-runtime-errors";
@@ -363,6 +368,9 @@ export default function EmployeeJobsPage() {
     jobId: string;
     decision: "ALLOW" | "DECLINE";
   } | null>(null);
+  const [legalAssentByJobId, setLegalAssentByJobId] = useState<
+    Record<string, { contextKey: string; current: boolean | null }>
+  >({});
   const [managerSubmitCompleteOpen, setManagerSubmitCompleteOpen] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
@@ -1512,47 +1520,30 @@ export default function EmployeeJobsPage() {
     const completedStageCount = getCompletedEmployeeCaptureCount(job.stageProgress);
     const participationStatus = job.recordingCompliance?.employeeParticipation?.status || "REQUIRED";
     const participationComplete = ["ALLOWED", "NOT_REQUIRED"].includes(participationStatus);
-    const participationDeclined = participationStatus === "DECLINED";
     const safetyAndLocationComplete =
       participationComplete && (selectedStageAccess.recordingUnlocked || completedStageCount > 0);
-    const requiredServiceOrderSteps = [
-      {
-        label: "Recording participation for this job",
-        detail: participationComplete
-          ? "Your verified job-specific choice is complete."
-          : participationDeclined
-            ? "You declined recording participation for this Service Order."
-            : "Allow or decline, then verify using the available contact method shown below.",
-        state: participationComplete ? "complete" : participationDeclined ? "blocked" : "current",
-      },
-      {
-        label: "Safety and location check",
-        detail: safetyAndLocationComplete
-          ? "The current safety and location check is complete."
-          : participationComplete
-            ? "Complete the acknowledgments and verify the service location before recording."
-            : "Available after recording participation is allowed.",
-        state: safetyAndLocationComplete
-          ? "complete"
-          : participationComplete
-            ? "current"
-            : "waiting",
-      },
-      {
-        label: "Record three short videos",
-        detail: completedStageCount === STAGES.length
-          ? "Starting Condition, Work in Progress, and Final Result are saved."
-          : safetyAndLocationComplete
-            ? `${completedStageCount} of ${STAGES.length} stages saved. Continue with the highlighted stage.`
-            : "Available after the safety and location check.",
-        state: completedStageCount === STAGES.length
-          ? "complete"
-          : safetyAndLocationComplete
-            ? "current"
-            : "waiting",
-      },
-    ] as const;
-    const stageProgressLabel = `Step ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}`;
+    const compatibilityServiceOrder = !job.recordingCompliance?.v2ServiceOrder;
+    const legalAssentContextKey = [
+      job.recordingCompliance?.assessmentId || "assessment-pending",
+      job.membershipId || "membership-pending",
+      job.recordingCompliance?.serviceOrderReleasedAt || "release-pending",
+    ].join(":");
+    const legalAssentState = legalAssentByJobId[job.id];
+    const legalAssentCurrent = compatibilityServiceOrder
+      ? legalAssentState?.contextKey === legalAssentContextKey
+        ? legalAssentState.current
+        : null
+      : true;
+    const requiredServiceOrderSteps = buildEmployeeServiceOrderSteps({
+      legalAssentCurrent,
+      participationStatus,
+      safetyAndLocationComplete,
+      completedStageCount,
+      totalStageCount: STAGES.length,
+    });
+    const hideCompatibilityParticipationUntilLegal =
+      !historyMode && openedFromAssignmentLink && compatibilityServiceOrder && legalAssentCurrent !== true;
+    const stageProgressLabel = `Video ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}`;
     const captureDeviceLabel = getEmployeeCaptureDeviceLabel(pairedDevice);
     const captureSupportCopy = getEmployeeCaptureSupportCopy(pairedDevice);
     const selectedDraft =
@@ -1805,7 +1796,7 @@ export default function EmployeeJobsPage() {
           ) : null}
         </div>
 
-        {!historyMode && openedFromAssignmentLink && !job.recordingCompliance?.v2ServiceOrder ? (
+        {!historyMode && openedFromAssignmentLink && compatibilityServiceOrder ? (
           <section className="mt-4 border-y border-blue-300/25 py-4 text-blue-50" aria-label="Required Service Order steps">
             <p className="text-xs font-semibold uppercase text-blue-200">Required Service Order steps</p>
             <p className="mt-1 text-sm leading-5 text-blue-50/75">
@@ -1817,6 +1808,8 @@ export default function EmployeeJobsPage() {
                   <span className="mt-0.5 shrink-0" aria-hidden="true">
                     {step.state === "complete" ? (
                       <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+                    ) : step.state === "checking" ? (
+                      <LoaderCircle className="h-5 w-5 animate-spin text-blue-200" />
                     ) : step.state === "current" ? (
                       <Circle className="h-5 w-5 fill-blue-300 text-blue-300" />
                     ) : step.state === "blocked" ? (
@@ -1833,6 +1826,31 @@ export default function EmployeeJobsPage() {
               ))}
             </ol>
           </section>
+        ) : null}
+
+        {!historyMode && openedFromAssignmentLink && compatibilityServiceOrder && job.membershipId ? (
+          <EmployeeServiceOrderLegalAssent
+            key={legalAssentContextKey}
+            membershipId={job.membershipId}
+            bookingId={job.id}
+            contextKey={legalAssentContextKey}
+            headers={employeeRequestHeaders(false)}
+            onStatusChange={(current) => {
+              setLegalAssentByJobId((existing) => {
+                const previous = existing[job.id];
+                if (previous?.contextKey === legalAssentContextKey && previous.current === current) return existing;
+                return { ...existing, [job.id]: { contextKey: legalAssentContextKey, current } };
+              });
+            }}
+            onAssented={async () => {
+              setActionMessage(
+                "Your Service Order agreement was saved. Recording participation is the next separate choice.",
+              );
+              await loadJobs();
+            }}
+          >
+            {null}
+          </EmployeeServiceOrderLegalAssent>
         ) : null}
 
         {!historyMode && job.membershipId && job.recordingCompliance?.v2ServiceOrder ? (
@@ -1854,6 +1872,9 @@ export default function EmployeeJobsPage() {
               );
               await loadJobs();
             }}
+            safetyAndLocationComplete={safetyAndLocationComplete}
+            completedStageCount={completedStageCount}
+            totalStageCount={STAGES.length}
             onComplete={async (body) => {
               setParticipationChoice(null);
               setActionMessage(
@@ -1878,7 +1899,7 @@ export default function EmployeeJobsPage() {
               If a correction is requested, only the requested stage will reopen.
             </p>
           </div>
-        ) : recordingBlocked && canonicalBlock && !correctionRequested && !v2ParticipationDecisionBlock ? (
+        ) : recordingBlocked && canonicalBlock && !correctionRequested && !v2ParticipationDecisionBlock && !hideCompatibilityParticipationUntilLegal ? (
           <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
             <p className="text-sm font-bold">
               {canonicalBlock.code === "SERVICE_ORDER_CANCELED" || canonicalBlock.code === "ADMIN_AUDIT_REJECTED_TERMINAL"
@@ -2307,9 +2328,12 @@ export default function EmployeeJobsPage() {
                 </div>
               ) : (
                 <p className="mt-3 text-[11px] text-blue-100/60">
-                  {correctionRequested
-                    ? "This stage is locked because your manager did not request a correction to it."
-                    : "Uploads are locked while manager review is pending."}
+                  {employeeStageLockCopy({
+                    legalAssentCurrent: compatibilityServiceOrder ? legalAssentCurrent : undefined,
+                    correctionRequested,
+                    awaitingManagerReview,
+                    canonicalResolution: selectedStageAccess.canonicalBlock?.resolution || canonicalBlock?.resolution,
+                  })}
                 </p>
               )}
 

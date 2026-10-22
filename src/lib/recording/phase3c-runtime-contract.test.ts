@@ -74,22 +74,27 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     const panel = read("src/components/employee/EmployeeV2ServiceOrderPanel.tsx");
     const page = read("src/app/employee/jobs/page.tsx");
     const legalGate = read("src/components/employee/EmployeeServiceOrderLegalAssent.tsx");
+    const guidance = read("src/lib/employee-service-order-guidance.ts");
 
     expect(panel).toContain("Required Service Order steps");
     expect(panel).toContain("Step {index + 1}: {step.label}");
-    expect(panel).toContain("Service Order agreement");
     expect(panel).toContain("Recording participation for this job");
-    expect(panel).toContain("Safety and location check");
-    expect(panel).toContain("Allow or decline, then verify using the available contact method shown.");
-    expect(panel).toContain("Available after recording participation is allowed.");
-    expect(legalGate).toContain("Step 1 of 3 - Service Order agreement");
+    expect(guidance).toContain('label: "Service Order agreement"');
+    expect(guidance).toContain('label: "Recording participation for this job"');
+    expect(guidance).toContain('label: "Safety and location check"');
+    expect(guidance).toContain('label: "Record three short videos"');
+    expect(guidance).toContain("Allow or decline, then verify using the available contact method shown below.");
+    expect(guidance).toContain("Available after recording participation is allowed.");
+    expect(legalGate).toContain("Service Order agreement");
     expect(legalGate).toContain("onStatusChange");
     expect(page).toContain("requiredServiceOrderSteps");
     expect(page).toContain("Complete these in order.");
     expect(page).toContain("Step {index + 1}: {step.label}");
-    expect(page).toContain("Recording participation for this job");
-    expect(page).toContain("Safety and location check");
-    expect(page).toContain("Record three short videos");
+    expect(page).toContain("EmployeeServiceOrderLegalAssent");
+    expect(page).toContain("hideCompatibilityParticipationUntilLegal");
+    expect(page).toContain("Service Order agreement was saved");
+    expect(page).toContain("buildEmployeeServiceOrderSteps");
+    expect(page).toContain("Video ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}");
     expect(page).toContain("Public Service Video participation is optional");
   });
 
