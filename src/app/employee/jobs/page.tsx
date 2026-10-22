@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Flashlight, FlashlightOff, LoaderCircle, ShieldCheck } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  Flashlight,
+  FlashlightOff,
+  LoaderCircle,
+  LockKeyhole,
+  ShieldCheck,
+} from "lucide-react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1502,6 +1510,48 @@ export default function EmployeeJobsPage() {
     const selectedStageDone = Boolean(job.stageProgress[selectedStage.key]);
     const selectedStageFeedbackKey = `${job.id}:${selectedStage.key}`;
     const completedStageCount = getCompletedEmployeeCaptureCount(job.stageProgress);
+    const participationStatus = job.recordingCompliance?.employeeParticipation?.status || "REQUIRED";
+    const participationComplete = ["ALLOWED", "NOT_REQUIRED"].includes(participationStatus);
+    const participationDeclined = participationStatus === "DECLINED";
+    const safetyAndLocationComplete =
+      participationComplete && (selectedStageAccess.recordingUnlocked || completedStageCount > 0);
+    const requiredServiceOrderSteps = [
+      {
+        label: "Recording participation for this job",
+        detail: participationComplete
+          ? "Your verified job-specific choice is complete."
+          : participationDeclined
+            ? "You declined recording participation for this Service Order."
+            : "Allow or decline, then verify using the available contact method shown below.",
+        state: participationComplete ? "complete" : participationDeclined ? "blocked" : "current",
+      },
+      {
+        label: "Safety and location check",
+        detail: safetyAndLocationComplete
+          ? "The current safety and location check is complete."
+          : participationComplete
+            ? "Complete the acknowledgments and verify the service location before recording."
+            : "Available after recording participation is allowed.",
+        state: safetyAndLocationComplete
+          ? "complete"
+          : participationComplete
+            ? "current"
+            : "waiting",
+      },
+      {
+        label: "Record three short videos",
+        detail: completedStageCount === STAGES.length
+          ? "Starting Condition, Work in Progress, and Final Result are saved."
+          : safetyAndLocationComplete
+            ? `${completedStageCount} of ${STAGES.length} stages saved. Continue with the highlighted stage.`
+            : "Available after the safety and location check.",
+        state: completedStageCount === STAGES.length
+          ? "complete"
+          : safetyAndLocationComplete
+            ? "current"
+            : "waiting",
+      },
+    ] as const;
     const stageProgressLabel = `Step ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}`;
     const captureDeviceLabel = getEmployeeCaptureDeviceLabel(pairedDevice);
     const captureSupportCopy = getEmployeeCaptureSupportCopy(pairedDevice);
@@ -1754,6 +1804,36 @@ export default function EmployeeJobsPage() {
             </span>
           ) : null}
         </div>
+
+        {!historyMode && openedFromAssignmentLink && !job.recordingCompliance?.v2ServiceOrder ? (
+          <section className="mt-4 border-y border-blue-300/25 py-4 text-blue-50" aria-label="Required Service Order steps">
+            <p className="text-xs font-semibold uppercase text-blue-200">Required Service Order steps</p>
+            <p className="mt-1 text-sm leading-5 text-blue-50/75">
+              Complete these in order. Public Service Video participation is optional and is not required for Private Proof recording.
+            </p>
+            <ol className="mt-3">
+              {requiredServiceOrderSteps.map((step, index) => (
+                <li key={step.label} className="flex gap-3 border-t border-blue-300/15 py-3">
+                  <span className="mt-0.5 shrink-0" aria-hidden="true">
+                    {step.state === "complete" ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+                    ) : step.state === "current" ? (
+                      <Circle className="h-5 w-5 fill-blue-300 text-blue-300" />
+                    ) : step.state === "blocked" ? (
+                      <Circle className="h-5 w-5 fill-amber-300 text-amber-300" />
+                    ) : (
+                      <LockKeyhole className="h-5 w-5 text-blue-100/45" />
+                    )}
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Step {index + 1}: {step.label}</p>
+                    <p className="mt-1 text-sm leading-5 text-blue-50/70">{step.detail}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
 
         {!historyMode && job.membershipId && job.recordingCompliance?.v2ServiceOrder ? (
           <EmployeeV2ServiceOrderPanel

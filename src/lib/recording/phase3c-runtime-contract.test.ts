@@ -72,6 +72,7 @@ describe("Phase 3C dormant Employee runtime contract", () => {
 
   it("presents the required Employee Service Order actions as one ordered sequence", () => {
     const panel = read("src/components/employee/EmployeeV2ServiceOrderPanel.tsx");
+    const page = read("src/app/employee/jobs/page.tsx");
     const legalGate = read("src/components/employee/EmployeeServiceOrderLegalAssent.tsx");
 
     expect(panel).toContain("Required Service Order steps");
@@ -83,6 +84,13 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(panel).toContain("Available after recording participation is allowed.");
     expect(legalGate).toContain("Step 1 of 3 - Service Order agreement");
     expect(legalGate).toContain("onStatusChange");
+    expect(page).toContain("requiredServiceOrderSteps");
+    expect(page).toContain("Complete these in order.");
+    expect(page).toContain("Step {index + 1}: {step.label}");
+    expect(page).toContain("Recording participation for this job");
+    expect(page).toContain("Safety and location check");
+    expect(page).toContain("Record three short videos");
+    expect(page).toContain("Public Service Video participation is optional");
   });
 
   it("keeps accountless legal assent separate from the later recording choice", () => {
