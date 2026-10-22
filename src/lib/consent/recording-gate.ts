@@ -15,8 +15,8 @@ import {
   type AuthorityValidationResult,
 } from "./authority-validation";
 import {
+  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
   resolveV2StageSafetyReadiness,
-  requiredSafetyCheckForStage,
   type V2StageSafetyReadiness,
 } from "@/lib/recording/employee-safety";
 import {
@@ -536,7 +536,6 @@ export async function loadCanonicalRecordingGate(input: {
           assessment,
         })
       : undefined;
-  const safetyRequirement = requiredSafetyCheckForStage(recordingStage);
   const safetyRows =
     capability === "record" &&
     assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
@@ -544,12 +543,6 @@ export async function loadCanonicalRecordingGate(input: {
       ? await db.employeeRecordingSafetyEvidence.findMany({
           where: {
             bookingId: input.bookingId,
-            ...(safetyRequirement
-              ? {
-                  stage: safetyRequirement.stage,
-                  checkType: safetyRequirement.checkType,
-                }
-              : {}),
           },
           orderBy: [{ sequence: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         })
@@ -571,7 +564,7 @@ export async function loadCanonicalRecordingGate(input: {
         })
       : undefined;
   let v2LocationAttempt: any | null = null;
-  if (v2Safety?.ready && assessment && input.membershipId && safetyRequirement) {
+  if (v2Safety?.ready && assessment && input.membershipId && v2Safety.stage) {
     try {
       const validated = await validateV2SafetyLocationAttempt({
         tx: db,
@@ -582,11 +575,14 @@ export async function loadCanonicalRecordingGate(input: {
         assessmentGeneration: assessment.generation,
         membershipId: input.membershipId,
         assignmentGeneration,
-        stage: safetyRequirement.stage,
+        stage: v2Safety.stage,
         snapshotEvidenceHash: locationSnapshot.ok
           ? String(locationSnapshot.snapshot.snapshotEvidenceHash || "")
           : "",
         now: input.now,
+        enforceFreshness:
+          v2Safety.safetyContractVersion !==
+          EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
       });
       if (validated.evidenceHash !== v2Safety.locationAttemptEvidenceHash) {
         throw new Error("V2_LOCATION_EVIDENCE_HASH_MISMATCH");
@@ -948,18 +944,18 @@ export async function loadCanonicalRecordingGate(input: {
           : v2Safety.code === "V2_RUNTIME_SAFETY_BLOCKED"
             ? "The latest employee runtime-safety check found an unresolved condition."
             : currentBindingRequired
-              ? "The prior safety or location check does not match the exact current Service Order stage."
+              ? "The prior safety or location check does not match the exact current Service Order context."
               : initialCheckRequired
-                ? "A stage-specific employee safety and location check is required before recording."
-                : "A current matching employee runtime-safety check is required for this Service Video stage.",
+                ? "One employee safety and location check is required for this Service Order before recording."
+                : "A current matching employee safety and location check is required before recording.",
         responsibleParticipant: materialChange ? "VENDOR_MANAGER" : "EMPLOYEE",
         resolution: materialChange
           ? "Do not record. A future material-change workflow must create a new assessment and permission chain."
           : v2Safety.code === "V2_RUNTIME_SAFETY_BLOCKED"
-            ? "Correct, remove, wait for, or reframe the unsafe condition, then complete a fresh safety and location check for this stage."
+            ? "Correct, remove, wait for, or reframe the unsafe condition, then complete the required safety recheck."
             : v2Safety.code === "V2_RUNTIME_SAFETY_STAGE_REQUIRED"
-              ? "Choose a Service Video stage below, then complete its safety and location check."
-              : "Complete a fresh safety and location check for this stage.",
+              ? "Choose a Service Video stage below, then complete the Service Order safety and location check."
+              : "Complete one fresh safety and location check for this Service Order.",
         serviceMayContinue: true,
       }, true);
     } else if (capability === "record" && authoritativeLocationAttempt?.status !== "VERIFIED" && authoritativeLocationException?.status !== "APPROVED") {

@@ -12,7 +12,10 @@ import {
   appendEmployeeRecordingSafetyEvidence,
   EmployeeRecordingSafetyServiceError,
 } from "@/lib/recording/employee-safety-service";
-import { requiredSafetyCheckForStage } from "@/lib/recording/employee-safety";
+import {
+  requiredSafetyCheckForStage,
+  serviceOrderSafetyRequirement,
+} from "@/lib/recording/employee-safety";
 import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
 import { V2SafetyLocationError } from "@/lib/recording/v2-safety-location";
 import { prisma } from "@/server/db";
@@ -30,8 +33,8 @@ function safeSafetyError(error: EmployeeRecordingSafetyServiceError | V2SafetyLo
       success: false,
       code: error.code,
       message: stale
-        ? "This stage check no longer matches the current Service Order. Reload and complete a fresh safety and location check."
-        : "This stage safety check could not be accepted. Reload the current Service Order and try again.",
+        ? "This safety and location check no longer matches the current Service Order. Reload and complete a fresh check."
+        : "This Service Order safety check could not be accepted. Reload the current Service Order and try again.",
     },
   };
 }
@@ -48,12 +51,13 @@ export async function POST(request: Request, context: RouteContext) {
         { status: 422 },
       );
     }
+    const evidenceRequirement = serviceOrderSafetyRequirement();
     if (!hasAllEmployeeStageSafetyAcknowledgments(body.acknowledgments)) {
       return NextResponse.json(
         {
           success: false,
           code: "V2_SAFETY_ACKNOWLEDGMENTS_REQUIRED",
-          message: "Confirm every current stage-safety requirement before recording.",
+          message: "Confirm every Service Order safety requirement before recording.",
         },
         { status: 422 },
       );
@@ -139,8 +143,8 @@ export async function POST(request: Request, context: RouteContext) {
       membershipId: membership.membershipId,
       locationAttemptId,
       requestId,
-      checkType: requirement.checkType,
-      stage: requirement.stage,
+      checkType: evidenceRequirement.checkType,
+      stage: evidenceRequirement.stage,
       result: "READY",
       issues: [],
     });
@@ -173,7 +177,7 @@ export async function POST(request: Request, context: RouteContext) {
       {
         success: false,
         code: "V2_SAFETY_CHECK_FAILED",
-        message: "The stage safety check could not be completed. Reload and try again.",
+        message: "The Service Order safety check could not be completed. Reload and try again.",
       },
       { status: 500 },
     );

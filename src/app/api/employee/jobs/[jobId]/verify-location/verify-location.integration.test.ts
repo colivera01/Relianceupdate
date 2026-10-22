@@ -119,7 +119,7 @@ describe("employee recording location verification", () => {
         assignmentGeneration: 4,
         membershipId: "membership-1",
         actorUserId: "employee-1",
-        stage: "STARTING_CONDITION",
+        stage: "SERVICE_ORDER",
         snapshotEvidenceHash: "a".repeat(64),
       }),
     );

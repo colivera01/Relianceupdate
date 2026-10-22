@@ -30,7 +30,7 @@ import {
 } from "./assessment-v2";
 import {
   buildV2StageLocationEvidence,
-  V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
 } from "./v2-safety-location";
 
 function buildLocationMetadata() {
@@ -131,7 +131,7 @@ const locationAttemptBase = {
   assessmentGeneration: 2,
   membershipId: "membership-1",
   assignmentGeneration: 4,
-  stage: "STARTING_CONDITION",
+  stage: "SERVICE_ORDER",
   snapshotEvidenceHash: location.snapshotHash,
   status: "VERIFIED",
   resultCode: "LOCATION_VERIFIED",
@@ -151,7 +151,7 @@ const locationAttemptEvidence = buildV2StageLocationEvidence({
   assessmentGeneration: locationAttemptBase.assessmentGeneration,
   membershipId: locationAttemptBase.membershipId,
   assignmentGeneration: locationAttemptBase.assignmentGeneration,
-  stage: locationAttemptBase.stage as "STARTING_CONDITION",
+  stage: locationAttemptBase.stage as "SERVICE_ORDER",
   snapshotEvidenceHash: locationAttemptBase.snapshotEvidenceHash,
   status: locationAttemptBase.status,
   resultCode: locationAttemptBase.resultCode,
@@ -165,7 +165,7 @@ const locationAttemptEvidence = buildV2StageLocationEvidence({
 });
 const locationAttempt = {
   ...locationAttemptBase,
-  evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  evidenceVersion: V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   canonicalJson: locationAttemptEvidence.canonicalJson,
   evidenceHash: locationAttemptEvidence.evidenceHash,
 };
@@ -183,7 +183,7 @@ const secondLocationAttemptEvidence = buildV2StageLocationEvidence({
   assessmentGeneration: secondLocationAttemptBase.assessmentGeneration,
   membershipId: secondLocationAttemptBase.membershipId,
   assignmentGeneration: secondLocationAttemptBase.assignmentGeneration,
-  stage: secondLocationAttemptBase.stage as "STARTING_CONDITION",
+  stage: secondLocationAttemptBase.stage as "SERVICE_ORDER",
   snapshotEvidenceHash: secondLocationAttemptBase.snapshotEvidenceHash,
   status: secondLocationAttemptBase.status,
   resultCode: secondLocationAttemptBase.resultCode,
@@ -197,7 +197,7 @@ const secondLocationAttemptEvidence = buildV2StageLocationEvidence({
 });
 const secondLocationAttempt = {
   ...secondLocationAttemptBase,
-  evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  evidenceVersion: V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   canonicalJson: secondLocationAttemptEvidence.canonicalJson,
   evidenceHash: secondLocationAttemptEvidence.evidenceHash,
 };
@@ -223,7 +223,7 @@ function append(overrides: Record<string, unknown> = {}) {
     locationAttemptId: "location-attempt-1",
     requestId: "phase3a-safety-request-0001",
     checkType: "INITIAL",
-    stage: "STARTING_CONDITION",
+    stage: "SERVICE_ORDER",
     result: "READY",
     issues: [],
     now: new Date("2026-08-27T20:00:00.000Z"),
@@ -268,9 +268,9 @@ describe("employee runtime-safety append service", () => {
         assignmentGeneration: 4,
         locationAttemptId: "location-attempt-1",
         locationAttemptEvidenceHash: locationAttemptEvidence.evidenceHash,
-        safetyContractVersion: "employee-pre-recording-safety-v2",
+        safetyContractVersion: "employee-service-order-safety-v1",
         checkType: "INITIAL",
-        stage: "STARTING_CONDITION",
+        stage: "SERVICE_ORDER",
         result: "READY",
         issueCodesJson: "[]",
         sequence: 1,
@@ -368,7 +368,7 @@ describe("employee runtime-safety append service", () => {
 
   it("does not accept a stage/check mismatch or sensitive free text fields", async () => {
     await expect(
-      append({ checkType: "STAGE_RECHECK", stage: "STARTING_CONDITION" }),
+      append({ checkType: "INITIAL", stage: "STARTING_CONDITION" }),
     ).rejects.toMatchObject({ code: "V2_SAFETY_CHECK_STAGE_MISMATCH" });
 
     await expect(

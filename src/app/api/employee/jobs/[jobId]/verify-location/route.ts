@@ -15,7 +15,10 @@ import {
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import { RECORDING_ASSESSMENT_V2_CONTRACT_VERSION } from "@/lib/recording/assessment-v2";
 import { isEmployeeStageSafetyResolvableBlock } from "@/lib/recording/employee-stage-safety-contract";
-import { requiredSafetyCheckForStage } from "@/lib/recording/employee-safety";
+import {
+  requiredSafetyCheckForStage,
+  serviceOrderSafetyRequirement,
+} from "@/lib/recording/employee-safety";
 import { persistV2StageLocationAttempt } from "@/lib/recording/v2-safety-location";
 
 type RouteContext = { params: Promise<{ jobId: string }> };
@@ -32,6 +35,7 @@ export async function POST(request: Request, context: RouteContext) {
         { status: 422 },
       );
     }
+    const evidenceRequirement = serviceOrderSafetyRequirement();
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
       select: {
@@ -137,7 +141,7 @@ export async function POST(request: Request, context: RouteContext) {
         assessmentId: gateBeforeVerification.assessmentId,
         assessmentGeneration: gateBeforeVerification.assessmentGeneration,
         assignmentGeneration: gateBeforeVerification.assignmentGeneration,
-        stage: safetyRequirement.stage,
+        stage: evidenceRequirement.stage,
         snapshotEvidenceHash: locationSnapshot.snapshot.snapshotEvidenceHash,
         actorUserId: membership.userId || tokenAccess?.userId || null,
         proof,

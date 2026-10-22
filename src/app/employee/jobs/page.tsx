@@ -361,6 +361,7 @@ export default function EmployeeJobsPage() {
   const [pairedDevice, setPairedDevice] = useState<PairedDeviceState | null>(null);
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [showCompletedHistory, setShowCompletedHistory] = useState(false);
+  const [safetyRecheckJobId, setSafetyRecheckJobId] = useState<string | null>(null);
   const [focusedStageByJobId, setFocusedStageByJobId] = useState<Record<string, (typeof STAGES)[number]["key"]>>({});
   const [focusedJobId, setFocusedJobId] = useState("");
   const [captureToken, setCaptureToken] = useState("");
@@ -1206,6 +1207,16 @@ export default function EmployeeJobsPage() {
     stage: (typeof STAGES)[number]["key"]
   ) => {
     const nextRecordingKey = `${job.id}:${stage}`;
+    if (safetyRecheckJobId === job.id) {
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "error",
+          message: "Complete the fresh Service Order safety and location check before recording.",
+        },
+      }));
+      return;
+    }
     const stageAccess = getStageRecordingAccess(job, stage);
     if (
       !stageAccess.recordingUnlocked &&
@@ -1232,7 +1243,7 @@ export default function EmployeeJobsPage() {
       [nextRecordingKey]: {
         status: "uploading",
         message: usesV2StageSafety
-          ? "Confirming the current stage safety and location check."
+          ? "Confirming the current Service Order safety and location check."
           : needsLocationProof
             ? "Checking location before opening the camera."
             : "Opening the camera.",
@@ -1256,7 +1267,7 @@ export default function EmployeeJobsPage() {
             accessBody?.blocked?.resolution ||
               accessBody?.message ||
               accessBody?.error ||
-              "Complete a fresh safety and location check for this stage.",
+              "Complete the safety and location check for this Service Order.",
           );
         }
       } catch (error) {
@@ -1267,7 +1278,7 @@ export default function EmployeeJobsPage() {
             message:
               error instanceof Error
                 ? error.message
-                : "Recording access changed. Complete a fresh stage check.",
+                : "Recording access changed. Complete a fresh Service Order check.",
           },
         }));
         setRecordingOpeningKey(null);
@@ -1483,6 +1494,7 @@ export default function EmployeeJobsPage() {
     const selectedStageSafetyResolvable = isEmployeeStageSafetyResolvableBlock(
       selectedStageAccess.canonicalBlock?.code,
     );
+    const safetyRecheckRequested = safetyRecheckJobId === job.id;
     const showUploadControls =
       !historyMode &&
       !selectedStageBlocked &&
@@ -1897,6 +1909,28 @@ export default function EmployeeJobsPage() {
           </div>
         ) : null}
 
+        {!historyMode &&
+        job.recordingCompliance?.v2ServiceOrder &&
+        !selectedStageBlocked &&
+        !awaitingManagerReview ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-300/25 bg-blue-950/30 px-4 py-3 text-blue-50">
+            <div>
+              <p className="text-sm font-bold">Safety or location conditions changed?</p>
+              <p className="mt-1 text-xs leading-5 text-blue-100/80">
+                Stop recording and complete one fresh Service Order check before opening another stage.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSafetyRecheckJobId(job.id)}
+              disabled={safetyRecheckRequested}
+              className="rounded-lg border border-blue-200/60 px-3 py-2 text-sm font-bold text-blue-50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {safetyRecheckRequested ? "Fresh check required" : "Complete fresh check"}
+            </button>
+          </div>
+        ) : null}
+
         {historyMode ? (
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-600">
             {STAGES.map((stage) => (
@@ -1951,7 +1985,8 @@ export default function EmployeeJobsPage() {
                   !capturedDraft &&
                   !recordingKey &&
                   !recordingOpeningKey &&
-                  !uploadingKey;
+                  !uploadingKey &&
+                  !safetyRecheckRequested;
                 return (
                   <button
                     key={stage.key}
@@ -1967,6 +2002,7 @@ export default function EmployeeJobsPage() {
                     }}
                     disabled={
                       (stageBlocked && !stageCanResolveLocation && !stageCanResolveSafety) ||
+                      safetyRecheckRequested ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
                     className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
@@ -2017,7 +2053,7 @@ export default function EmployeeJobsPage() {
                                   : "Correction requested - tap to record"
                             : stageBlocked
                             ? stageCanResolveSafety
-                              ? "Complete safety check"
+                              ? "Complete Service Order check"
                               : stageCanResolveLocation
                                 ? "Verify location to record"
                                 : "Recording locked"
@@ -2090,8 +2126,7 @@ export default function EmployeeJobsPage() {
                     : captureSupportCopy}
               </p>
 
-              {selectedStageBlocked &&
-              selectedStageSafetyResolvable &&
+              {((selectedStageBlocked && selectedStageSafetyResolvable) || safetyRecheckRequested) &&
               hasCaptureToken &&
               job.recordingCompliance?.v2ServiceOrder ? (
                 <EmployeeStageSafetyCheck
@@ -2101,8 +2136,9 @@ export default function EmployeeJobsPage() {
                   serviceLocation={job.recordingCompliance.serviceLocation}
                   headers={employeeRequestHeaders()}
                   onComplete={async () => {
+                    setSafetyRecheckJobId(null);
                     setActionMessage(
-                      `${selectedStage.label} safety and location checks passed. The current stage can now open the camera.`,
+                      "Safety and location checks passed for this Service Order. All three video stages can use this check while conditions remain unchanged.",
                     );
                     await loadJobs();
                   }}

@@ -88,24 +88,28 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(route).not.toContain('permissionGate.correctionRequestedStages.length\n              ? await loadRecordingPermissionGate');
   });
 
-  it("requires fresh stage-bound location and immutable safety evidence before opening the camera", () => {
+  it("requires one exact-context Service Order safety/location baseline before opening any camera", () => {
     const locationRoute = read("src/app/api/employee/jobs/[jobId]/verify-location/route.ts");
     const safetyRoute = read("src/app/api/employee/jobs/[jobId]/safety-check/route.ts");
     const page = read("src/app/employee/jobs/page.tsx");
     const safetyCheck = read("src/components/employee/EmployeeStageSafetyCheck.tsx");
 
     expect(locationRoute).toContain("persistV2StageLocationAttempt");
-    expect(locationRoute).toContain("stage: safetyRequirement.stage");
+    expect(locationRoute).toContain("serviceOrderSafetyRequirement");
+    expect(locationRoute).toContain("stage: evidenceRequirement.stage");
     expect(locationRoute).toContain("locationAttemptId: locationAttempt.id");
     expect(safetyRoute).toContain("appendEmployeeRecordingSafetyEvidence");
     expect(safetyRoute).toContain("assertV2EmployeeServiceOrderEntry");
     expect(safetyRoute).toContain("recordingStage");
+    expect(safetyRoute).toContain("serviceOrderSafetyRequirement");
     expect(page).toContain("EmployeeStageSafetyCheck");
     expect(page).toContain("isEmployeeStageSafetyResolvableBlock");
     expect(safetyCheck).toContain("Verify location and complete check");
+    expect(safetyCheck).toContain("same check supports all three Service Videos");
     expect(safetyCheck).toContain("/verify-location");
     expect(safetyCheck).toContain("/safety-check");
     expect(page).toContain("/recording-access");
     expect(page).toContain("usesV2StageSafety");
+    expect(page).toContain("Safety or location conditions changed?");
   });
 });

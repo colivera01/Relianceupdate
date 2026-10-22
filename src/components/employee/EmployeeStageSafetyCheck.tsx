@@ -158,10 +158,10 @@ export function EmployeeStageSafetyCheck(props: {
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-200" aria-hidden="true" />
         <div>
           <h4 id={`stage-safety-${props.bookingId}-${props.stage}`} className="text-base font-bold text-white">
-            Complete safety and location check
+            Complete the Service Order safety and location check
           </h4>
           <p className="mt-1 text-sm leading-6 text-blue-50/80">
-            Check the current conditions for {props.stageLabel}. This check applies only to this stage and this Service Order.
+            Confirm these conditions once before {props.stageLabel}. The same check supports all three Service Videos while the assigned employee, recording scope, service location, and conditions remain unchanged.
           </p>
           {props.serviceLocation ? (
             <p className="mt-2 flex items-start gap-2 text-sm font-semibold text-emerald-100">
@@ -207,7 +207,7 @@ export function EmployeeStageSafetyCheck(props: {
       </div>
 
       <p className="mt-3 text-xs leading-5 text-amber-100/90">
-        If any item is not true, do not record. Correct the condition, wait for it to clear, or reframe the shot before completing this check.
+        If any item is not true, do not record. Correct the condition, wait for it to clear, or reframe the shot before completing this check. Stop and complete a fresh check if safety, privacy, recording setup, or location conditions change later.
       </p>
 
       {message ? (
@@ -226,7 +226,7 @@ export function EmployeeStageSafetyCheck(props: {
         {status === "locating"
           ? "Verifying current location..."
           : status === "submitting"
-            ? "Saving stage safety check..."
+            ? "Saving Service Order safety check..."
             : "Verify location and complete check"}
       </button>
     </section>

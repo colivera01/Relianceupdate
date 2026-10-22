@@ -13,11 +13,14 @@ export const V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION =
   "recording-location-attempt-v2-stage-safety-v1" as const;
 export const V2_STAGE_LOCATION_EVIDENCE_VERSION =
   "recording-location-attempt-v2-stage-safety-v2" as const;
+export const V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION =
+  "recording-location-attempt-v2-service-order-safety-v1" as const;
 export const V2_STAGE_LOCATION_MAX_AGE_MS = 5 * 60 * 1000;
 
 const V2_STAGE_LOCATION_EVIDENCE_VERSIONS = new Set<string>([
   V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
   V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
 ]);
 const V2_STAGE_LOCATION_COORDINATE_DECIMALS = 7;
 
@@ -81,9 +84,13 @@ export function buildV2StageLocationEvidence(input: V2StageLocationIdentity & {
   capturedAt: Date | string;
   attemptedAt: Date | string;
 }) {
-  const evidenceVersion = input.evidenceVersion || V2_STAGE_LOCATION_EVIDENCE_VERSION;
+  const evidenceVersion =
+    input.evidenceVersion ||
+    (input.stage === "SERVICE_ORDER"
+      ? V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION
+      : V2_STAGE_LOCATION_EVIDENCE_VERSION);
   const canonicalCoordinate = (value: number) =>
-    evidenceVersion === V2_STAGE_LOCATION_EVIDENCE_VERSION
+    evidenceVersion !== V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION
       ? Number(value.toFixed(V2_STAGE_LOCATION_COORDINATE_DECIMALS))
       : value;
   const evidence = {
@@ -169,7 +176,10 @@ export async function persistV2StageLocationAttempt(input: V2StageLocationIdenti
       capturedAt,
       actorUserId: input.actorUserId,
       attemptedAt,
-      evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+      evidenceVersion:
+        input.stage === "SERVICE_ORDER"
+          ? V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION
+          : V2_STAGE_LOCATION_EVIDENCE_VERSION,
       canonicalJson: canonical.canonicalJson,
       evidenceHash: canonical.evidenceHash,
     },
@@ -179,6 +189,7 @@ export async function persistV2StageLocationAttempt(input: V2StageLocationIdenti
 export async function validateV2SafetyLocationAttempt(input: V2StageLocationIdentity & {
   locationAttemptId: string;
   now?: Date;
+  enforceFreshness?: boolean;
   tx: any;
 }) {
   const row = await input.tx.recordingLocationAttempt.findFirst({
@@ -220,7 +231,8 @@ export async function validateV2SafetyLocationAttempt(input: V2StageLocationIden
     !Number.isFinite(capturedAt.getTime()) ||
     !Number.isFinite(attemptedAt.getTime()) ||
     capturedAt.getTime() > attemptedAt.getTime() + 30_000 ||
-    now.getTime() - capturedAt.getTime() > V2_STAGE_LOCATION_MAX_AGE_MS ||
+    (input.enforceFreshness !== false &&
+      now.getTime() - capturedAt.getTime() > V2_STAGE_LOCATION_MAX_AGE_MS) ||
     capturedAt.getTime() - now.getTime() > 30_000
   ) {
     fail("V2_LOCATION_ATTEMPT_STALE", "A fresh stage location attempt is required.");

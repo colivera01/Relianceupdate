@@ -103,11 +103,11 @@ describe("employee V2 stage safety-check route", () => {
     mocks.appendEmployeeRecordingSafetyEvidence.mockResolvedValue({
       id: "safety-1",
       result: "READY",
-      stage: "STARTING_CONDITION",
+      stage: "SERVICE_ORDER",
     });
   });
 
-  it("binds a READY check to the exact current Employee and stage, then re-evaluates the gate", async () => {
+  it("binds one READY check to the exact current Employee and Service Order, then re-evaluates the gate", async () => {
     const { POST } = await import("./route");
     const response = await POST(
       request({
@@ -135,7 +135,7 @@ describe("employee V2 stage safety-check route", () => {
       locationAttemptId: "location-attempt-1",
       requestId: "safety-request-id-0001",
       checkType: "INITIAL",
-      stage: "STARTING_CONDITION",
+      stage: "SERVICE_ORDER",
       result: "READY",
       issues: [],
     });
@@ -144,7 +144,7 @@ describe("employee V2 stage safety-check route", () => {
     );
     expect(body).toMatchObject({
       success: true,
-      evidence: { id: "safety-1", result: "READY", stage: "STARTING_CONDITION" },
+      evidence: { id: "safety-1", result: "READY", stage: "SERVICE_ORDER" },
       recordingGate: { recordingUnlocked: true },
     });
   });

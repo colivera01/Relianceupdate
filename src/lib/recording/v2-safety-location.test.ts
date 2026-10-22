@@ -4,6 +4,7 @@ import {
   buildV2StageLocationEvidence,
   persistV2StageLocationAttempt,
   validateV2SafetyLocationAttempt,
+  V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
   V2_STAGE_LOCATION_EVIDENCE_VERSION,
   V2SafetyLocationError,
@@ -200,6 +201,46 @@ describe("V2 stage-specific location evidence", () => {
       locationRow({ capturedAt: new Date("2026-08-27T19:50:00.000Z") }),
       "V2_LOCATION_ATTEMPT_STALE",
     );
+  });
+
+  it("preserves a verified Service Order baseline after the submission freshness window", async () => {
+    const serviceIdentity = { ...identity, stage: "SERVICE_ORDER" as const };
+    const values = {
+      ...locationRow(),
+      stage: serviceIdentity.stage,
+      capturedAt: new Date("2026-08-27T18:00:00.000Z"),
+      attemptedAt: new Date("2026-08-27T18:00:01.000Z"),
+    };
+    const canonical = buildV2StageLocationEvidence({
+      ...serviceIdentity,
+      attemptId: values.id,
+      evidenceVersion: V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+      status: values.status,
+      resultCode: values.resultCode,
+      method: values.method,
+      distanceMeters: values.distanceMeters,
+      accuracyMeters: values.accuracyMeters,
+      latitude: values.latitude,
+      longitude: values.longitude,
+      capturedAt: values.capturedAt,
+      attemptedAt: values.attemptedAt,
+    });
+    const row = {
+      ...values,
+      evidenceVersion: V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+      canonicalJson: canonical.canonicalJson,
+      evidenceHash: canonical.evidenceHash,
+    };
+    const tx = { recordingLocationAttempt: { findFirst: vi.fn().mockResolvedValue(row) } };
+
+    await expect(
+      validateV2SafetyLocationAttempt({
+        tx,
+        ...serviceIdentity,
+        now: new Date("2026-08-27T20:00:30.000Z"),
+        enforceFreshness: false,
+      }),
+    ).resolves.toMatchObject({ row: { stage: "SERVICE_ORDER" } });
   });
 
   it.each([

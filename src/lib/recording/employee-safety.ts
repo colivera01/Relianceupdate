@@ -10,9 +10,12 @@ export const EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION =
   "employee-pre-recording-safety-v1" as const;
 export const EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION =
   "employee-pre-recording-safety-v2" as const;
+export const EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION =
+  "employee-service-order-safety-v1" as const;
 
 export const EMPLOYEE_RECORDING_SAFETY_CHECK_TYPES = ["INITIAL", "STAGE_RECHECK"] as const;
 export const EMPLOYEE_RECORDING_SAFETY_STAGES = [
+  "SERVICE_ORDER",
   "STARTING_CONDITION",
   "WORK_IN_PROGRESS",
   "COMPLETED_WORK",
@@ -48,7 +51,8 @@ export type EmployeeRecordingSafetyIssue =
 export type EmployeeRecordingSafetyEvidence = {
   contractVersion:
     | typeof EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION
-    | typeof EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION;
+    | typeof EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
+    | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION;
   sequence: number;
   workRecord: {
     bookingId: string;
@@ -132,6 +136,7 @@ export type V2StageSafetyReadiness = {
   locationAttemptEvidenceHash: string | null;
   stage: EmployeeRecordingSafetyStage | null;
   checkType: EmployeeRecordingSafetyCheckType | null;
+  safetyContractVersion: string | null;
 };
 
 export class EmployeeRecordingSafetyValidationError extends Error {
@@ -219,9 +224,22 @@ function parseIssues(value: unknown): EmployeeRecordingSafetyIssue[] {
 }
 
 function validateStageCheckPair(
+  contractVersion: EmployeeRecordingSafetyEvidence["contractVersion"],
   checkType: EmployeeRecordingSafetyCheckType,
   stage: EmployeeRecordingSafetyStage,
 ) {
+  if (contractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION) {
+    if (stage === "SERVICE_ORDER" && checkType !== "INITIAL") {
+      invalid("CHECK_STAGE_MISMATCH", "The Service Order baseline requires an INITIAL safety check.");
+    }
+    if (stage !== "SERVICE_ORDER" && checkType !== "STAGE_RECHECK") {
+      invalid("CHECK_STAGE_MISMATCH", "A stage-specific exception requires a STAGE_RECHECK.");
+    }
+    return;
+  }
+  if (stage === "SERVICE_ORDER") {
+    invalid("CHECK_STAGE_MISMATCH", "Historical safety contracts do not support a Service Order baseline.");
+  }
   if (stage === "STARTING_CONDITION" && checkType !== "INITIAL") {
     invalid("CHECK_STAGE_MISMATCH", "Starting Condition requires an INITIAL safety check.");
   }
@@ -277,7 +295,9 @@ export function parseEmployeeRecordingSafetyEvidence(
     ],
     "employee safety evidence",
   );
-  const hardened = input.contractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION;
+  const hardened =
+    input.contractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION ||
+    input.contractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION;
   if (!hardened && input.contractVersion !== EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION) {
     invalid("CONTRACT_VERSION_MISMATCH", "The employee runtime-safety contract is required.");
   }
@@ -314,7 +334,8 @@ export function parseEmployeeRecordingSafetyEvidence(
     "check.type",
   );
   const stage = enumValue(check.stage, EMPLOYEE_RECORDING_SAFETY_STAGES, "check.stage");
-  validateStageCheckPair(checkType, stage);
+  const contractVersion = input.contractVersion as EmployeeRecordingSafetyEvidence["contractVersion"];
+  validateStageCheckPair(contractVersion, checkType, stage);
   const issues = parseIssues(input.issues);
   const result = enumValue(input.result, EMPLOYEE_RECORDING_SAFETY_RESULTS, "result");
   validateResultIssues(result, issues);
@@ -350,9 +371,7 @@ export function parseEmployeeRecordingSafetyEvidence(
   }
 
   const evidence: EmployeeRecordingSafetyEvidence = {
-    contractVersion: hardened
-      ? EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
-      : EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+    contractVersion,
     sequence,
     workRecord: {
       bookingId: identifier(workRecord.bookingId, "workRecord.bookingId"),
@@ -419,6 +438,13 @@ export function requiredSafetyCheckForStage(stage: string | null | undefined): {
   return null;
 }
 
+export function serviceOrderSafetyRequirement(): {
+  stage: EmployeeRecordingSafetyStage;
+  checkType: EmployeeRecordingSafetyCheckType;
+} {
+  return { stage: "SERVICE_ORDER", checkType: "INITIAL" };
+}
+
 export function employeeSafetyChainKey(input: {
   bookingId: string;
   vendorId: string;
@@ -459,7 +485,7 @@ export function storedSafetyEvidenceToCanonicalInput(
     },
     location: {
       snapshotEvidenceHash: row.locationSnapshotEvidenceHash,
-      ...(row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
+      ...(row.safetyContractVersion !== EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION
         ? {
             attemptId: String(row.locationAttemptId || ""),
             attemptEvidenceHash: String(row.locationAttemptEvidenceHash || ""),
@@ -476,7 +502,7 @@ export function storedSafetyEvidenceToCanonicalInput(
     },
     issues: issues as EmployeeRecordingSafetyIssue[],
     result: row.result as EmployeeRecordingSafetyResult,
-    ...(row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
+    ...(row.safetyContractVersion !== EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION
       ? {
           submission: {
             requestHash: String(row.submissionRequestHash || ""),
@@ -505,6 +531,7 @@ function notRequired(): V2StageSafetyReadiness {
     locationAttemptEvidenceHash: null,
     stage: null,
     checkType: null,
+    safetyContractVersion: null,
   };
 }
 
@@ -525,6 +552,7 @@ function blockedReadiness(
     locationAttemptEvidenceHash: row?.locationAttemptEvidenceHash || null,
     stage: requirement?.stage || null,
     checkType: requirement?.checkType || null,
+    safetyContractVersion: row?.safetyContractVersion || null,
   };
 }
 
@@ -581,106 +609,147 @@ export function resolveV2StageSafetyReadiness(input: {
     return blockedReadiness("V2_RUNTIME_SAFETY_BINDING_STALE", requirement);
   }
 
-  const relevantStageRows = input.evidence.filter(
-    (row) => row.stage === requirement.stage && row.checkType === requirement.checkType,
-  );
-  const matching = relevantStageRows.filter(
+  const matchesCurrentContext = (row: StoredEmployeeRecordingSafetyEvidence) =>
+    row.bookingId === input.bookingId &&
+    row.vendorId === input.vendorId &&
+    row.assessmentId === input.assessment?.id &&
+    row.assessmentGeneration === input.assessment?.generation &&
+    row.assessmentContractVersion === input.assessment?.contractVersion &&
+    row.assessmentScopeHash === input.assessment?.scopeHash &&
+    row.locationSnapshotEvidenceHash === input.locationSnapshotEvidenceHash &&
+    row.membershipId === input.membershipId &&
+    row.assignmentGeneration === input.assignmentGeneration &&
+    Boolean(row.locationAttemptId) &&
+    Boolean(row.locationAttemptEvidenceHash) &&
+    Boolean(row.submissionRequestHash) &&
+    Boolean(row.submissionBodyHash);
+
+  const resolveChain = (
+    chainRows: StoredEmployeeRecordingSafetyEvidence[],
+    chainRequirement: NonNullable<ReturnType<typeof requiredSafetyCheckForStage>>,
+  ): V2StageSafetyReadiness => {
+    const ordered = [...chainRows].sort((left, right) => {
+      if (left.sequence !== right.sequence) return right.sequence - left.sequence;
+      const timeDifference = Date.parse(String(right.createdAt)) - Date.parse(String(left.createdAt));
+      if (timeDifference !== 0) return timeDifference;
+      return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
+    });
+    if (ordered.length > 1 && ordered[0].sequence === ordered[1].sequence) {
+      return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_AMBIGUOUS", chainRequirement);
+    }
+    const parsedRows: Array<{
+      row: StoredEmployeeRecordingSafetyEvidence;
+      canonical: CanonicalEmployeeRecordingSafetyEvidence;
+    }> = [];
+    for (let index = 0; index < ordered.length; index += 1) {
+      const row = ordered[index];
+      let canonical: CanonicalEmployeeRecordingSafetyEvidence;
+      try {
+        canonical = parseEmployeeRecordingSafetyEvidence(storedSafetyEvidenceToCanonicalInput(row));
+      } catch {
+        return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_INVALID", chainRequirement, row);
+      }
+      if (
+        canonical.evidenceHash !== row.evidenceHash ||
+        canonical.canonicalJson !== row.canonicalJson
+      ) {
+        return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_INVALID", chainRequirement, row);
+      }
+      const predecessor = ordered[index + 1];
+      if (
+        (predecessor &&
+          (row.sequence !== predecessor.sequence + 1 ||
+            row.predecessorEvidenceId !== predecessor.id ||
+            row.predecessorEvidenceHash !== predecessor.evidenceHash)) ||
+        (!predecessor && row.sequence !== 1)
+      ) {
+        return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_INVALID", chainRequirement, row);
+      }
+      parsedRows.push({ row, canonical });
+    }
+    const material = parsedRows.find(
+      ({ canonical }) => canonical.evidence.result === "MATERIAL_SCOPE_CHANGE_REQUIRED",
+    );
+    if (material) {
+      return blockedReadiness(
+        "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED",
+        chainRequirement,
+        material.row,
+        "MATERIAL_SCOPE_CHANGE_REQUIRED",
+      );
+    }
+    const latest = parsedRows[0].row;
+    const canonical = parsedRows[0].canonical;
+    if (canonical.evidence.result === "READY") {
+      return {
+        required: true,
+        ready: true,
+        code: null,
+        result: "READY",
+        evidenceId: latest.id,
+        evidenceHash: latest.evidenceHash,
+        locationAttemptId: latest.locationAttemptId || null,
+        locationAttemptEvidenceHash: latest.locationAttemptEvidenceHash || null,
+        stage: chainRequirement.stage,
+        checkType: chainRequirement.checkType,
+        safetyContractVersion: latest.safetyContractVersion,
+      };
+    }
+    return blockedReadiness(
+      "V2_RUNTIME_SAFETY_BLOCKED",
+      chainRequirement,
+      latest,
+      canonical.evidence.result,
+    );
+  };
+
+  const serviceOrderRequirement = serviceOrderSafetyRequirement();
+  const serviceOrderRows = input.evidence.filter(
     (row) =>
-      row.bookingId === input.bookingId &&
-      row.vendorId === input.vendorId &&
-      row.assessmentId === input.assessment?.id &&
-      row.assessmentGeneration === input.assessment?.generation &&
-      row.assessmentContractVersion === input.assessment?.contractVersion &&
-      row.assessmentScopeHash === input.assessment?.scopeHash &&
-      row.locationSnapshotEvidenceHash === input.locationSnapshotEvidenceHash &&
-      row.membershipId === input.membershipId &&
-      row.assignmentGeneration === input.assignmentGeneration &&
-      row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION &&
-      Boolean(row.locationAttemptId) &&
-      Boolean(row.locationAttemptEvidenceHash) &&
-      Boolean(row.submissionRequestHash) &&
-      Boolean(row.submissionBodyHash),
+      row.safetyContractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION &&
+      row.stage === serviceOrderRequirement.stage &&
+      row.checkType === serviceOrderRequirement.checkType,
   );
-  if (matching.length === 0) {
-    return blockedReadiness(
-      relevantStageRows.length > 0
-        ? "V2_RUNTIME_SAFETY_BINDING_STALE"
-        : "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
-      requirement,
-    );
-  }
-  const ordered = [...matching].sort((left, right) => {
-    if (left.sequence !== right.sequence) return right.sequence - left.sequence;
-    const timeDifference = Date.parse(String(right.createdAt)) - Date.parse(String(left.createdAt));
-    if (timeDifference !== 0) return timeDifference;
-    return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
-  });
-  if (ordered.length > 1 && ordered[0].sequence === ordered[1].sequence) {
-    return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_AMBIGUOUS", requirement);
-  }
-  const parsedRows: Array<{
-    row: StoredEmployeeRecordingSafetyEvidence;
-    canonical: CanonicalEmployeeRecordingSafetyEvidence;
-  }> = [];
-  for (let index = 0; index < ordered.length; index += 1) {
-    const row = ordered[index];
-    let canonical: CanonicalEmployeeRecordingSafetyEvidence;
-    try {
-      canonical = parseEmployeeRecordingSafetyEvidence(storedSafetyEvidenceToCanonicalInput(row));
-    } catch {
-      return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_INVALID", requirement, row);
-    }
-    if (
-      canonical.evidenceHash !== row.evidenceHash ||
-      canonical.canonicalJson !== row.canonicalJson
-    ) {
-      return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_INVALID", requirement, row);
-    }
-    const predecessor = ordered[index + 1];
-    if (
-      (predecessor &&
-        (row.sequence !== predecessor.sequence + 1 ||
-          row.predecessorEvidenceId !== predecessor.id ||
-          row.predecessorEvidenceHash !== predecessor.evidenceHash)) ||
-      (!predecessor && row.sequence !== 1)
-    ) {
-      return blockedReadiness("V2_RUNTIME_SAFETY_EVIDENCE_INVALID", requirement, row);
-    }
-    parsedRows.push({ row, canonical });
-  }
-  const material = parsedRows.find(
-    ({ canonical }) => canonical.evidence.result === "MATERIAL_SCOPE_CHANGE_REQUIRED",
-  );
-  if (material) {
-    return blockedReadiness(
-      "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED",
-      requirement,
-      material.row,
-      "MATERIAL_SCOPE_CHANGE_REQUIRED",
-    );
-  }
-  const latest = parsedRows[0].row;
-  const canonical = parsedRows[0].canonical;
-  if (canonical.evidence.result === "READY") {
-    return {
-      required: true,
-      ready: true,
-      code: null,
-      result: "READY",
-      evidenceId: latest.id,
-      evidenceHash: latest.evidenceHash,
-      locationAttemptId: latest.locationAttemptId || null,
-      locationAttemptEvidenceHash: latest.locationAttemptEvidenceHash || null,
+  const matchingServiceOrderRows = serviceOrderRows.filter(matchesCurrentContext);
+  if (matchingServiceOrderRows.length > 0) {
+    const baseline = resolveChain(matchingServiceOrderRows, serviceOrderRequirement);
+    if (!baseline.ready) return baseline;
+
+    const stageExceptionRequirement = {
       stage: requirement.stage,
-      checkType: requirement.checkType,
+      checkType: "STAGE_RECHECK" as const,
     };
+    const matchingStageExceptions = input.evidence.filter(
+      (row) =>
+        row.safetyContractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION &&
+        row.stage === stageExceptionRequirement.stage &&
+        row.checkType === stageExceptionRequirement.checkType &&
+        matchesCurrentContext(row),
+    );
+    return matchingStageExceptions.length > 0
+      ? resolveChain(matchingStageExceptions, stageExceptionRequirement)
+      : baseline;
+  }
+  if (serviceOrderRows.length > 0) {
+    return blockedReadiness("V2_RUNTIME_SAFETY_BINDING_STALE", serviceOrderRequirement);
+  }
+
+  // Historical v2 evidence keeps its original stage-specific meaning. It is not
+  // rewritten or silently promoted into the new Service Order-level contract.
+  const historicalStageRows = input.evidence.filter(
+    (row) =>
+      row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION &&
+      row.stage === requirement.stage &&
+      row.checkType === requirement.checkType,
+  );
+  const matchingHistoricalRows = historicalStageRows.filter(matchesCurrentContext);
+  if (matchingHistoricalRows.length > 0) {
+    return resolveChain(matchingHistoricalRows, requirement);
   }
   return blockedReadiness(
-    canonical.evidence.result === "MATERIAL_SCOPE_CHANGE_REQUIRED"
-      ? "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED"
-      : "V2_RUNTIME_SAFETY_BLOCKED",
-    requirement,
-    latest,
-    canonical.evidence.result,
+    historicalStageRows.length > 0
+      ? "V2_RUNTIME_SAFETY_BINDING_STALE"
+      : "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+    serviceOrderRequirement,
   );
 }

@@ -10,11 +10,10 @@ import {
 } from "@/lib/job-assignment";
 
 import {
-  EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
   EMPLOYEE_RECORDING_SAFETY_ISSUES,
   employeeSafetyChainKey,
   parseEmployeeRecordingSafetyEvidence,
-  requiredSafetyCheckForStage,
   storedSafetyEvidenceToCanonicalInput,
   type EmployeeRecordingSafetyCheckType,
   type EmployeeRecordingSafetyIssue,
@@ -112,7 +111,7 @@ export async function loadLatestEmployeeRecordingSafetyEvidence(input: {
       membershipId: input.membershipId,
       assignmentGeneration: input.assignmentGeneration,
       locationSnapshotEvidenceHash: input.locationSnapshotEvidenceHash,
-      safetyContractVersion: EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+      safetyContractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
       checkType: input.checkType,
       stage: input.stage,
     },
@@ -208,9 +207,10 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
         fail("V2_SAFETY_LOCATION_BINDING_INVALID", "The location evidence is missing or stale.");
       }
 
-      const requirement = requiredSafetyCheckForStage(input.stage);
-      if (!requirement || requirement.stage !== input.stage || requirement.checkType !== input.checkType) {
-        fail("V2_SAFETY_CHECK_STAGE_MISMATCH", "The safety check does not match the stage.");
+      const serviceOrderBaseline = input.stage === "SERVICE_ORDER" && input.checkType === "INITIAL";
+      const stageException = input.stage !== "SERVICE_ORDER" && input.checkType === "STAGE_RECHECK";
+      if (!serviceOrderBaseline && !stageException) {
+        fail("V2_SAFETY_CHECK_STAGE_MISMATCH", "The safety check does not match its Service Order scope.");
       }
       const chainKey = employeeSafetyChainKey({
         bookingId: booking.id,
@@ -289,7 +289,7 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
       const predecessor = chainRows[chainRows.length - 1] || null;
       const createdAt = (input.now || new Date()).toISOString();
       const canonical = parseEmployeeRecordingSafetyEvidence({
-        contractVersion: EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+        contractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
         sequence: (predecessor?.sequence || 0) + 1,
         workRecord: { bookingId: booking.id, vendorId: input.vendorId },
         assessment: {
@@ -327,7 +327,7 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
           locationAttemptEvidenceHash: locationAttempt.evidenceHash,
           membershipId: membership.id,
           assignmentGeneration,
-          safetyContractVersion: EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+          safetyContractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
           checkType: input.checkType,
           stage: input.stage,
           result: canonical.evidence.result,

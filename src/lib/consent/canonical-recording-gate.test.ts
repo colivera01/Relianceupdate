@@ -50,12 +50,12 @@ import {
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
 } from "@/lib/recording/assessment-v2";
 import {
-  EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
   parseEmployeeRecordingSafetyEvidence,
 } from "@/lib/recording/employee-safety";
 import {
   buildV2StageLocationEvidence,
-  V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
 } from "@/lib/recording/v2-safety-location";
 
 const metadata = JSON.stringify({
@@ -205,7 +205,7 @@ const v2LocationAttemptBase = {
   assessmentGeneration: v2Assessment.generation,
   membershipId: "member-1",
   assignmentGeneration: 1,
-  stage: "STARTING_CONDITION" as const,
+  stage: "SERVICE_ORDER" as const,
   snapshotEvidenceHash: v2Location.snapshotEvidenceHash,
   status: "VERIFIED",
   resultCode: "LOCATION_VERIFIED",
@@ -239,7 +239,7 @@ const v2LocationAttemptCanonical = buildV2StageLocationEvidence({
 });
 const v2LocationAttempt = {
   ...v2LocationAttemptBase,
-  evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  evidenceVersion: V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   canonicalJson: v2LocationAttemptCanonical.canonicalJson,
   evidenceHash: v2LocationAttemptCanonical.evidenceHash,
 };
@@ -253,7 +253,7 @@ function storedV2Safety(input: {
 }) {
   const result = input.result || "READY";
   const parsed = parseEmployeeRecordingSafetyEvidence({
-    contractVersion: EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+    contractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
     sequence: 1,
     workRecord: { bookingId: "booking-1", vendorId: "vendor-1" },
     assessment: {
@@ -268,7 +268,7 @@ function storedV2Safety(input: {
       attemptEvidenceHash: v2LocationAttempt.evidenceHash,
     },
     employee: { membershipId: input.membershipId || "member-1", assignmentGeneration: 1 },
-    check: { type: "INITIAL", stage: "STARTING_CONDITION" },
+    check: { type: "INITIAL", stage: "SERVICE_ORDER" },
     issues: input.issues || [],
     result,
     submission: { requestHash: "d".repeat(64), bodyHash: "e".repeat(64) },
@@ -625,7 +625,7 @@ describe("database-backed canonical recording gate", () => {
     expect(missing).toMatchObject({
       recordingUnlocked: false,
       blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
-      v2Safety: { required: true, ready: false, stage: "STARTING_CONDITION" },
+      v2Safety: { required: true, ready: false, stage: "SERVICE_ORDER" },
     });
 
     db.safetyFindMany.mockResolvedValue([storedV2Safety({})]);
@@ -635,6 +635,20 @@ describe("database-backed canonical recording gate", () => {
       blockCode: null,
       v2Safety: { required: true, ready: true, result: "READY" },
     });
+
+    for (const recordingStage of ["IN_PROGRESS", "COMPLETED"]) {
+      const laterStage = await load({ customerMetadata: v2Location.metadata, recordingStage });
+      expect(laterStage).toMatchObject({
+        recordingUnlocked: true,
+        blockCode: null,
+        v2Safety: {
+          required: true,
+          ready: true,
+          stage: "SERVICE_ORDER",
+          evidenceId: "safety-v2",
+        },
+      });
+    }
   });
 
   it("keeps V2 recording blocked after the latest runtime-safety issue", async () => {

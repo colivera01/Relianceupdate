@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
   EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
   EmployeeRecordingSafetyValidationError,
   parseEmployeeRecordingSafetyEvidence,
   resolveV2StageSafetyReadiness,
@@ -55,6 +56,15 @@ function hardenedSafetyFixture(overrides: Record<string, unknown> = {}) {
       attemptEvidenceHash: LOCATION_ATTEMPT_HASH,
     },
     submission: { requestHash: REQUEST_HASH, bodyHash: BODY_HASH },
+    ...overrides,
+  };
+}
+
+function serviceOrderSafetyFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    ...hardenedSafetyFixture(),
+    contractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+    check: { type: "INITIAL", stage: "SERVICE_ORDER" },
     ...overrides,
   };
 }
@@ -346,6 +356,7 @@ describe("V2 stage safety readiness", () => {
       locationAttemptEvidenceHash: null,
       stage: null,
       checkType: null,
+      safetyContractVersion: null,
     });
     expect(readiness([], { assessment: { ...currentAssessment, contractVersion: null } }).required).toBe(false);
   });
@@ -383,21 +394,52 @@ describe("V2 stage safety readiness", () => {
     });
   });
 
-  it("does not reuse Starting Condition READY for later stages", () => {
+  it("does not silently promote historical Starting Condition evidence into the Service Order baseline", () => {
     expect(
       readiness([stored("safety-a", readyInitial)], { recordingStage: "IN_PROGRESS" }),
     ).toMatchObject({
       ready: false,
       code: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
-      stage: "WORK_IN_PROGRESS",
-      checkType: "STAGE_RECHECK",
+      stage: "SERVICE_ORDER",
+      checkType: "INITIAL",
     });
     expect(
       readiness([stored("safety-a", readyInitial)], { recordingStage: "COMPLETED" }),
     ).toMatchObject({
       ready: false,
       code: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
-      stage: "COMPLETED_WORK",
+      stage: "SERVICE_ORDER",
+    });
+  });
+
+  it.each(["INTRO", "IN_PROGRESS", "COMPLETED"])(
+    "lets one exact-context Service Order check support %s",
+    (recordingStage) => {
+      const baseline = parseEmployeeRecordingSafetyEvidence(serviceOrderSafetyFixture());
+      expect(
+        readiness([stored("service-order-safety", baseline)], { recordingStage }),
+      ).toMatchObject({
+        ready: true,
+        evidenceId: "service-order-safety",
+        stage: "SERVICE_ORDER",
+        checkType: "INITIAL",
+        safetyContractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+      });
+    },
+  );
+
+  it.each([
+    ["employee", { membershipId: "membership-other" }],
+    ["assignment", { assignmentGeneration: 2 }],
+    ["assessment", { assessmentGeneration: 1 }],
+    ["scope", { assessmentScopeHash: "c".repeat(64) }],
+    ["location", { locationSnapshotEvidenceHash: OTHER_LOCATION_HASH }],
+  ])("invalidates a Service Order check after a stale %s binding", (_label, rowOverride) => {
+    const baseline = parseEmployeeRecordingSafetyEvidence(serviceOrderSafetyFixture());
+    expect(readiness([stored("service-order-stale", baseline, rowOverride as any)])).toMatchObject({
+      ready: false,
+      code: "V2_RUNTIME_SAFETY_BINDING_STALE",
+      stage: "SERVICE_ORDER",
     });
   });
 
