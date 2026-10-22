@@ -2419,7 +2419,7 @@ export default function EmployeeJobsPage() {
       ) : null}
       <div className="mx-auto w-full max-w-2xl space-y-4">
         <div className="reliance-operator-hero rounded-[28px] p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
             <div>
               <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
                 {hasCaptureToken ? "Job recording link" : "Employee workspace"}
@@ -2433,14 +2433,7 @@ export default function EmployeeJobsPage() {
                   : "Mobile-friendly employee workflow for Starting Condition, Work in Progress, and Final Result videos."}
               </p>
             </div>
-            {hasCaptureToken ? (
-              <Link
-                href={`/employee/public-media-consent?ct=${encodeURIComponent(captureToken)}`}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200/40 bg-blue-500/15 px-4 py-3 text-sm font-semibold text-blue-50 transition hover:bg-blue-500/25"
-              >
-                <ShieldCheck className="h-4 w-4" /> Public Service Video Participation
-              </Link>
-            ) : (
+            {!hasCaptureToken ? (
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/employee/public-media-consent"
@@ -2462,7 +2455,7 @@ export default function EmployeeJobsPage() {
                   Sign Out
                 </Link>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -2557,6 +2550,28 @@ export default function EmployeeJobsPage() {
         ) : null}
 
         {currentJobs.map((job) => renderJobCard(job))}
+
+        {hasCaptureToken ? (
+          <section className="border-t border-blue-300/25 pt-5 text-blue-50" aria-labelledby="optional-public-participation">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-200" aria-hidden="true" />
+              <div>
+                <h2 id="optional-public-participation" className="text-sm font-semibold text-white">
+                  Optional: Public Service Video participation
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-blue-50/70">
+                  This standing Public choice is separate from the required Service Order steps. It is not required for Private Proof recording and does not replace your job-specific recording choice.
+                </p>
+                <Link
+                  href={`/employee/public-media-consent?ct=${encodeURIComponent(captureToken)}`}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-blue-200/40 px-4 py-2 text-sm font-semibold text-blue-100 transition hover:bg-blue-500/15"
+                >
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Review optional Public participation
+                </Link>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {completedJobs.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 shadow-sm">

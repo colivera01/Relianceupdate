@@ -59,10 +59,30 @@ describe("Phase 3C dormant Employee runtime contract", () => {
 
   it("keeps standing Public participation out of the V2 Service Order decision panel", () => {
     const panel = read("src/components/employee/EmployeeV2ServiceOrderPanel.tsx");
+    const page = read("src/app/employee/jobs/page.tsx");
     expect(panel).toContain("EmployeeServiceOrderLegalAssent");
     expect(panel).toContain('purpose="EMPLOYEE_RECORDING_PARTICIPATION"');
     expect(panel).not.toContain("EMPLOYEE_STANDING_PUBLIC_MEDIA");
     expect(panel).not.toContain("public-media-consent");
+    expect(page.match(/public-media-consent/g)).toHaveLength(2);
+    expect(page).toContain("Optional: Public Service Video participation");
+    expect(page).toContain("not required for Private Proof recording");
+    expect(page).toContain("does not replace your job-specific recording choice");
+  });
+
+  it("presents the required Employee Service Order actions as one ordered sequence", () => {
+    const panel = read("src/components/employee/EmployeeV2ServiceOrderPanel.tsx");
+    const legalGate = read("src/components/employee/EmployeeServiceOrderLegalAssent.tsx");
+
+    expect(panel).toContain("Required Service Order steps");
+    expect(panel).toContain("Step {index + 1}: {step.label}");
+    expect(panel).toContain("Service Order agreement");
+    expect(panel).toContain("Recording participation for this job");
+    expect(panel).toContain("Safety and location check");
+    expect(panel).toContain("Allow or decline, then verify using the available contact method shown.");
+    expect(panel).toContain("Available after recording participation is allowed.");
+    expect(legalGate).toContain("Step 1 of 3 - Service Order agreement");
+    expect(legalGate).toContain("onStatusChange");
   });
 
   it("keeps accountless legal assent separate from the later recording choice", () => {

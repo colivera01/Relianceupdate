@@ -42,6 +42,7 @@ export function EmployeeServiceOrderLegalAssent(props: {
   contextHash: string;
   headers: Record<string, string>;
   onAssented: () => void | Promise<void>;
+  onStatusChange?: (current: boolean | null) => void;
   children: React.ReactNode;
 }) {
   const [view, setView] = useState<LegalAssentView | null>(null);
@@ -85,6 +86,10 @@ export function EmployeeServiceOrderLegalAssent(props: {
   useEffect(() => {
     void load();
   }, [props.bookingId, props.contextHash, props.membershipId]);
+
+  useEffect(() => {
+    props.onStatusChange?.(loading ? null : Boolean(view?.status.current));
+  }, [loading, props.onStatusChange, view?.status.current]);
 
   async function reportWrongRecipient() {
     if (!view) return;
@@ -144,7 +149,7 @@ export function EmployeeServiceOrderLegalAssent(props: {
       <div className="flex items-start gap-3">
         <ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-blue-200" aria-hidden="true" />
         <div>
-          <p className="text-xs font-semibold uppercase text-blue-200">Before you use this Service Order</p>
+          <p className="text-xs font-semibold uppercase text-blue-200">Step 1 of 3 - Service Order agreement</p>
           <h3 className="mt-1 text-lg font-bold text-white">Verify your own Employee agreement</h3>
           <p className="mt-1 text-sm leading-6 text-blue-50/80">
             {view.identity.vendorName} identified {view.identity.employeeName} as the assigned service professional. This agreement does not allow recording or Public use.
