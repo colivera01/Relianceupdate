@@ -81,6 +81,23 @@ describe("Employee Service Order guidance", () => {
       "waiting",
     ]);
 
+    const readyToRecord = buildEmployeeServiceOrderSteps({
+      legalAssentCurrent: true,
+      participationStatus: "ALLOWED",
+      scopeConfirmed: true,
+      safetyAndLocationComplete: true,
+      completedStageCount: 0,
+      totalStageCount: 3,
+    });
+    expect(readyToRecord.map((step) => step.state)).toEqual([
+      "complete",
+      "complete",
+      "complete",
+      "complete",
+      "current",
+    ]);
+    expect(readyToRecord[4].detail).toContain("0 of 3 videos saved");
+
     const videos = buildEmployeeServiceOrderSteps({
       legalAssentCurrent: true,
       participationStatus: "ALLOWED",

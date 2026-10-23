@@ -364,6 +364,14 @@ async function selectFallbackVideo(page: Page, playableWebm?: Buffer) {
   await expect(page.getByText("Preview before saving", { exact: true })).toBeVisible();
 }
 
+async function reviewDraftBeforeSaving(page: Page) {
+  await expect(page.getByRole("button", { name: "Review Video Before Saving" })).toBeDisabled();
+  await page.getByRole("button", { name: "Play Preview" }).click();
+  await expect(page.getByRole("button", { name: "Finish or Pause Preview to Save", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Pause Preview", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Confirm and Save" })).toBeEnabled();
+}
+
 test.describe("Epic 5 safe Private Service Video UX", () => {
   test("shows the canonical package-wide Audio Off and Audio On states", async ({ page }) => {
     await installEmployeeFixture(page);
@@ -434,9 +442,11 @@ test.describe("Epic 5 safe Private Service Video UX", () => {
 
   test("shows Uploading then Retry Required while preserving the preview", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    const playableWebm = await createPlayableWebmFixture(page);
     await installEmployeeFixture(page, { failUpload: true });
     await openEmployeeCapture(page);
-    await selectFallbackVideo(page);
+    await selectFallbackVideo(page, playableWebm);
+    await reviewDraftBeforeSaving(page);
     await page.getByRole("button", { name: "Confirm and Save" }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: "Retry Required: Controlled network interruption" })
@@ -451,9 +461,11 @@ test.describe("Epic 5 safe Private Service Video UX", () => {
 
   test("shows truthful wait feedback until the video is securely saved", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    const playableWebm = await createPlayableWebmFixture(page);
     await installEmployeeFixture(page);
     await openEmployeeCapture(page);
-    await selectFallbackVideo(page);
+    await selectFallbackVideo(page, playableWebm);
+    await reviewDraftBeforeSaving(page);
 
     await page.getByRole("button", { name: "Confirm and Save" }).click();
     const uploadingButton = page.getByRole("button", {
@@ -476,9 +488,12 @@ test.describe("Epic 5 safe Private Service Video UX", () => {
 
     const preview = page.locator("video").last();
     await expect(page.getByRole("button", { name: "Play Preview" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Review Video Before Saving" })).toBeDisabled();
     await page.getByRole("button", { name: "Play Preview" }).click();
     await expect.poll(() => preview.evaluate((video) => !(video as HTMLVideoElement).paused)).toBe(true);
-    await expect(page.getByRole("button", { name: "Pause Preview" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Pause Preview", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Finish or Pause Preview to Save", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Pause Preview", exact: true }).click();
     await expect(page.getByRole("button", { name: "Confirm and Save" })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Retake", exact: true })).toBeEnabled();
   });

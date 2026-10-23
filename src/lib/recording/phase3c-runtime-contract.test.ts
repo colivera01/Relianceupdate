@@ -128,6 +128,9 @@ describe("Phase 3C dormant Employee runtime contract", () => {
   it("resolves every Service Video stage through its own canonical recording gate", () => {
     const route = read("src/app/api/employee/jobs/route.ts");
     expect(route).toContain('recordingStage: stage');
+    expect(route).toContain("stagePermissionGates.every");
+    expect(route).toContain("stageGate.v2Safety?.ready === true");
+    expect(route).not.toContain("serviceOrderSafetyComplete: permissionGate.v2Safety?.ready === true");
     expect(route).not.toContain('permissionGate.correctionRequestedStages.length\n              ? await loadRecordingPermissionGate');
   });
 
@@ -157,6 +160,15 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(page).toContain("/recording-access");
     expect(page).toContain("usesServiceOrderSafety");
     expect(page).toContain("!serviceOrderSafetyRequired");
-    expect(page).toContain("Safety or location conditions changed?");
+    expect(page).toContain("Safety and location check complete");
+    expect(page).toContain("Conditions changed: recheck");
+    expect(page).not.toContain("Safety or location conditions changed?");
+    expect(page).toContain("capturedDraft?.jobId === job.id ? capturedDraft : null");
+    expect(page).toContain("Play this recorded clip");
+    expect(page).toContain("Play Preview, Confirm and Save, and Retake");
+    expect(page).toContain('previewPlaybackState === "paused"');
+    expect(page).toContain('previewPlaybackState === "ended"');
+    expect(page).toContain("Review Video Before Saving");
+    expect(page).toContain("Finish or Pause Preview to Save");
   });
 });

@@ -190,29 +190,33 @@ export async function GET(request: Request): Promise<NextResponse> {
           blockCode: permissionGate.blockCode,
         });
       }
-      const stageRecordingAccess = Object.fromEntries(
-        await Promise.all(
-          (["INTRO", "IN_PROGRESS", "COMPLETED"] as StageKey[]).map(async (stage) => {
-            const stageGate = await loadRecordingPermissionGate({
-              bookingId: booking.id,
-              vendorId: booking.vendorId,
-              customerMetadata: booking.customerMetadata,
-              membershipId,
-              surface: "employee_jobs",
-              capability: "record",
-              actorKind: "EMPLOYEE",
-              recordingStage: stage,
-            });
-            return [
-              stage,
-              {
-                recordingUnlocked: stageGate.recordingUnlocked,
-                canonicalBlock: stageGate.block,
-              },
-            ];
+      const stagePermissionGates = await Promise.all(
+        (["INTRO", "IN_PROGRESS", "COMPLETED"] as StageKey[]).map(async (stage) => [
+          stage,
+          await loadRecordingPermissionGate({
+            bookingId: booking.id,
+            vendorId: booking.vendorId,
+            customerMetadata: booking.customerMetadata,
+            membershipId,
+            surface: "employee_jobs",
+            capability: "record",
+            actorKind: "EMPLOYEE",
+            recordingStage: stage,
           }),
-        ),
+        ] as const),
+      );
+      const stageRecordingAccess = Object.fromEntries(
+        stagePermissionGates.map(([stage, stageGate]) => [
+          stage,
+          {
+            recordingUnlocked: stageGate.recordingUnlocked,
+            canonicalBlock: stageGate.block,
+          },
+        ]),
       ) as Record<StageKey, { recordingUnlocked: boolean; canonicalBlock: typeof permissionGate.block }>;
+      const serviceOrderSafetyComplete =
+        permissionGate.serviceOrderSafetyRequired &&
+        stagePermissionGates.every(([, stageGate]) => stageGate.v2Safety?.ready === true);
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
       const correctionRequested = permissionGate.correctionRequestedStages.length > 0;
       const canMarkComplete =
@@ -251,7 +255,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           riskLevel: permissionGate.riskLevel,
           certificationActive: permissionGate.certificationActive,
           serviceOrderSafetyRequired: permissionGate.serviceOrderSafetyRequired,
-          serviceOrderSafetyComplete: permissionGate.v2Safety?.ready === true,
+          serviceOrderSafetyComplete,
           scopeSummary: permissionGate.scopeSummary,
           serviceLocation: recordingCompliance.addressSnapshot?.formattedAddress || null,
           serviceLocationType: recordingCompliance.addressSnapshot?.type || permissionGate.location,

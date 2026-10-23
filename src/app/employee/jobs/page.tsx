@@ -1561,14 +1561,22 @@ export default function EmployeeJobsPage() {
     const stageProgressLabel = `Video ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}`;
     const captureDeviceLabel = getEmployeeCaptureDeviceLabel(pairedDevice);
     const captureSupportCopy = getEmployeeCaptureSupportCopy(pairedDevice);
-    const selectedDraft =
-      capturedDraft?.jobId === job.id && capturedDraft.stage === selectedStage.key ? capturedDraft : null;
+    const selectedDraft = capturedDraft?.jobId === job.id ? capturedDraft : null;
+    const selectedDraftStage = selectedDraft
+      ? STAGES.find((stage) => stage.key === selectedDraft.stage) || selectedStage
+      : selectedStage;
+    const selectedDraftFeedbackKey = `${job.id}:${selectedDraftStage.key}`;
     const selectedRecordingKey = `${job.id}:${selectedStage.key}`;
     const isRecordingSelectedStage = recordingKey === selectedRecordingKey;
     const isRecordingAnotherStage = Boolean(recordingKey && recordingKey !== selectedRecordingKey);
     const isOpeningSelectedStage = recordingOpeningKey === selectedRecordingKey;
     const selectedStageFeedback = stageFeedback[selectedStageFeedbackKey] || null;
-    const selectedDraftNeedsRetry = selectedStageFeedback?.status === "retry_required";
+    const selectedDraftFeedback = stageFeedback[selectedDraftFeedbackKey] || null;
+    const selectedDraftNeedsRetry = selectedDraftFeedback?.status === "retry_required";
+    const selectedDraftReviewed =
+      selectedDraftNeedsRetry ||
+      previewPlaybackState === "paused" ||
+      previewPlaybackState === "ended";
     const canOfferNativeCameraRetry =
       hasCaptureToken &&
       showUploadControls &&
@@ -1700,11 +1708,11 @@ export default function EmployeeJobsPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100">
               {selectedDraftNeedsRetry ? "Retry required" : "Preview before saving"}
             </p>
-            <h2 className="mt-1 text-2xl font-bold leading-tight">{selectedStage.label}</h2>
+            <h2 className="mt-1 text-2xl font-bold leading-tight">{selectedDraftStage.label}</h2>
             <p className="mt-1 text-sm leading-5 text-blue-50/85">
               {selectedDraftNeedsRetry
                 ? "The upload did not finish. Your preview is preserved so you can try saving again."
-                : "Confirm to save this clip to the project, or retake it now."}
+                : "Play this recorded clip. Then confirm and save it, or retake it before moving on."}
             </p>
           </div>
           <video
@@ -1728,7 +1736,7 @@ export default function EmployeeJobsPage() {
                 role="alert"
                 className="rounded-lg border border-rose-300/40 bg-rose-950/80 px-4 py-3 text-sm font-semibold text-rose-100"
               >
-                {selectedStageFeedback?.message || "Retry Required: The upload did not finish."}
+                {selectedDraftFeedback?.message || "Retry Required: The upload did not finish."}
               </p>
             ) : null}
             <button
@@ -1748,19 +1756,28 @@ export default function EmployeeJobsPage() {
                 Preview could not play on this device. Retake the clip before saving.
               </p>
             ) : null}
+            {!selectedDraftNeedsRetry && !selectedDraftReviewed ? (
+              <p role="status" className="rounded-lg border border-blue-300/40 bg-blue-950/80 px-4 py-3 text-center text-sm font-semibold text-blue-100">
+                Play the recorded video, then finish it or pause after reviewing it. Confirm and Save will unlock when the review is complete.
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={() => void confirmCapturedDraft(job)}
-              disabled={Boolean(uploadingKey)}
+              disabled={Boolean(uploadingKey) || !selectedDraftReviewed}
               className="w-full rounded-2xl border border-emerald-200 bg-emerald-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-950/40 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {uploadingKey === selectedStageFeedbackKey
+              {uploadingKey === selectedDraftFeedbackKey
                 ? <span className="inline-flex items-center justify-center gap-2"><LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />Uploading video - please wait</span>
                 : selectedDraftNeedsRetry
                   ? "Retry Save"
-                  : "Confirm and Save"}
+                  : previewPlaybackState === "playing"
+                    ? "Finish or Pause Preview to Save"
+                    : !selectedDraftReviewed
+                      ? "Review Video Before Saving"
+                      : "Confirm and Save"}
             </button>
-            {uploadingKey === selectedStageFeedbackKey ? (
+            {uploadingKey === selectedDraftFeedbackKey ? (
               <p role="status" className="text-center text-sm font-semibold text-blue-100">
                 Keep this page open while your video is securely saved.
               </p>
@@ -1769,7 +1786,7 @@ export default function EmployeeJobsPage() {
               type="button"
               onClick={() => {
                 clearCapturedDraft();
-                void startCameraRecording(job, selectedStage.key);
+                void startCameraRecording(job, selectedDraftStage.key);
               }}
               disabled={Boolean(uploadingKey)}
               className="w-full rounded-2xl border border-white/25 bg-white/10 px-5 py-4 text-lg font-bold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
@@ -2058,20 +2075,20 @@ export default function EmployeeJobsPage() {
         serviceOrderSafetyRequired &&
         !selectedStageBlocked &&
         !awaitingManagerReview ? (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-300/25 bg-blue-950/30 px-4 py-3 text-blue-50">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-300/35 bg-emerald-950/25 px-4 py-3 text-emerald-50">
             <div>
-              <p className="text-sm font-bold">Safety or location conditions changed?</p>
-              <p className="mt-1 text-xs leading-5 text-blue-100/80">
-                Stop recording and complete one fresh Service Order check before opening another stage.
+              <p className="text-sm font-bold">Safety and location check complete</p>
+              <p className="mt-1 text-xs leading-5 text-emerald-100/80">
+                This one check applies to all three videos while safety, privacy, recording setup, and location conditions remain unchanged.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setSafetyRecheckJobId(job.id)}
               disabled={safetyRecheckRequested}
-              className="rounded-lg border border-blue-200/60 px-3 py-2 text-sm font-bold text-blue-50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-emerald-200/60 px-3 py-2 text-sm font-bold text-emerald-50 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {safetyRecheckRequested ? "Fresh check required" : "Complete fresh check"}
+              {safetyRecheckRequested ? "Fresh check required" : "Conditions changed: recheck"}
             </button>
           </div>
         ) : null}
@@ -2329,7 +2346,7 @@ export default function EmployeeJobsPage() {
                       <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-4 py-3 text-base leading-7 text-blue-50/80">
                         {selectedStageDone
                           ? "This saved stage can be replaced if the video needs to be fixed. Nothing changes until you confirm the new preview."
-                          : "Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview."}
+                          : "Select a stage card above to record. When you stop, a full-screen review opens with Play Preview, Confirm and Save, and Retake. Nothing is saved until you confirm."}
                       </p>
                       {selectedStageDone ? (
                         <button
