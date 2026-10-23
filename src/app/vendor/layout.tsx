@@ -62,6 +62,15 @@ function buildVendorSupportHref(pathname: string): string {
   return `/vendor/support?returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent(returnLabel)}`;
 }
 
+function mobileVendorLinkLabel(label: string): string {
+  if (label === 'Dashboard') return 'Home';
+  if (label === 'Notifications') return 'Alerts';
+  if (label === 'Manage Jobs') return 'Jobs';
+  if (label === 'Employees') return 'Team';
+  if (label === 'Profile & Settings') return 'Profile';
+  return label;
+}
+
 const sidebarLinks: SidebarLink[] = [
   { label: 'Dashboard', icon: Home, href: '/vendor/dashboard', iconClassName: 'text-blue-200' },
   { label: 'Analytics & Trust', icon: BarChart3, href: '/vendor/analytics', iconClassName: 'text-cyan-200' },
@@ -434,6 +443,8 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
               <Link
                 key={link.label}
                 href={link.href}
+                aria-label={link.label}
+                title={link.label}
                 className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
@@ -441,9 +452,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
                 }`}
               >
                 <link.icon size={18} className={`shrink-0 ${isActive ? 'text-white' : link.iconClassName}`} />
-                <span className="max-w-full truncate">
-                  {link.label.replace('Service Video ', 'Videos ').replace('Profile & Settings', 'Profile')}
-                </span>
+                <span className="max-w-full truncate">{mobileVendorLinkLabel(link.label)}</span>
               </Link>
             );
           })}

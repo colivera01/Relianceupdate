@@ -47,10 +47,16 @@ vi.mock("@/lib/service-video-evidence", () => ({
 }));
 
 function postReq(vendorId: string, jobId: string, body?: Record<string, unknown>) {
+  const payload = {
+    stages: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+    packageId: "package-1",
+    packageVersion: 1,
+    ...(body || {}),
+  };
   return {
     req: new Request(`http://localhost/api/vendors/${vendorId}/jobs/${jobId}/reject`, {
       method: "POST",
-      body: JSON.stringify(body || {}),
+      body: JSON.stringify(payload),
     }),
     ctx: { params: Promise.resolve({ vendorId, jobId }) },
   };
@@ -94,7 +100,31 @@ describe("vendor job reject integration", () => {
     const res = await POST(req, ctx as any);
     expect(res.status).toBe(400);
     const json = await toJson(res);
-    expect(json.code).toBe("REJECTION_REASON_REQUIRED");
+    expect(json.code).toBe("CORRECTION_REASON_REQUIRED");
+  });
+
+  it("requires an explicit stage selection instead of defaulting to every stage", async () => {
+    const { req, ctx } = postReq("v1", "job1", {
+      correctionReason: "The final result needs a clear wide shot.",
+      stages: [],
+    });
+    const res = await POST(req, ctx as any);
+    expect(res.status).toBe(400);
+    const json = await toJson(res);
+    expect(json.code).toBe("CORRECTION_STAGE_REQUIRED");
+    expect(hoisted.requestServiceVideoCorrection).not.toHaveBeenCalled();
+  });
+
+  it("requires the exact package context", async () => {
+    const { req, ctx } = postReq("v1", "job1", {
+      correctionReason: "The final result needs a clear wide shot.",
+      packageId: "",
+    });
+    const res = await POST(req, ctx as any);
+    expect(res.status).toBe(400);
+    const json = await toJson(res);
+    expect(json.code).toBe("CORRECTION_PACKAGE_CONTEXT_REQUIRED");
+    expect(hoisted.requestServiceVideoCorrection).not.toHaveBeenCalled();
   });
 
   it("returns 409 when job is not awaiting review", async () => {
@@ -106,7 +136,7 @@ describe("vendor job reject integration", () => {
     const res = await POST(req, ctx as any);
     expect(res.status).toBe(409);
     const json = await toJson(res);
-    expect(json.code).toBe("INVALID_REJECTION_STATUS");
+    expect(json.code).toBe("INVALID_CORRECTION_STATUS");
   });
 
   it("records a non-terminal manager correction request in active work", async () => {
@@ -141,6 +171,43 @@ describe("vendor job reject integration", () => {
     const json = await toJson(res);
     expect(json.code).toBe("SERVICE_VIDEO_CORRECTION_REQUESTED");
     expect(json.success).toBe(true);
+  });
+
+  it("returns only the selected stage to the Employee", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      status: "AWAITING_REVIEW",
+      title: "Breaker Replacement",
+      customerMetadata: null,
+      service: { name: "Breaker Replacement" },
+      vendor: { businessName: "Electro LLC", name: "Electro LLC" },
+    });
+    hoisted.bookingUpdate.mockResolvedValue({ id: "job1", status: "IN_PROGRESS" });
+    const { req, ctx } = postReq("v1", "job1", {
+      correctionReason: "Show the completed outlet and surrounding wall clearly.",
+      stages: ["COMPLETED"],
+    });
+
+    const res = await POST(req, ctx as any);
+
+    expect(res.status).toBe(200);
+    expect(hoisted.requestServiceVideoCorrection).toHaveBeenCalledWith({
+      bookingId: "job1",
+      vendorId: "v1",
+      managerUserId: "manager-1",
+      managerMembershipId: "m1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 1,
+      stages: ["COMPLETED"],
+      reason: "Show the completed outlet and surrounding wall clearly.",
+    });
+    expect(await toJson(res)).toMatchObject({
+      code: "SERVICE_VIDEO_CORRECTION_REQUESTED",
+      details: {
+        correctionReason: "Show the completed outlet and surrounding wall clearly.",
+        stages: ["COMPLETED"],
+      },
+    });
   });
 
   it("notifies assigned employees with a correction link when rejected", async () => {

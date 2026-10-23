@@ -292,4 +292,77 @@ describe("Private Service Video evidence", () => {
       stage: "IN_PROGRESS",
     })).resolves.toBeUndefined();
   });
+
+  it("binds a correction request to the exact reviewed package and selected stage evidence", async () => {
+    const { requestServiceVideoCorrection } = await import("./service-video-evidence");
+    const tx = {
+      serviceVideoPackageEvidence: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "package-1",
+          version: 1,
+          packageHash: "package-hash",
+          stageEvidenceJson: JSON.stringify(packageRows),
+        }),
+        update: vi.fn().mockResolvedValue({ id: "package-1" }),
+      },
+      serviceVideoStageEvidence: {
+        findMany: vi.fn().mockResolvedValue([stages[2]]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      serviceVideoManagerDecisionEvidence: {
+        create: vi.fn().mockResolvedValue({ id: "decision-1" }),
+      },
+      mediaAsset: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: (db: typeof tx) => unknown) => callback(tx));
+
+    await expect(requestServiceVideoCorrection({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      managerUserId: "manager-1",
+      managerMembershipId: "manager-membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 1,
+      stages: ["COMPLETED"],
+      reason: "Show the completed result clearly.",
+    })).resolves.toMatchObject({ package: { id: "package-1" }, decision: { id: "decision-1" } });
+
+    expect(tx.serviceVideoStageEvidence.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["stage-3"] } },
+      data: { uploadState: "REJECTED" },
+    });
+  });
+
+  it("rejects a stale correction request before writing evidence", async () => {
+    const { requestServiceVideoCorrection } = await import("./service-video-evidence");
+    const tx = {
+      serviceVideoPackageEvidence: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "package-2",
+          version: 2,
+          packageHash: "new-package-hash",
+          stageEvidenceJson: JSON.stringify(packageRows),
+        }),
+      },
+      serviceVideoStageEvidence: { findMany: vi.fn() },
+      serviceVideoManagerDecisionEvidence: { create: vi.fn() },
+    };
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: (db: typeof tx) => unknown) => callback(tx));
+
+    await expect(requestServiceVideoCorrection({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      managerUserId: "manager-1",
+      managerMembershipId: "manager-membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 1,
+      stages: ["COMPLETED"],
+      reason: "Show the completed result clearly.",
+    })).rejects.toThrow("SERVICE_VIDEO_PACKAGE_VERSION_MISMATCH");
+
+    expect(tx.serviceVideoStageEvidence.findMany).not.toHaveBeenCalled();
+    expect(tx.serviceVideoManagerDecisionEvidence.create).not.toHaveBeenCalled();
+  });
 });

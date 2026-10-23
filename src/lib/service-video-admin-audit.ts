@@ -199,6 +199,7 @@ async function assertPackageRecordingAuthorizationsCurrent(
         stage: String(stage.stage).toUpperCase() as ServiceVideoStage,
         surface: "admin_evidence",
         actorKind: scope.actorKind,
+        acceptedPostCaptureBlockCode: "MANAGER_REVIEW_IN_PROGRESS",
       });
     }
   } catch {
@@ -374,6 +375,8 @@ export async function submitPackageForCoreAdminAudit(input: {
   vendorId: string;
   managerUserId: string;
   managerMembershipId: string;
+  expectedPackageId: string;
+  expectedPackageVersion: number;
 }) {
   return (prisma as any).$transaction(async (tx: any) => {
     const booking = await tx.booking.findFirst({
@@ -386,6 +389,12 @@ export async function submitPackageForCoreAdminAudit(input: {
       where: { bookingId: input.bookingId, vendorId: input.vendorId, isCurrent: true },
     });
     if (!pkg) throw new CoreAdminAuditError("SERVICE_VIDEO_PACKAGE_NOT_REVIEWABLE");
+    if (
+      String(pkg.id) !== input.expectedPackageId ||
+      Number(pkg.version) !== Number(input.expectedPackageVersion)
+    ) {
+      throw new CoreAdminAuditError("ADMIN_AUDIT_PACKAGE_VERSION_MISMATCH");
+    }
     if (
       String(pkg.status).toUpperCase() === PACKAGE_AWAITING_ADMIN_AUDIT &&
       pkg.managerDecisionId

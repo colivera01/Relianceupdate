@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
@@ -43,6 +44,7 @@ type JobLike = {
     id: string;
     version: number;
     status: string;
+    audioExpected?: boolean;
   } | null;
   adminAuditDecision?: {
     decision: string;
@@ -124,6 +126,8 @@ const STAGE_ORDER = [
   { key: "COMPLETED", label: "Final Result", cue: "Show the final result clearly." },
 ] as const;
 
+type ReviewStage = (typeof STAGE_ORDER)[number]["key"];
+
 function normalizeStatus(value: string | null | undefined) {
   const normalized = String(value || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
   if (normalized === "CONFIRMED") return "IN_PROGRESS";
@@ -163,6 +167,15 @@ function stageVideoTitle(stageKey: string) {
   return stage ? `${stage.label} Video` : "Stage Video";
 }
 
+function actionErrorMessage(payload: any, fallback: string) {
+  const message = String(payload?.error || payload?.message || fallback).trim();
+  const code = String(payload?.code || "").trim();
+  const details = typeof payload?.details === "string" ? payload.details.trim() : "";
+  return [message, code ? `Code: ${code}` : "", details && details !== message ? details : ""]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export default function VendorJobDetailPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = String(params?.jobId || "").trim();
@@ -183,11 +196,15 @@ export default function VendorJobDetailPage() {
   const [job, setJob] = useState<JobLike | null>(null);
   const [sessions, setSessions] = useState<SessionDetails[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [role, setRole] = useState<string>("");
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
+  const [auditConfirmOpen, setAuditConfirmOpen] = useState(false);
+  const [auditAcknowledged, setAuditAcknowledged] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionStages, setCorrectionStages] = useState<ReviewStage[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingStage, setUploadingStage] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState("");
@@ -261,7 +278,7 @@ export default function VendorJobDetailPage() {
   const load = async () => {
     if (!jobId) {
       setLoading(false);
-      setError("Missing job id.");
+      setLoadError("Missing job id.");
       return;
     }
     if (vendorProfileLoading) {
@@ -269,11 +286,11 @@ export default function VendorJobDetailPage() {
     }
     if (!effectiveVendorId) {
       setLoading(false);
-      setError("Vendor context unavailable. Refresh and try again.");
+      setLoadError("Vendor context unavailable. Refresh and try again.");
       return;
     }
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const contextRes = await fetch("/api/vendor/context", {
         method: "GET",
@@ -317,7 +334,7 @@ export default function VendorJobDetailPage() {
       );
       setSessions(details.filter((d): d is SessionDetails => Boolean(d)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load job detail");
+      setLoadError(e instanceof Error ? e.message : "Failed to load job detail");
     } finally {
       setLoading(false);
     }
@@ -326,7 +343,7 @@ export default function VendorJobDetailPage() {
   useEffect(() => {
     if (!jobId) {
       setLoading(false);
-      setError("Missing job id.");
+      setLoadError("Missing job id.");
       return;
     }
     if (vendorProfileLoading || !effectiveVendorId) {
@@ -372,6 +389,7 @@ export default function VendorJobDetailPage() {
     if (!effectiveVendorId || !jobId) return;
     setUploadingStage(stageKey);
     setActionMessage(null);
+    setActionError(null);
     try {
       const sessionRes = await fetch(`/api/vendors/${effectiveVendorId}/media/sessions`, {
         method: "POST",
@@ -442,7 +460,7 @@ export default function VendorJobDetailPage() {
       setActionMessage(`${stageKey} stage uploaded.`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to upload stage video");
+      setActionError(e instanceof Error ? e.message : "Failed to upload stage video");
     } finally {
       setUploadingStage(null);
     }
@@ -453,14 +471,14 @@ export default function VendorJobDetailPage() {
     try {
       const durationSeconds = await getVideoFileDurationSeconds(file);
       if (isOverStageVideoLimit(durationSeconds)) {
-        setError(
+        setActionError(
           `Clip is ${formatStageVideoDuration(durationSeconds)}. Retake a ${formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)} max video for this stage.`
         );
         return;
       }
       await uploadStage(stageKey, file, durationSeconds);
     } catch {
-      setError("Could not read the video duration. Retake or choose a 30-second max clip.");
+      setActionError("Could not read the video duration. Retake or choose a 30-second max clip.");
     }
   };
 
@@ -468,6 +486,7 @@ export default function VendorJobDetailPage() {
     if (!jobId) return;
     setSubmitting(true);
     setActionMessage(null);
+    setActionError(null);
     try {
       const res = await fetch(`/api/employee/jobs/${jobId}/complete`, {
         method: "POST",
@@ -478,53 +497,86 @@ export default function VendorJobDetailPage() {
       setActionMessage("Submitted for manager review.");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit for manager review");
+      setActionError(e instanceof Error ? e.message : "Failed to submit for manager review");
     } finally {
       setSubmitting(false);
     }
   };
 
   const approveCompletion = async () => {
-    if (!effectiveVendorId || !jobId) return;
+    if (!effectiveVendorId || !jobId || !job?.serviceVideoPackage) return;
+    if (!auditAcknowledged) {
+      setActionError("Confirm that you reviewed the exact current stage videos before submitting them for Reliance Audit.");
+      return;
+    }
     setSubmitting(true);
+    setActionMessage(null);
+    setActionError(null);
     try {
       const res = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/approve`, {
         method: "POST",
-        headers,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          managerReviewAcknowledged: true,
+          packageId: job.serviceVideoPackage.id,
+          packageVersion: job.serviceVideoPackage.version,
+        }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(json?.error || json?.message || "Approval failed"));
-      setActionMessage("Completion approved.");
+      if (!res.ok) throw new Error(actionErrorMessage(json, "The package could not be submitted for Reliance Audit."));
+      setAuditConfirmOpen(false);
+      setAuditAcknowledged(false);
+      setActionMessage(String(json?.message || "The exact package was submitted for Reliance Audit. Customer access remains locked until Admin PASS."));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to approve completion");
+      setActionError(e instanceof Error ? e.message : "The package could not be submitted for Reliance Audit.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const rejectCompletion = async () => {
-    if (!effectiveVendorId || !jobId) return;
-    const reason = String(rejectReason || "").trim();
+  const toggleCorrectionStage = (stage: ReviewStage, checked: boolean) => {
+    setCorrectionStages((current) =>
+      checked
+        ? Array.from(new Set([...current, stage]))
+        : current.filter((item) => item !== stage),
+    );
+  };
+
+  const requestStageCorrection = async () => {
+    if (!effectiveVendorId || !jobId || !job?.serviceVideoPackage) return;
+    const reason = String(correctionReason || "").trim();
+    if (correctionStages.length === 0) {
+      setActionError("Select at least one video stage that needs correction.");
+      return;
+    }
     if (!reason) {
-      setError("Rejection reason is required.");
+      setActionError("Explain what the Employee needs to correct in the selected stage or stages.");
       return;
     }
     setSubmitting(true);
+    setActionMessage(null);
+    setActionError(null);
     try {
       const res = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/reject`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ rejectionReason: reason }),
+        body: JSON.stringify({
+          correctionReason: reason,
+          stages: correctionStages,
+          packageId: job.serviceVideoPackage.id,
+          packageVersion: job.serviceVideoPackage.version,
+        }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(json?.error || json?.message || "Rejection failed"));
-      setRejectOpen(false);
-      setRejectReason("");
-      setActionMessage("Completed work order rejected.");
+      if (!res.ok) throw new Error(actionErrorMessage(json, "The correction request could not be sent."));
+      setCorrectionOpen(false);
+      setCorrectionReason("");
+      setCorrectionStages([]);
+      setActionMessage("The selected video stages were returned to the Employee for correction.");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reject completion");
+      setActionError(e instanceof Error ? e.message : "The correction request could not be sent.");
     } finally {
       setSubmitting(false);
     }
@@ -534,7 +586,7 @@ export default function VendorJobDetailPage() {
     if (!effectiveVendorId || !jobId) return;
     setResendingCompletedOrder(true);
     setActionMessage(null);
-    setError(null);
+    setActionError(null);
     try {
       const res = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/actions`, {
         method: "PATCH",
@@ -547,7 +599,7 @@ export default function VendorJobDetailPage() {
       }
       setActionMessage(json?.message || "Private Proof access resent to the customer.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to resend Private Proof access");
+      setActionError(e instanceof Error ? e.message : "Failed to resend Private Proof access");
     } finally {
       setResendingCompletedOrder(false);
     }
@@ -577,7 +629,7 @@ export default function VendorJobDetailPage() {
     } else if (job?.adminAuditDecision?.decision === "REJECT") {
       events.push(`Reliance Audit failed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
     } else if (job?.rejectionReason) {
-      events.push("Rejected by manager");
+      events.push("Stage correction requested by manager");
     }
     if (job?.packageVisibility?.decision === "KEEP_PRIVATE") {
       events.push(`Customer kept Private: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
@@ -614,13 +666,29 @@ export default function VendorJobDetailPage() {
             </CardContent>
           </Card>
         ) : null}
-        {error ? (
+        {loadError ? (
           <Card>
             <CardContent className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg space-y-2">
-              <p>We couldn't load this job.</p>
+              <p className="font-semibold">We couldn't load this job.</p>
+              <p>{loadError}</p>
               <Button size="sm" variant="outline" onClick={() => void load()}>
                 Retry
               </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+        {actionError ? (
+          <Card>
+            <CardContent className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-semibold">That action was not completed.</p>
+                  <p className="mt-1">{actionError}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setActionError(null)}>
+                  Dismiss
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : null}
@@ -667,10 +735,28 @@ export default function VendorJobDetailPage() {
                   ) : null}
                   {canManagerReview ? (
                     <div className="flex flex-wrap gap-2">
-                      <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={approveCompletion} disabled={submitting}>
+                      <Button
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => {
+                          setActionError(null);
+                          setAuditAcknowledged(false);
+                          setAuditConfirmOpen(true);
+                        }}
+                        disabled={submitting || !allStagesExist}
+                      >
                         Submit to Reliance Audit
                       </Button>
-                      <Button variant="outline" className="border-amber-300 text-amber-900" onClick={() => setRejectOpen(true)} disabled={submitting}>
+                      <Button
+                        variant="outline"
+                        className="border-amber-300 text-amber-900"
+                        onClick={() => {
+                          setActionError(null);
+                          setCorrectionReason("");
+                          setCorrectionStages([]);
+                          setCorrectionOpen(true);
+                        }}
+                        disabled={submitting}
+                      >
                         Request Stage Correction
                       </Button>
                     </div>
@@ -683,9 +769,9 @@ export default function VendorJobDetailPage() {
               <Card>
                 <CardContent className="p-4">
                   <p className="text-xs font-semibold uppercase text-gray-500">Completed prerequisite</p>
-                  <p className="mt-1 font-semibold text-gray-950">Customer recording permission</p>
-                  <p className="mt-1 text-sm text-gray-700">{readableEvidenceValue(job.recordingCompliance?.permissionStatus)}</p>
-                  <p className="mt-2 text-xs text-gray-500">This evidence authorized recording only. It does not determine Private or Public visibility.</p>
+                  <p className="mt-1 font-semibold text-white">Customer recording permission</p>
+                  <p className="mt-1 text-sm text-blue-50/85">{readableEvidenceValue(job.recordingCompliance?.permissionStatus)}</p>
+                  <p className="mt-2 text-xs text-blue-50/65">This evidence authorized recording only. It does not determine Private or Public visibility.</p>
                 </CardContent>
               </Card>
               <Card>
@@ -738,12 +824,12 @@ export default function VendorJobDetailPage() {
             <Card>
               <CardContent className="p-5">
                 <p className="text-xs font-semibold uppercase text-blue-700">Current Service Order status</p>
-                <h2 className="mt-1 text-xl font-semibold text-gray-950">{lifecycle.label}</h2>
-                <p className="mt-2 text-sm text-gray-700">{lifecycle.detail}</p>
+                <h2 className="mt-1 text-xl font-semibold text-white">{lifecycle.label}</h2>
+                <p className="mt-2 text-sm text-blue-50/85">{lifecycle.detail}</p>
                 <dl className="mt-4 grid gap-3 border-t border-gray-200 pt-4 text-sm sm:grid-cols-3">
-                  <div><dt className="font-semibold text-gray-900">Why</dt><dd className="mt-1 text-gray-600">{lifecycle.why}</dd></div>
-                  <div><dt className="font-semibold text-gray-900">Who acts next</dt><dd className="mt-1 text-gray-600">{lifecycle.responsibleParticipant}</dd></div>
-                  <div><dt className="font-semibold text-gray-900">What resolves it</dt><dd className="mt-1 text-gray-600">{lifecycle.resolution}</dd></div>
+                  <div><dt className="font-semibold text-white">Why</dt><dd className="mt-1 text-blue-50/75">{lifecycle.why}</dd></div>
+                  <div><dt className="font-semibold text-white">Who acts next</dt><dd className="mt-1 text-blue-50/75">{lifecycle.responsibleParticipant}</dd></div>
+                  <div><dt className="font-semibold text-white">What resolves it</dt><dd className="mt-1 text-blue-50/75">{lifecycle.resolution}</dd></div>
                 </dl>
               </CardContent>
             </Card>
@@ -779,9 +865,9 @@ export default function VendorJobDetailPage() {
             ) : job.rejectionReason ? (
               <Card>
                 <CardContent className="p-4 rounded-lg border border-amber-200 bg-amber-50">
-                  <p className="text-sm font-semibold text-amber-900">Rejected by manager</p>
+                  <p className="text-sm font-semibold text-amber-900">Stage correction requested</p>
                   <p className="mt-1 text-sm text-amber-800">{job.rejectionReason}</p>
-                  <p className="mt-2 text-xs text-amber-700">This completed work order is closed as rejected and will not move to public moderation.</p>
+                  <p className="mt-2 text-xs text-amber-700">Only the selected stage or stages return to the Employee for a retake. The Work Record remains active, and customer access stays locked.</p>
                 </CardContent>
               </Card>
             ) : null}
@@ -856,7 +942,7 @@ export default function VendorJobDetailPage() {
                             >
                               {resolvingPlaybackStage === stage.key ? "Opening..." : "Watch"}
                             </Button>
-                            <p className="text-xs text-gray-600">
+                            <p className="text-xs text-blue-50/70">
                               Retakes happen from the employee recording workspace before manager review.
                             </p>
                           </div>
@@ -933,25 +1019,99 @@ export default function VendorJobDetailPage() {
           </>
         ) : null}
 
-        <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-          <DialogContent>
+        <Dialog
+          open={auditConfirmOpen}
+          onOpenChange={(open) => {
+            setAuditConfirmOpen(open);
+            if (!open) setAuditAcknowledged(false);
+          }}
+        >
+          <DialogContent className="reliance-mobile-dialog border-white/10 bg-[#08101d] text-white sm:max-w-xl">
             <DialogHeader>
-              <DialogTitle>Reject Completed Work Order</DialogTitle>
-              <DialogDescription>
-                This closes the completed work order as rejected. It will not return to the employee for correction or move into public moderation.
+              <DialogTitle>Submit exact package to Reliance Audit</DialogTitle>
+              <DialogDescription className="text-blue-50/75">
+                This records the Manager submission for the exact current package. Customer access remains locked until Reliance Audit returns PASS.
               </DialogDescription>
             </DialogHeader>
+            <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
+              <p><span className="font-semibold text-white">Package version:</span> {job?.serviceVideoPackage?.version ?? "Unknown"}</p>
+              <div>
+                <p className="font-semibold text-white">Exact stage videos</p>
+                <ul className="mt-1 space-y-1 text-blue-50/80">
+                  {STAGE_ORDER.map((stage) => (
+                    <li key={stage.key}>{stage.label}: {stageMap.get(stage.key)?.mediaAssets?.[0]?.id ? "reviewed package video present" : "missing"}</li>
+                  ))}
+                </ul>
+              </div>
+              <p><span className="font-semibold text-white">Audio scope:</span> {job?.recordingAssessment?.audioAllowed ? "Video and approved audio" : "Video only; no audio"}</p>
+            </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-blue-300/30 bg-blue-500/10 p-4 text-sm leading-6 text-blue-50">
+              <Checkbox
+                checked={auditAcknowledged}
+                onCheckedChange={(checked) => setAuditAcknowledged(checked === true)}
+                className="mt-0.5 h-5 w-5 border-2 border-blue-300 bg-slate-950 data-[state=checked]:border-blue-500 data-[state=checked]:bg-blue-600 data-[state=checked]:text-white"
+              />
+              <span>I reviewed the three current stage videos and am submitting this exact package for Reliance Audit.</span>
+            </label>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <Button variant="outline" onClick={() => setAuditConfirmOpen(false)} disabled={submitting}>Cancel</Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={approveCompletion} disabled={submitting || !auditAcknowledged}>
+                {submitting ? "Submitting..." : "Submit to Reliance Audit"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={correctionOpen}
+          onOpenChange={(open) => {
+            setCorrectionOpen(open);
+            if (!open) {
+              setCorrectionReason("");
+              setCorrectionStages([]);
+            }
+          }}
+        >
+          <DialogContent className="reliance-mobile-dialog border-white/10 bg-[#08101d] text-white sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Request stage correction</DialogTitle>
+              <DialogDescription className="text-blue-50/75">
+                Select only the stage videos the Employee must retake. Unselected stages remain bound to this Work Record. Customer access and Public use remain unchanged and locked.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2" role="group" aria-label="Video stages requiring correction">
+              {STAGE_ORDER.map((stage) => {
+                const checked = correctionStages.includes(stage.key);
+                return (
+                  <label key={stage.key} className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-blue-50">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) => toggleCorrectionStage(stage.key, value === true)}
+                      className="mt-0.5 h-5 w-5 border-2 border-blue-300 bg-slate-950 data-[state=checked]:border-amber-400 data-[state=checked]:bg-amber-500 data-[state=checked]:text-slate-950"
+                    />
+                    <span><span className="block font-semibold text-white">{stage.label}</span><span className="text-blue-50/70">{stage.cue}</span></span>
+                  </label>
+                );
+              })}
+            </div>
+            <label className="space-y-2 text-sm font-semibold text-white">
+              Correction instructions
             <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              className="w-full rounded border p-2 text-sm"
+              value={correctionReason}
+              onChange={(e) => setCorrectionReason(e.target.value)}
+              className="w-full rounded border border-white/20 bg-slate-950 p-3 text-sm font-normal text-white placeholder:text-blue-100/50"
               rows={4}
-              placeholder="Required: explain why this completed work order is rejected."
+              placeholder="Required: explain what must be corrected in the selected stage or stages."
             />
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
-              <Button className="bg-amber-600 hover:bg-amber-700" onClick={rejectCompletion} disabled={submitting}>
-                {submitting ? "Submitting..." : "Reject Work Order"}
+            </label>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <Button variant="outline" onClick={() => setCorrectionOpen(false)} disabled={submitting}>Cancel</Button>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={requestStageCorrection}
+                disabled={submitting || correctionStages.length === 0 || !correctionReason.trim()}
+              >
+                {submitting ? "Sending..." : "Send Correction Request"}
               </Button>
             </DialogFooter>
           </DialogContent>

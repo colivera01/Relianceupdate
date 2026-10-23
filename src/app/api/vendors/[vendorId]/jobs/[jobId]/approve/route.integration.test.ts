@@ -34,9 +34,17 @@ vi.mock("@/lib/trust-score-outcome-foundation", () => ({
 }));
 vi.mock("@/lib/trust-score-calculator", () => ({ tryRecalculateVendorTrustScore: vi.fn(async () => undefined) }));
 
-function request() {
+function request(body: Record<string, unknown> = {
+  managerReviewAcknowledged: true,
+  packageId: "package-1",
+  packageVersion: 2,
+}) {
   return {
-    req: new Request("http://localhost/api/vendors/v1/jobs/job1/approve", { method: "POST" }),
+    req: new Request("http://localhost/api/vendors/v1/jobs/job1/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
     ctx: { params: Promise.resolve({ vendorId: "v1", jobId: "job1" }) },
   };
 }
@@ -64,6 +72,26 @@ describe("vendor manager Service Video audit submission", () => {
     vi.clearAllMocks();
     hoisted.sendCoreAdminAuditReadyNotification.mockResolvedValue({ status: "SENT" });
     hoisted.ensureRetentionSchedulesForBooking.mockResolvedValue([]);
+  });
+
+  it("requires an explicit exact-package Manager review acknowledgment", async () => {
+    const { POST } = await import("./route");
+    const { req, ctx } = request({ packageId: "package-1", packageVersion: 2 });
+    const response = await POST(req, ctx as any);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "MANAGER_REVIEW_ACKNOWLEDGMENT_REQUIRED" });
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.submitPackageForCoreAdminAudit).not.toHaveBeenCalled();
+  });
+
+  it("requires the exact package identity and version", async () => {
+    const { POST } = await import("./route");
+    const { req, ctx } = request({ managerReviewAcknowledged: true });
+    const response = await POST(req, ctx as any);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "MANAGER_REVIEW_PACKAGE_CONTEXT_REQUIRED" });
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.submitPackageForCoreAdminAudit).not.toHaveBeenCalled();
   });
 
   it("blocks jobs outside manager review", async () => {
@@ -110,6 +138,8 @@ describe("vendor manager Service Video audit submission", () => {
       vendorId: "v1",
       managerUserId: "manager-1",
       managerMembershipId: "manager-membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 2,
     });
     expect(hoisted.sendCoreAdminAuditReadyNotification).toHaveBeenCalledOnce();
   });

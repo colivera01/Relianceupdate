@@ -266,6 +266,77 @@ describe("V2 recording authorization evidence", () => {
     })).resolves.toBe(evidence);
   });
 
+  it("accepts the expected Manager-review lock only for exact Admin-evidence revalidation", async () => {
+    const { evidence } = await persistedParticipationEvidence();
+    const db = {
+      ...authorizationDb(evidence, "recording-assessment-v3-package-audio-v1"),
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({
+          customerMetadata: JSON.stringify({
+            vendor_job_employee_recording_participation_contract_version:
+              "employee-recording-participation-v1",
+          }),
+        }),
+      },
+    };
+    mocks.loadGate.mockResolvedValue({
+      ...participationGate,
+      blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+      recordingUnlocked: false,
+    });
+
+    await expect(assertRecordingAuthorizationCurrent(db, {
+      gateDecisionId: "gate-participation-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      stage: "INTRO",
+      surface: "admin_evidence",
+      actorKind: "VENDOR_MANAGER",
+      acceptedPostCaptureBlockCode: "MANAGER_REVIEW_IN_PROGRESS",
+    })).resolves.toBe(evidence);
+    expect(mocks.assertParticipation).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the Manager-review lock closed for ordinary recording authorization calls", async () => {
+    const { evidence } = await persistedEvidence();
+    const db = authorizationDb(evidence);
+    mocks.loadGate.mockResolvedValue({
+      ...allowedGate,
+      blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+      recordingUnlocked: false,
+    });
+
+    await expect(assertRecordingAuthorizationCurrent(db, {
+      gateDecisionId: "gate-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      stage: "INTRO",
+      surface: "upload_complete",
+    })).rejects.toMatchObject({ code: "V2_RECORDING_AUTHORIZATION_STALE" });
+  });
+
+  it.each([
+    ["a different block", { blockCode: "ADMIN_AUDIT_IN_PROGRESS", recordingUnlocked: false }],
+    ["a changed scope", { blockCode: "MANAGER_REVIEW_IN_PROGRESS", recordingUnlocked: false, scopeHash: "e".repeat(64) }],
+  ])("rejects %s even when the Manager-review exception is requested", async (_label, gateChange) => {
+    const { evidence } = await persistedEvidence();
+    const db = authorizationDb(evidence);
+    mocks.loadGate.mockResolvedValue({ ...allowedGate, ...gateChange });
+
+    await expect(assertRecordingAuthorizationCurrent(db, {
+      gateDecisionId: "gate-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      stage: "INTRO",
+      surface: "admin_evidence",
+      actorKind: "VENDOR_MANAGER",
+      acceptedPostCaptureBlockCode: "MANAGER_REVIEW_IN_PROGRESS",
+    })).rejects.toMatchObject({ code: "V2_RECORDING_AUTHORIZATION_STALE" });
+  });
+
   it.each([
     ["newer blocked safety", { blockCode: "V2_RUNTIME_SAFETY_BLOCKED", recordingUnlocked: false }],
     ["newer material safety", { blockCode: "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED", recordingUnlocked: false }],

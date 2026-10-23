@@ -234,6 +234,8 @@ describe("core Service Video Admin Audit evidence", () => {
       vendorId: "vendor-1",
       managerUserId: "manager-1",
       managerMembershipId: "membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 3,
     });
 
     expect(result).toMatchObject({
@@ -283,6 +285,8 @@ describe("core Service Video Admin Audit evidence", () => {
       vendorId: "vendor-1",
       managerUserId: "manager-1",
       managerMembershipId: "membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 3,
     });
 
     expect(result).toMatchObject({
@@ -318,6 +322,8 @@ describe("core Service Video Admin Audit evidence", () => {
       vendorId: "vendor-1",
       managerUserId: "manager-1",
       managerMembershipId: "membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 3,
     })).rejects.toMatchObject({ code: "SERVICE_VIDEO_UNAUTHORIZED_AUDIO" });
     expect(tx.serviceVideoPackageEvidence.updateMany).not.toHaveBeenCalled();
     expect(tx.serviceVideoManagerDecisionEvidence.create).not.toHaveBeenCalled();

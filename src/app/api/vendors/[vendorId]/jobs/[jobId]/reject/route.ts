@@ -21,8 +21,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     const { vendorId, jobId } = await context.params;
     const manager = await requireVendorManager(request, vendorId);
     const body = await request.json().catch(() => ({}));
-    const rejectionReason = String(body?.rejectionReason || "").trim();
-    const requestedStages = Array.isArray(body?.stages) ? body.stages : REQUIRED_SERVICE_VIDEO_STAGES;
+    const correctionReason = String(body?.correctionReason || body?.rejectionReason || "").trim();
+    const expectedPackageId = String(body?.packageId || "").trim();
+    const expectedPackageVersion = Number(body?.packageVersion);
+    const requestedStages = Array.isArray(body?.stages) ? body.stages : [];
     const stages: ServiceVideoStage[] = Array.from(
       new Set(
         requestedStages
@@ -33,11 +35,11 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       ) as Set<ServiceVideoStage>
     );
 
-    if (!rejectionReason) {
+    if (!correctionReason) {
       return NextResponse.json(
         {
-          error: "rejectionReason is required.",
-          code: "REJECTION_REASON_REQUIRED",
+          error: "A correction reason is required.",
+          code: "CORRECTION_REASON_REQUIRED",
         },
         { status: 400 }
       );
@@ -46,6 +48,15 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       return NextResponse.json(
         { error: "At least one stage must be selected.", code: "CORRECTION_STAGE_REQUIRED" },
         { status: 400 }
+      );
+    }
+    if (!expectedPackageId || !Number.isInteger(expectedPackageVersion) || expectedPackageVersion < 1) {
+      return NextResponse.json(
+        {
+          error: "The exact current Service Video package context is required.",
+          code: "CORRECTION_PACKAGE_CONTEXT_REQUIRED",
+        },
+        { status: 400 },
       );
     }
 
@@ -69,8 +80,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     if (currentStatus !== "AWAITING_REVIEW") {
       return NextResponse.json(
         {
-          error: "Only jobs in AWAITING_REVIEW can be rejected.",
-          code: "INVALID_REJECTION_STATUS",
+          error: "Only work records awaiting Manager review can receive a correction request.",
+          code: "INVALID_CORRECTION_STATUS",
           status: currentStatus || "UNKNOWN",
         },
         { status: 409 }
@@ -83,15 +94,17 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       vendorId,
       managerUserId: manager.userId,
       managerMembershipId: manager.membershipId,
+      expectedPackageId,
+      expectedPackageVersion,
       stages,
-      reason: rejectionReason,
+      reason: correctionReason,
     });
     await prisma.booking.update({
       where: { id: booking.id },
       data: {
         status: "IN_PROGRESS",
         customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "IN_PROGRESS"),
-        rejectionReason,
+        rejectionReason: correctionReason,
         rejectedAt: null,
         rejectedBy: manager.userId,
       },
@@ -106,7 +119,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       newValue: { status: "IN_PROGRESS", correctionRequestedAt: requestedAt.toISOString() },
       metadata: {
         vendorId,
-        rejectionReason,
+        correctionReason,
         stages,
       },
     });
@@ -139,7 +152,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         employeeJobLink,
         vendorName: String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor"),
         jobTitle: String(booking.title || booking.service?.name || "Service order"),
-        rejectionReason: `${rejectionReason} Stages: ${stages.join(", ")}.`,
+        rejectionReason: `${correctionReason} Stages: ${stages.join(", ")}.`,
       });
       notifications.push({ membershipId: member.id, ...result });
     }
@@ -149,7 +162,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       code: "SERVICE_VIDEO_CORRECTION_REQUESTED",
       message: "Changes requested for the selected video stage or stages.",
       details: {
-        rejectionReason,
+        correctionReason,
         stages,
         notifications: {
           sentCount: notifications.filter((result) => result.anySuccess).length,
@@ -164,9 +177,18 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     if (String(error?.message || "").includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
+    if (error?.message === "SERVICE_VIDEO_PACKAGE_VERSION_MISMATCH") {
+      return NextResponse.json(
+        {
+          error: "This review page no longer matches the current Service Video package. Reload before requesting a correction.",
+          code: "SERVICE_VIDEO_PACKAGE_VERSION_MISMATCH",
+        },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       {
-        error: "Failed to reject job completion",
+        error: "Failed to request stage correction",
         details: error?.message || "Unknown error",
       },
       { status: 500 }

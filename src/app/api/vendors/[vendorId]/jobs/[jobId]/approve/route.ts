@@ -21,6 +21,27 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
   try {
     const { vendorId, jobId } = await context.params;
     const manager = await requireVendorManager(request, vendorId);
+    const body = await request.json().catch(() => ({}));
+    const expectedPackageId = String(body?.packageId || "").trim();
+    const expectedPackageVersion = Number(body?.packageVersion);
+    if (body?.managerReviewAcknowledged !== true) {
+      return NextResponse.json(
+        {
+          error: "Confirm that you reviewed the exact current stage videos before submitting them for Reliance Audit.",
+          code: "MANAGER_REVIEW_ACKNOWLEDGMENT_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
+    if (!expectedPackageId || !Number.isInteger(expectedPackageVersion) || expectedPackageVersion < 1) {
+      return NextResponse.json(
+        {
+          error: "The exact current Service Video package context is required.",
+          code: "MANAGER_REVIEW_PACKAGE_CONTEXT_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
     const booking = await prisma.booking.findFirst({
       where: { id: jobId, vendorId },
       select: {
@@ -58,6 +79,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         vendorId,
         managerUserId: manager.userId,
         managerMembershipId: manager.membershipId,
+        expectedPackageId,
+        expectedPackageVersion,
       });
     } catch (approvalError: any) {
       return NextResponse.json(

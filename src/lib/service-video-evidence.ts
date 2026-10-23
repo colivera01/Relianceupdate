@@ -276,6 +276,7 @@ export async function assertRecordingAuthorizationCurrent(
     stage: ServiceVideoStage;
     surface: RecordingGateSurface;
     actorKind?: string | null;
+    acceptedPostCaptureBlockCode?: "MANAGER_REVIEW_IN_PROGRESS";
     now?: Date;
   },
 ) {
@@ -401,9 +402,14 @@ export async function assertRecordingAuthorizationCurrent(
     now: input.now,
     db,
   });
+  const expectedManagerReviewLock =
+    input.acceptedPostCaptureBlockCode === "MANAGER_REVIEW_IN_PROGRESS" &&
+    input.surface === "admin_evidence" &&
+    input.actorKind === "VENDOR_MANAGER" &&
+    gate.blockCode === "MANAGER_REVIEW_IN_PROGRESS" &&
+    gate.recordingUnlocked === false;
   if (
-    gate.blockCode ||
-    !gate.recordingUnlocked ||
+    ((!gate.recordingUnlocked || gate.blockCode) && !expectedManagerReviewLock) ||
     gate.assessmentId !== evidence.assessmentId ||
     gate.assessmentGeneration !== evidence.assessmentGeneration ||
     gate.scopeHash !== evidence.scopeHash ||
@@ -1040,12 +1046,37 @@ export async function requestServiceVideoCorrection(input: {
   vendorId: string;
   managerUserId: string;
   managerMembershipId: string;
+  expectedPackageId: string;
+  expectedPackageVersion: number;
   stages: ServiceVideoStage[];
   reason: string;
 }) {
   return prisma.$transaction(async (tx: any) => {
     const pkg = await tx.serviceVideoPackageEvidence.findFirst({ where: { bookingId: input.bookingId, vendorId: input.vendorId, isCurrent: true, status: "AWAITING_MANAGER_REVIEW" } });
     if (!pkg) throw new Error("SERVICE_VIDEO_PACKAGE_NOT_REVIEWABLE");
+    if (
+      String(pkg.id) !== input.expectedPackageId ||
+      Number(pkg.version) !== Number(input.expectedPackageVersion)
+    ) {
+      throw new Error("SERVICE_VIDEO_PACKAGE_VERSION_MISMATCH");
+    }
+    const packagedStages = JSON.parse(pkg.stageEvidenceJson) as Array<{
+      stage: ServiceVideoStage;
+      stageEvidenceId: string;
+    }>;
+    const selectedPackageStageIds = new Set(
+      packagedStages
+        .filter((row) => input.stages.includes(row.stage))
+        .map((row) => row.stageEvidenceId),
+    );
+    const stageRows = await tx.serviceVideoStageEvidence.findMany({ where: { bookingId: input.bookingId, isCurrent: true, stage: { in: input.stages } } });
+    if (
+      stageRows.length !== input.stages.length ||
+      selectedPackageStageIds.size !== input.stages.length ||
+      stageRows.some((row: any) => !selectedPackageStageIds.has(row.id))
+    ) {
+      throw new Error("CORRECTION_STAGE_EVIDENCE_NOT_FOUND");
+    }
     const targetedStagesJson = stableJson(input.stages);
     const decision = await tx.serviceVideoManagerDecisionEvidence.create({ data: {
       packageId: pkg.id, bookingId: input.bookingId, vendorId: input.vendorId, decision: "CORRECTION_REQUESTED",
@@ -1053,8 +1084,6 @@ export async function requestServiceVideoCorrection(input: {
       managerMembershipId: input.managerMembershipId, packageHash: pkg.packageHash,
     }});
     await tx.serviceVideoPackageEvidence.update({ where: { id: pkg.id }, data: { status: "CORRECTION_REQUESTED", managerDecisionId: decision.id } });
-    const stageRows = await tx.serviceVideoStageEvidence.findMany({ where: { bookingId: input.bookingId, isCurrent: true, stage: { in: input.stages } } });
-    if (stageRows.length !== input.stages.length) throw new Error("CORRECTION_STAGE_EVIDENCE_NOT_FOUND");
     await tx.serviceVideoStageEvidence.updateMany({ where: { id: { in: stageRows.map((row: any) => row.id) } }, data: { uploadState: "REJECTED" } });
     await tx.mediaAsset.updateMany({ where: { id: { in: stageRows.map((row: any) => row.mediaAssetId) } }, data: { uploadState: "REJECTED", moderationStatus: "rejected", visibilityStatus: "private", moderationReason: input.reason } });
     return { package: pkg, decision };
