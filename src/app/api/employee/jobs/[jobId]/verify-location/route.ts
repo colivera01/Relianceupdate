@@ -19,7 +19,10 @@ import {
   requiredSafetyCheckForStage,
   serviceOrderSafetyRequirement,
 } from "@/lib/recording/employee-safety";
-import { persistV2StageLocationAttempt } from "@/lib/recording/v2-safety-location";
+import {
+  persistV2StageLocationAttempt,
+  SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+} from "@/lib/recording/v2-safety-location";
 
 type RouteContext = { params: Promise<{ jobId: string }> };
 
@@ -118,10 +121,7 @@ export async function POST(request: Request, context: RouteContext) {
       proof,
     });
     let locationAttempt;
-    if (
-      gateBeforeVerification.assessmentContractVersion ===
-      RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
-    ) {
+    if (gateBeforeVerification.serviceOrderSafetyRequired) {
       const locationSnapshot = validateRecordingLocationSnapshot(
         booking.customerMetadata,
         gateBeforeVerification.location,
@@ -142,6 +142,11 @@ export async function POST(request: Request, context: RouteContext) {
         assessmentGeneration: gateBeforeVerification.assessmentGeneration,
         assignmentGeneration: gateBeforeVerification.assignmentGeneration,
         stage: evidenceRequirement.stage,
+        evidenceVersion:
+          gateBeforeVerification.assessmentContractVersion ===
+          RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+            ? undefined
+            : SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
         snapshotEvidenceHash: locationSnapshot.snapshot.snapshotEvidenceHash,
         actorUserId: membership.userId || tokenAccess?.userId || null,
         proof,

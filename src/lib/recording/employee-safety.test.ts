@@ -4,6 +4,7 @@ import {
   EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
   EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
   EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION,
   EmployeeRecordingSafetyValidationError,
   parseEmployeeRecordingSafetyEvidence,
   resolveV2StageSafetyReadiness,
@@ -14,6 +15,7 @@ import {
   parseRecordingAssessmentV2,
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
 } from "./assessment-v2";
+import { deriveRecordingScopeAssessment } from "./scope-assessment";
 
 const LOCATION_HASH = "a".repeat(64);
 const OTHER_LOCATION_HASH = "b".repeat(64);
@@ -64,6 +66,21 @@ function serviceOrderSafetyFixture(overrides: Record<string, unknown> = {}) {
   return {
     ...hardenedSafetyFixture(),
     contractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+    check: { type: "INITIAL", stage: "SERVICE_ORDER" },
+    ...overrides,
+  };
+}
+
+function simplifiedServiceOrderSafetyFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    ...hardenedSafetyFixture(),
+    contractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION,
+    assessment: {
+      id: "assessment-simplified-a",
+      generation: 1,
+      contractVersion: "recording-assessment-v3-simplified-work-scope-v2",
+      scopeHash: simplifiedAssessmentFixture.scopeHash,
+    },
     check: { type: "INITIAL", stage: "SERVICE_ORDER" },
     ...overrides,
   };
@@ -130,6 +147,31 @@ const currentAssessment = {
   contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
   scopeHash: v2AssessmentFixture.scopeHash,
   scopeJson: v2AssessmentFixture.scopeJson,
+  subjectJson: v2AssessmentFixture.subjectJson,
+  status: "COMPLETE",
+};
+
+const simplifiedAssessmentFixture = deriveRecordingScopeAssessment(
+  {
+    recordingLocation: "business",
+    intentionalParticipantPlan: "assigned_service_professional",
+    audioRequested: false,
+  },
+  {
+    locationSnapshotEvidenceHash: LOCATION_HASH,
+    generation: 1,
+    completedByUserId: "manager-user-a",
+    completedAt: new Date("2026-10-22T12:00:00.000Z"),
+  },
+);
+
+const simplifiedCurrentAssessment = {
+  id: "assessment-simplified-a",
+  generation: 1,
+  contractVersion: simplifiedAssessmentFixture.contractVersion,
+  scopeHash: simplifiedAssessmentFixture.scopeHash,
+  scopeJson: simplifiedAssessmentFixture.scopeJson,
+  subjectJson: simplifiedAssessmentFixture.subjectJson,
   status: "COMPLETE",
 };
 
@@ -335,7 +377,7 @@ describe("employee runtime-safety canonical contract", () => {
 describe("V2 stage safety readiness", () => {
   const readyInitial = parseEmployeeRecordingSafetyEvidence(hardenedSafetyFixture());
 
-  it("requires evidence for V2 but not current V3 or legacy assessments", () => {
+  it("requires evidence for V2 and the explicit simplified Service Order contract", () => {
     expect(readiness([])).toMatchObject({
       required: true,
       ready: false,
@@ -343,21 +385,21 @@ describe("V2 stage safety readiness", () => {
     });
     expect(
       readiness([], {
-        assessment: { ...currentAssessment, contractVersion: "recording-assessment-v3-package-audio-v1" },
+        assessment: simplifiedCurrentAssessment,
       }),
-    ).toEqual({
-      required: false,
-      ready: true,
-      code: null,
-      result: null,
-      evidenceId: null,
-      evidenceHash: null,
-      locationAttemptId: null,
-      locationAttemptEvidenceHash: null,
-      stage: null,
-      checkType: null,
-      safetyContractVersion: null,
+    ).toMatchObject({
+      required: true,
+      ready: false,
+      code: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
     });
+    expect(
+      readiness([], {
+        assessment: {
+          ...currentAssessment,
+          contractVersion: "recording-assessment-v3-package-audio-v1",
+        },
+      }).required,
+    ).toBe(false);
     expect(readiness([], { assessment: { ...currentAssessment, contractVersion: null } }).required).toBe(false);
   });
 
@@ -427,6 +469,49 @@ describe("V2 stage safety readiness", () => {
       });
     },
   );
+
+  it.each(["INTRO", "IN_PROGRESS", "COMPLETED"])(
+    "lets one exact-context simplified Service Order check support %s",
+    (recordingStage) => {
+      const baseline = parseEmployeeRecordingSafetyEvidence(
+        simplifiedServiceOrderSafetyFixture(),
+      );
+      expect(
+        readiness([stored("simplified-service-order-safety", baseline)], {
+          assessment: simplifiedCurrentAssessment,
+          recordingStage,
+        }),
+      ).toMatchObject({
+        ready: true,
+        evidenceId: "simplified-service-order-safety",
+        stage: "SERVICE_ORDER",
+        checkType: "INITIAL",
+        safetyContractVersion:
+          EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION,
+      });
+    },
+  );
+
+  it.each([
+    ["employee", { membershipId: "membership-other" }],
+    ["assignment", { assignmentGeneration: 2 }],
+    ["assessment", { assessmentGeneration: 2 }],
+    ["scope", { assessmentScopeHash: "c".repeat(64) }],
+    ["location", { locationSnapshotEvidenceHash: OTHER_LOCATION_HASH }],
+  ])("invalidates a simplified baseline after a stale %s binding", (_label, rowOverride) => {
+    const baseline = parseEmployeeRecordingSafetyEvidence(
+      simplifiedServiceOrderSafetyFixture(),
+    );
+    expect(
+      readiness([stored("simplified-service-order-stale", baseline, rowOverride as any)], {
+        assessment: simplifiedCurrentAssessment,
+      }),
+    ).toMatchObject({
+      ready: false,
+      code: "V2_RUNTIME_SAFETY_BINDING_STALE",
+      stage: "SERVICE_ORDER",
+    });
+  });
 
   it.each([
     ["employee", { membershipId: "membership-other" }],

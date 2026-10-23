@@ -250,6 +250,8 @@ export async function GET(request: Request): Promise<NextResponse> {
           assessmentId: permissionGate.assessmentId,
           riskLevel: permissionGate.riskLevel,
           certificationActive: permissionGate.certificationActive,
+          serviceOrderSafetyRequired: permissionGate.serviceOrderSafetyRequired,
+          serviceOrderSafetyComplete: permissionGate.v2Safety?.ready === true,
           scopeSummary: permissionGate.scopeSummary,
           serviceLocation: recordingCompliance.addressSnapshot?.formattedAddress || null,
           serviceLocationType: recordingCompliance.addressSnapshot?.type || permissionGate.location,

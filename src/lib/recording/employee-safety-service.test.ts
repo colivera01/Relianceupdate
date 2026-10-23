@@ -30,8 +30,10 @@ import {
 } from "./assessment-v2";
 import {
   buildV2StageLocationEvidence,
+  SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
 } from "./v2-safety-location";
+import { deriveRecordingScopeAssessment } from "./scope-assessment";
 
 function buildLocationMetadata() {
   const verifiedAt = "2026-08-27T18:00:00.000Z";
@@ -123,6 +125,30 @@ const assessment = {
   scopeHash: canonicalAssessment.scopeHash,
 };
 
+const simplifiedCanonicalAssessment = deriveRecordingScopeAssessment(
+  {
+    recordingLocation: "business",
+    intentionalParticipantPlan: "assigned_service_professional",
+    audioRequested: false,
+  },
+  {
+    locationSnapshotEvidenceHash: location.snapshotHash,
+    generation: 1,
+    completedByUserId: "manager-user-1",
+    completedAt: new Date("2026-10-22T12:00:00.000Z"),
+  },
+);
+const simplifiedAssessment = {
+  ...assessment,
+  id: "assessment-simplified-1",
+  generation: 1,
+  contractVersion: simplifiedCanonicalAssessment.contractVersion,
+  locationType: simplifiedCanonicalAssessment.recordingLocation,
+  subjectJson: simplifiedCanonicalAssessment.subjectJson,
+  scopeJson: simplifiedCanonicalAssessment.scopeJson,
+  scopeHash: simplifiedCanonicalAssessment.scopeHash,
+};
+
 const locationAttemptBase = {
   id: "location-attempt-1",
   bookingId: "booking-1",
@@ -200,6 +226,24 @@ const secondLocationAttempt = {
   evidenceVersion: V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   canonicalJson: secondLocationAttemptEvidence.canonicalJson,
   evidenceHash: secondLocationAttemptEvidence.evidenceHash,
+};
+
+const simplifiedLocationAttemptBase = {
+  ...locationAttemptBase,
+  assessmentId: simplifiedAssessment.id,
+  assessmentGeneration: simplifiedAssessment.generation,
+};
+const simplifiedLocationAttemptEvidence = buildV2StageLocationEvidence({
+  ...simplifiedLocationAttemptBase,
+  evidenceVersion: SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+  attemptId: simplifiedLocationAttemptBase.id,
+  stage: simplifiedLocationAttemptBase.stage as "SERVICE_ORDER",
+});
+const simplifiedLocationAttempt = {
+  ...simplifiedLocationAttemptBase,
+  evidenceVersion: SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+  canonicalJson: simplifiedLocationAttemptEvidence.canonicalJson,
+  evidenceHash: simplifiedLocationAttemptEvidence.evidenceHash,
 };
 
 const tx = {
@@ -328,11 +372,46 @@ describe("employee runtime-safety append service", () => {
     expect(db.safetyCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("fails closed for a non-V2 assessment without writing evidence", async () => {
+  it("writes a separately versioned Service Order baseline for the explicit simplified assessment", async () => {
+    db.bookingFindFirst.mockResolvedValue({
+      id: "booking-1",
+      vendorId: "vendor-1",
+      customerMetadata: JSON.stringify({
+        ...JSON.parse(location.customerMetadata),
+        vendor_job_employee_recording_participation_contract_version:
+          "employee-recording-participation-v1",
+      }),
+    });
+    db.assessmentFindFirst.mockResolvedValue(simplifiedAssessment);
+    db.locationAttemptFindFirst.mockResolvedValue(simplifiedLocationAttempt);
+
+    const created = await append();
+
+    expect(created).toMatchObject({
+      assessmentId: "assessment-simplified-1",
+      assessmentGeneration: 1,
+      assessmentContractVersion:
+        "recording-assessment-v3-simplified-work-scope-v2",
+      safetyContractVersion: "employee-service-order-safety-v2",
+      stage: "SERVICE_ORDER",
+      result: "READY",
+    });
+  });
+
+  it("fails closed for an unsupported assessment without writing evidence", async () => {
     db.assessmentFindFirst.mockResolvedValue({
       ...assessment,
       contractVersion: "recording-assessment-v3-package-audio-v1",
     });
+
+    await expect(append()).rejects.toMatchObject({
+      code: "V2_SAFETY_ASSESSMENT_REQUIRED",
+    });
+    expect(db.safetyCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not enable the simplified baseline without the reviewed participation contract", async () => {
+    db.assessmentFindFirst.mockResolvedValue(simplifiedAssessment);
 
     await expect(append()).rejects.toMatchObject({
       code: "V2_SAFETY_ASSESSMENT_REQUIRED",

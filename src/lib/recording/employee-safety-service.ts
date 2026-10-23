@@ -14,6 +14,7 @@ import {
   EMPLOYEE_RECORDING_SAFETY_ISSUES,
   employeeSafetyChainKey,
   parseEmployeeRecordingSafetyEvidence,
+  serviceOrderSafetyContractForAssessment,
   storedSafetyEvidenceToCanonicalInput,
   type EmployeeRecordingSafetyCheckType,
   type EmployeeRecordingSafetyIssue,
@@ -21,11 +22,10 @@ import {
   type EmployeeRecordingSafetyStage,
   type StoredEmployeeRecordingSafetyEvidence,
 } from "./employee-safety";
-import {
-  RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
-  stableJsonV2,
-} from "./assessment-v2";
+import { stableJsonV2 } from "./assessment-v2";
 import { interpretRecordingAssessment } from "./assessment-reader";
+import { employeeRecordingParticipationContractEnabled } from "@/lib/employee-recording-participation";
+import { SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION } from "./scope-assessment";
 import { validateV2SafetyLocationAttempt } from "./v2-safety-location";
 
 export class EmployeeRecordingSafetyServiceError extends Error {
@@ -102,7 +102,11 @@ export async function loadLatestEmployeeRecordingSafetyEvidence(input: {
   locationSnapshotEvidenceHash: string;
   checkType: EmployeeRecordingSafetyCheckType;
   stage: EmployeeRecordingSafetyStage;
+  assessmentContractVersion?: string | null;
 }): Promise<StoredEmployeeRecordingSafetyEvidence | null> {
+  const safetyContractVersion =
+    serviceOrderSafetyContractForAssessment(input.assessmentContractVersion) ||
+    EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION;
   return (prisma as any).employeeRecordingSafetyEvidence.findFirst({
     where: {
       bookingId: input.bookingId,
@@ -111,7 +115,7 @@ export async function loadLatestEmployeeRecordingSafetyEvidence(input: {
       membershipId: input.membershipId,
       assignmentGeneration: input.assignmentGeneration,
       locationSnapshotEvidenceHash: input.locationSnapshotEvidenceHash,
-      safetyContractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+      safetyContractVersion,
       checkType: input.checkType,
       stage: input.stage,
     },
@@ -153,33 +157,67 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
       ]);
       if (!booking) fail("V2_SAFETY_WORK_RECORD_NOT_FOUND", "The work record is unavailable.");
       if (!membership) fail("V2_SAFETY_EMPLOYEE_UNAUTHORIZED", "An active assigned employee is required.");
+      const safetyContractVersion = serviceOrderSafetyContractForAssessment(
+        assessment?.contractVersion,
+      );
+      const simplifiedSafetyEnabled =
+        assessment?.contractVersion === SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION &&
+        employeeRecordingParticipationContractEnabled(booking.customerMetadata);
       if (
         !assessment ||
         assessment.status !== "COMPLETE" ||
-        assessment.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
-      ) {
-        fail("V2_SAFETY_ASSESSMENT_REQUIRED", "A current complete V2 assessment is required.");
-      }
-
-      let canonicalAssessment;
-      try {
-        const interpretation = interpretRecordingAssessment(assessment);
-        if (interpretation.kind !== "V2") {
-          return fail("V2_SAFETY_ASSESSMENT_REQUIRED", "A current complete V2 assessment is required.");
-        }
-        canonicalAssessment = interpretation.canonical;
-      } catch {
-        return fail("V2_SAFETY_ASSESSMENT_INVALID", "The current V2 assessment is invalid.");
-      }
-      if (
-        canonicalAssessment.scopeHash !== assessment.scopeHash ||
-        canonicalAssessment.assessment.derived.participantPolicyStatus !== "SUPPORTED"
+        !safetyContractVersion ||
+        (assessment.contractVersion === SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION &&
+          !simplifiedSafetyEnabled)
       ) {
         fail(
-          canonicalAssessment.assessment.derived.participantPolicyStatus === "SUPPORTED"
-            ? "V2_SAFETY_ASSESSMENT_INVALID"
-            : "V2_SAFETY_PLAN_CHANGE_REQUIRED",
-          "The current V2 assessment cannot authorize a safety check.",
+          "V2_SAFETY_ASSESSMENT_REQUIRED",
+          "A current supported recording assessment is required.",
+        );
+      }
+
+      let interpretation: ReturnType<typeof interpretRecordingAssessment>;
+      try {
+        interpretation = interpretRecordingAssessment(assessment);
+      } catch {
+        return fail(
+          "V2_SAFETY_ASSESSMENT_INVALID",
+          "The current recording assessment is invalid.",
+        );
+      }
+      let expectedLocation: RecordingLocationChoice;
+      let expectedLocationSnapshotHash: string;
+      if (interpretation.kind === "V2") {
+        if (
+          interpretation.canonical.scopeHash !== assessment.scopeHash ||
+          interpretation.canonical.assessment.derived.participantPolicyStatus !== "SUPPORTED"
+        ) {
+          fail(
+            interpretation.canonical.assessment.derived.participantPolicyStatus === "SUPPORTED"
+              ? "V2_SAFETY_ASSESSMENT_INVALID"
+              : "V2_SAFETY_PLAN_CHANGE_REQUIRED",
+            "The current recording assessment cannot authorize a safety check.",
+          );
+        }
+        expectedLocation = internalLocationType(
+          interpretation.canonical.assessment.location.type,
+        );
+        expectedLocationSnapshotHash =
+          interpretation.canonical.assessment.location.snapshotEvidenceHash;
+      } else if (interpretation.kind === "SIMPLIFIED_V1" && simplifiedSafetyEnabled) {
+        const normalizedLocation = normalizeRecordingLocationChoice(
+          interpretation.canonical.recordingLocation,
+        );
+        if (!normalizedLocation) {
+          fail("V2_SAFETY_LOCATION_TYPE_INVALID", "The recording location is invalid.");
+        }
+        expectedLocation = normalizedLocation;
+        expectedLocationSnapshotHash =
+          interpretation.canonical.locationSnapshotEvidenceHash;
+      } else {
+        return fail(
+          "V2_SAFETY_ASSESSMENT_REQUIRED",
+          "A current supported recording assessment is required.",
         );
       }
 
@@ -194,7 +232,6 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
         fail("V2_SAFETY_ASSIGNMENT_STALE", "The employee assignment is missing or stale.");
       }
 
-      const expectedLocation = internalLocationType(canonicalAssessment.assessment.location.type);
       if (normalizeRecordingLocationChoice(assessment.locationType) !== expectedLocation) {
         fail("V2_SAFETY_LOCATION_BINDING_INVALID", "The assessment location binding is invalid.");
       }
@@ -202,7 +239,7 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
       if (
         !location.ok ||
         !location.snapshot.snapshotEvidenceHash ||
-        location.snapshot.snapshotEvidenceHash !== canonicalAssessment.assessment.location.snapshotEvidenceHash
+        location.snapshot.snapshotEvidenceHash !== expectedLocationSnapshotHash
       ) {
         fail("V2_SAFETY_LOCATION_BINDING_INVALID", "The location evidence is missing or stale.");
       }
@@ -289,7 +326,7 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
       const predecessor = chainRows[chainRows.length - 1] || null;
       const createdAt = (input.now || new Date()).toISOString();
       const canonical = parseEmployeeRecordingSafetyEvidence({
-        contractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+        contractVersion: safetyContractVersion,
         sequence: (predecessor?.sequence || 0) + 1,
         workRecord: { bookingId: booking.id, vendorId: input.vendorId },
         assessment: {
@@ -327,7 +364,7 @@ export async function appendEmployeeRecordingSafetyEvidence(input: {
           locationAttemptEvidenceHash: locationAttempt.evidenceHash,
           membershipId: membership.id,
           assignmentGeneration,
-          safetyContractVersion: EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+          safetyContractVersion,
           checkType: input.checkType,
           stage: input.stage,
           result: canonical.evidence.result,

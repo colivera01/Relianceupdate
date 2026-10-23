@@ -51,12 +51,15 @@ import {
 } from "@/lib/recording/assessment-v2";
 import {
   EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION,
   parseEmployeeRecordingSafetyEvidence,
 } from "@/lib/recording/employee-safety";
 import {
   buildV2StageLocationEvidence,
+  SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
   V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
 } from "@/lib/recording/v2-safety-location";
+import { deriveRecordingScopeAssessment } from "@/lib/recording/scope-assessment";
 
 const metadata = JSON.stringify({
   vendor_job_assigned_membership_ids: ["member-1"],
@@ -197,6 +200,34 @@ const v2Assessment = {
   authorities: [{ authorityType: "VENDOR_MANAGER", required: true, status: "VERIFIED" }],
 };
 
+const parsedSimplifiedAssessment = deriveRecordingScopeAssessment(
+  {
+    recordingLocation: "business",
+    intentionalParticipantPlan: "assigned_service_professional",
+    audioRequested: false,
+  },
+  {
+    locationSnapshotEvidenceHash: v2Location.snapshotEvidenceHash,
+    generation: 1,
+    completedByUserId: "manager-user-1",
+    completedAt: new Date("2026-10-22T12:00:00.000Z"),
+  },
+);
+const simplifiedAssessment = {
+  ...assessment,
+  id: "assessment-simplified",
+  generation: 1,
+  contractVersion: parsedSimplifiedAssessment.contractVersion,
+  locationType: "business",
+  authorityHolderType: "vendor_manager",
+  subjectJson: parsedSimplifiedAssessment.subjectJson,
+  scopeJson: parsedSimplifiedAssessment.scopeJson,
+  scopeHash: parsedSimplifiedAssessment.scopeHash,
+  permissionRequired: false,
+  serviceCanContinueWithoutRecording: false,
+  authorities: [{ authorityType: "VENDOR_MANAGER", required: true, status: "VERIFIED" }],
+};
+
 const v2LocationAttemptBase = {
   id: "location-attempt-v2",
   bookingId: "booking-1",
@@ -244,6 +275,24 @@ const v2LocationAttempt = {
   evidenceHash: v2LocationAttemptCanonical.evidenceHash,
 };
 
+const simplifiedLocationAttemptBase = {
+  ...v2LocationAttemptBase,
+  id: "location-attempt-simplified",
+  assessmentId: simplifiedAssessment.id,
+  assessmentGeneration: simplifiedAssessment.generation,
+};
+const simplifiedLocationAttemptCanonical = buildV2StageLocationEvidence({
+  ...simplifiedLocationAttemptBase,
+  attemptId: simplifiedLocationAttemptBase.id,
+  evidenceVersion: SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+});
+const simplifiedLocationAttempt = {
+  ...simplifiedLocationAttemptBase,
+  evidenceVersion: SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+  canonicalJson: simplifiedLocationAttemptCanonical.canonicalJson,
+  evidenceHash: simplifiedLocationAttemptCanonical.evidenceHash,
+};
+
 function storedV2Safety(input: {
   result?: "READY" | "BLOCKED" | "MATERIAL_SCOPE_CHANGE_REQUIRED";
   issues?: string[];
@@ -277,6 +326,69 @@ function storedV2Safety(input: {
   });
   return {
     id: "safety-v2",
+    bookingId: parsed.evidence.workRecord.bookingId,
+    vendorId: parsed.evidence.workRecord.vendorId,
+    assessmentId: parsed.evidence.assessment.id,
+    assessmentGeneration: parsed.evidence.assessment.generation,
+    assessmentContractVersion: parsed.evidence.assessment.contractVersion,
+    assessmentScopeHash: parsed.evidence.assessment.scopeHash,
+    locationSnapshotEvidenceHash: parsed.evidence.location.snapshotEvidenceHash,
+    locationAttemptId: parsed.evidence.location.attemptId,
+    locationAttemptEvidenceHash: parsed.evidence.location.attemptEvidenceHash,
+    membershipId: parsed.evidence.employee.membershipId,
+    assignmentGeneration: parsed.evidence.employee.assignmentGeneration,
+    safetyContractVersion: parsed.evidence.contractVersion,
+    checkType: parsed.evidence.check.type,
+    stage: parsed.evidence.check.stage,
+    result: parsed.evidence.result,
+    issueCodesJson: parsed.issueCodesJson,
+    sequence: parsed.evidence.sequence,
+    predecessorEvidenceId: null,
+    predecessorEvidenceHash: null,
+    submissionRequestHash: parsed.evidence.submission?.requestHash || null,
+    submissionBodyHash: parsed.evidence.submission?.bodyHash || null,
+    canonicalJson: parsed.canonicalJson,
+    evidenceHash: parsed.evidenceHash,
+    createdAt: parsed.evidence.createdAt,
+  };
+}
+
+function storedSimplifiedSafety(input: {
+  membershipId?: string;
+  assignmentGeneration?: number;
+  assessmentHash?: string;
+  locationHash?: string;
+} = {}) {
+  const parsed = parseEmployeeRecordingSafetyEvidence({
+    contractVersion:
+      EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION,
+    sequence: 1,
+    workRecord: { bookingId: "booking-1", vendorId: "vendor-1" },
+    assessment: {
+      id: simplifiedAssessment.id,
+      generation: simplifiedAssessment.generation,
+      contractVersion: simplifiedAssessment.contractVersion,
+      scopeHash: input.assessmentHash || simplifiedAssessment.scopeHash,
+    },
+    location: {
+      snapshotEvidenceHash:
+        input.locationHash || v2Location.snapshotEvidenceHash,
+      attemptId: simplifiedLocationAttempt.id,
+      attemptEvidenceHash: simplifiedLocationAttempt.evidenceHash,
+    },
+    employee: {
+      membershipId: input.membershipId || "member-1",
+      assignmentGeneration: input.assignmentGeneration || 1,
+    },
+    check: { type: "INITIAL", stage: "SERVICE_ORDER" },
+    issues: [],
+    result: "READY",
+    submission: { requestHash: "f".repeat(64), bodyHash: "a".repeat(64) },
+    predecessor: null,
+    createdAt: "2026-10-22T12:10:00.000Z",
+  });
+  return {
+    id: "safety-simplified",
     bookingId: parsed.evidence.workRecord.bookingId,
     vendorId: parsed.evidence.workRecord.vendorId,
     assessmentId: parsed.evidence.assessment.id,
@@ -646,6 +758,47 @@ describe("database-backed canonical recording gate", () => {
           ready: true,
           stage: "SERVICE_ORDER",
           evidenceId: "safety-v2",
+        },
+      });
+    }
+  });
+
+  it("uses one exact-context safety and location baseline for all simplified Service Video stages", async () => {
+    const simplifiedMetadata = JSON.stringify({
+      ...JSON.parse(v2Location.metadata),
+      vendor_job_employee_recording_participation_contract_version:
+        "employee-recording-participation-v1",
+    });
+    db.assessmentFindFirst.mockResolvedValue(simplifiedAssessment);
+    db.consentFindFirst.mockResolvedValue(null);
+
+    const missing = await load({
+      customerMetadata: simplifiedMetadata,
+      recordingStage: "INTRO",
+    });
+    expect(missing).toMatchObject({
+      recordingUnlocked: false,
+      serviceOrderSafetyRequired: true,
+      blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+      v2Safety: { required: true, ready: false, stage: "SERVICE_ORDER" },
+    });
+
+    db.safetyFindMany.mockResolvedValue([storedSimplifiedSafety()]);
+    db.locationAttemptFindFirst.mockResolvedValue(simplifiedLocationAttempt);
+    for (const recordingStage of ["INTRO", "IN_PROGRESS", "COMPLETED"]) {
+      const ready = await load({
+        customerMetadata: simplifiedMetadata,
+        recordingStage,
+      });
+      expect(ready).toMatchObject({
+        recordingUnlocked: true,
+        serviceOrderSafetyRequired: true,
+        blockCode: null,
+        v2Safety: {
+          required: true,
+          ready: true,
+          evidenceId: "safety-simplified",
+          stage: "SERVICE_ORDER",
         },
       });
     }

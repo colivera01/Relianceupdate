@@ -81,6 +81,8 @@ type RecordingComplianceState = {
   assessmentId?: string | null;
   riskLevel?: string | null;
   certificationActive?: boolean;
+  serviceOrderSafetyRequired?: boolean;
+  serviceOrderSafetyComplete?: boolean;
   serviceLocation?: string | null;
   serviceLocationType?: RecordingLocationChoice | null;
   scopeSummary?: {
@@ -640,7 +642,9 @@ export default function EmployeeJobsPage() {
       setError(json?.error || "Could not save the recording-scope confirmation.");
       return;
     }
-    setActionMessage("Recording scope confirmed. Location will be checked when you open a stage.");
+    setActionMessage(
+      "Recording scope confirmed. Start the one-time safety and location check next.",
+    );
     await loadJobs();
   };
 
@@ -1252,13 +1256,16 @@ export default function EmployeeJobsPage() {
     setError(null);
     setActionMessage(null);
     setRecordingOpeningKey(nextRecordingKey);
-    const usesV2StageSafety = Boolean(job.recordingCompliance?.v2ServiceOrder);
-    const needsLocationProof = !usesV2StageSafety && employeePhoneLocationRequired(job);
+    const usesServiceOrderSafety = Boolean(
+      job.recordingCompliance?.serviceOrderSafetyRequired,
+    );
+    const needsLocationProof =
+      !usesServiceOrderSafety && employeePhoneLocationRequired(job);
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
         status: "uploading",
-        message: usesV2StageSafety
+        message: usesServiceOrderSafety
           ? "Confirming the current Service Order safety and location check."
           : needsLocationProof
             ? "Checking location before opening the camera."
@@ -1267,7 +1274,7 @@ export default function EmployeeJobsPage() {
     }));
     clearCapturedDraft();
     let locationProof: LocationProof | null = null;
-    if (usesV2StageSafety) {
+    if (usesServiceOrderSafety) {
       try {
         const accessResponse = await fetch(
           `/api/employee/jobs/${encodeURIComponent(job.id)}/recording-access`,
@@ -1520,8 +1527,15 @@ export default function EmployeeJobsPage() {
     const completedStageCount = getCompletedEmployeeCaptureCount(job.stageProgress);
     const participationStatus = job.recordingCompliance?.employeeParticipation?.status || "REQUIRED";
     const participationComplete = ["ALLOWED", "NOT_REQUIRED"].includes(participationStatus);
+    const scopeConfirmed = job.recordingCompliance?.certificationActive === true;
+    const serviceOrderSafetyRequired =
+      job.recordingCompliance?.serviceOrderSafetyRequired === true;
     const safetyAndLocationComplete =
-      participationComplete && (selectedStageAccess.recordingUnlocked || completedStageCount > 0);
+      participationComplete &&
+      scopeConfirmed &&
+      (serviceOrderSafetyRequired
+        ? job.recordingCompliance?.serviceOrderSafetyComplete === true
+        : selectedStageAccess.recordingUnlocked || completedStageCount > 0);
     const compatibilityServiceOrder = !job.recordingCompliance?.v2ServiceOrder;
     const legalAssentContextKey = [
       job.recordingCompliance?.assessmentId || "assessment-pending",
@@ -1537,6 +1551,7 @@ export default function EmployeeJobsPage() {
     const requiredServiceOrderSteps = buildEmployeeServiceOrderSteps({
       legalAssentCurrent,
       participationStatus,
+      scopeConfirmed,
       safetyAndLocationComplete,
       completedStageCount,
       totalStageCount: STAGES.length,
@@ -1561,6 +1576,12 @@ export default function EmployeeJobsPage() {
       !isRecordingSelectedStage &&
       ["error", "retry_required", "rejected"].includes(selectedStageFeedback?.status || "");
     const countdownIsUrgent = recordingSecondsLeft <= 10;
+    const showServiceOrderSafetyCheck =
+      !historyMode &&
+      hasCaptureToken &&
+      serviceOrderSafetyRequired &&
+      scopeConfirmed &&
+      ((selectedStageBlocked && selectedStageSafetyResolvable) || safetyRecheckRequested);
 
     return (
       <Fragment key={job.id}>
@@ -1872,6 +1893,7 @@ export default function EmployeeJobsPage() {
               );
               await loadJobs();
             }}
+            scopeConfirmed={scopeConfirmed}
             safetyAndLocationComplete={safetyAndLocationComplete}
             completedStageCount={completedStageCount}
             totalStageCount={STAGES.length}
@@ -1916,15 +1938,6 @@ export default function EmployeeJobsPage() {
                 ? "The service may continue without recording while this is resolved."
                 : "Do not continue this service step until the block is resolved."}
             </p> : null}
-            {canonicalBlock.code === "EMPLOYEE_CERTIFICATION_REQUIRED" ? (
-              <button
-                type="button"
-                onClick={() => void certifyRecordingScope(job.id)}
-                className="mt-3 rounded-lg bg-amber-900 px-4 py-2 text-sm font-bold text-white"
-              >
-                Confirm Recording Scope
-              </button>
-            ) : null}
             {!job.recordingCompliance?.v2ServiceOrder && job.membershipId && [
               "EMPLOYEE_RECORDING_PARTICIPATION_REQUIRED",
               "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED",
@@ -1995,6 +2008,16 @@ export default function EmployeeJobsPage() {
             <p className="mt-1 text-xs leading-5 text-blue-100/80">
               Do not record minors, unrelated people or conversations, private documents or screens, sensitive account information, credentials, keys, security details, confidential information, or anything outside this scope. Stop if conditions change.
             </p>
+            {canonicalBlock?.code === "EMPLOYEE_CERTIFICATION_REQUIRED" ? (
+              <button
+                type="button"
+                onClick={() => void certifyRecordingScope(job.id)}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-500 sm:w-auto"
+              >
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Confirm this recording scope
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -2010,8 +2033,29 @@ export default function EmployeeJobsPage() {
           </div>
         ) : null}
 
+        {showServiceOrderSafetyCheck && !safetyRecheckRequested ? (
+          <div className="mt-3 rounded-xl border border-blue-300/45 bg-blue-600/15 px-4 py-4 text-blue-50">
+            <p className="text-base font-bold">Next: complete one safety and location check</p>
+            <p className="mt-1 text-sm leading-6 text-blue-50/80">
+              This single check unlocks Starting Condition, Work in Progress, and Final Result while the Service Order conditions remain unchanged.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById(`service-order-safety-${job.id}`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-500 sm:w-auto"
+            >
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Start safety and location check
+            </button>
+          </div>
+        ) : null}
+
         {!historyMode &&
-        job.recordingCompliance?.v2ServiceOrder &&
+        serviceOrderSafetyRequired &&
         !selectedStageBlocked &&
         !awaitingManagerReview ? (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-300/25 bg-blue-950/30 px-4 py-3 text-blue-50">
@@ -2049,6 +2093,21 @@ export default function EmployeeJobsPage() {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            {showServiceOrderSafetyCheck ? (
+              <EmployeeStageSafetyCheck
+                bookingId={job.id}
+                stage={selectedStage.key}
+                serviceLocation={job.recordingCompliance?.serviceLocation}
+                headers={employeeRequestHeaders()}
+                onComplete={async () => {
+                  setSafetyRecheckJobId(null);
+                  setActionMessage(
+                    "Safety and location checks passed for this Service Order. All three video stages can use this check while conditions remain unchanged.",
+                  );
+                  await loadJobs();
+                }}
+              />
+            ) : null}
             {correctionRequested ? (
               <div className="rounded-2xl border border-amber-300/35 bg-amber-300/12 px-4 py-3 text-amber-50">
                 <p className="text-sm font-bold">Manager requested changes</p>
@@ -2074,6 +2133,7 @@ export default function EmployeeJobsPage() {
                 const stageAccess = getStageRecordingAccess(job, stage.key);
                 const stageBlocked = !stageAccess.recordingUnlocked;
                 const stageCanResolveLocation =
+                  !serviceOrderSafetyRequired &&
                   stageAccess.canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
                 const stageCanResolveSafety = isEmployeeStageSafetyResolvableBlock(
                   stageAccess.canonicalBlock?.code,
@@ -2102,7 +2162,7 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={
-                      (stageBlocked && !stageCanResolveLocation && !stageCanResolveSafety) ||
+                      (stageBlocked && (!stageCanResolveLocation || serviceOrderSafetyRequired)) ||
                       safetyRecheckRequested ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
@@ -2154,7 +2214,7 @@ export default function EmployeeJobsPage() {
                                   : "Correction requested - tap to record"
                             : stageBlocked
                             ? stageCanResolveSafety
-                              ? "Complete Service Order check"
+                              ? "Locked until the one-time check"
                               : stageCanResolveLocation
                                 ? "Verify location to record"
                                 : "Recording locked"
@@ -2226,25 +2286,6 @@ export default function EmployeeJobsPage() {
                     ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
                     : captureSupportCopy}
               </p>
-
-              {((selectedStageBlocked && selectedStageSafetyResolvable) || safetyRecheckRequested) &&
-              hasCaptureToken &&
-              job.recordingCompliance?.v2ServiceOrder ? (
-                <EmployeeStageSafetyCheck
-                  bookingId={job.id}
-                  stage={selectedStage.key}
-                  stageLabel={selectedStage.label}
-                  serviceLocation={job.recordingCompliance.serviceLocation}
-                  headers={employeeRequestHeaders()}
-                  onComplete={async () => {
-                    setSafetyRecheckJobId(null);
-                    setActionMessage(
-                      "Safety and location checks passed for this Service Order. All three video stages can use this check while conditions remain unchanged.",
-                    );
-                    await loadJobs();
-                  }}
-                />
-              ) : null}
 
               {selectedStageDone ? (
                 <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3">

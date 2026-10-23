@@ -21,6 +21,7 @@ export type EmployeeServiceOrderStep = {
 export function buildEmployeeServiceOrderSteps(input: {
   legalAssentCurrent: boolean | null;
   participationStatus: EmployeeParticipationStatus;
+  scopeConfirmed: boolean;
   safetyAndLocationComplete: boolean;
   completedStageCount: number;
   totalStageCount: number;
@@ -60,15 +61,28 @@ export function buildEmployeeServiceOrderSteps(input: {
             : "waiting",
     },
     {
-      label: "Safety and location check",
-      detail: input.safetyAndLocationComplete
-        ? "The current safety and location check is complete."
+      label: "Confirm recording scope",
+      detail: input.scopeConfirmed
+        ? "You confirmed the approved people, area, audio setting, and recording limits."
         : input.legalAssentCurrent && participationComplete
-          ? "Complete the acknowledgments and verify the service location before recording."
+          ? "Review the approved recording scope below, then confirm it before the safety and location check."
           : "Available after recording participation is allowed.",
-      state: input.safetyAndLocationComplete
+      state: input.scopeConfirmed
         ? "complete"
         : input.legalAssentCurrent && participationComplete
+          ? "current"
+          : "waiting",
+    },
+    {
+      label: "Safety and location check",
+      detail: input.safetyAndLocationComplete
+        ? "One current check covers all three videos while the Service Order conditions remain unchanged."
+        : input.scopeConfirmed
+          ? "Select Start safety and location check, complete the acknowledgments, and verify the service location once."
+          : "Available after the recording scope is confirmed.",
+      state: input.safetyAndLocationComplete
+        ? "complete"
+        : input.scopeConfirmed
           ? "current"
           : "waiting",
     },

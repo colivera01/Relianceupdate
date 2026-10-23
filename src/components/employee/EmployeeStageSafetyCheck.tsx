@@ -59,7 +59,6 @@ function newRequestId(): string {
 export function EmployeeStageSafetyCheck(props: {
   bookingId: string;
   stage: RecordingStage;
-  stageLabel: string;
   serviceLocation: string | null | undefined;
   headers: Record<string, string>;
   onComplete: () => void | Promise<void>;
@@ -151,6 +150,7 @@ export function EmployeeStageSafetyCheck(props: {
 
   return (
     <section
+      id={`service-order-safety-${props.bookingId}`}
       className="mt-4 rounded-2xl border border-blue-300/35 bg-blue-950/45 p-4 text-blue-50"
       aria-labelledby={`stage-safety-${props.bookingId}-${props.stage}`}
     >
@@ -161,7 +161,7 @@ export function EmployeeStageSafetyCheck(props: {
             Complete the Service Order safety and location check
           </h4>
           <p className="mt-1 text-sm leading-6 text-blue-50/80">
-            Confirm these conditions once before {props.stageLabel}. The same check supports all three Service Videos while the assigned employee, recording scope, service location, and conditions remain unchanged.
+            Confirm these conditions once before recording. The same check supports all three Service Videos while the assigned employee, recording scope, service location, and conditions remain unchanged.
           </p>
           {props.serviceLocation ? (
             <p className="mt-2 flex items-start gap-2 text-sm font-semibold text-emerald-100">

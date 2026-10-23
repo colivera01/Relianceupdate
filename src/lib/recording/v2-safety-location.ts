@@ -15,12 +15,15 @@ export const V2_STAGE_LOCATION_EVIDENCE_VERSION =
   "recording-location-attempt-v2-stage-safety-v2" as const;
 export const V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION =
   "recording-location-attempt-v2-service-order-safety-v1" as const;
+export const SERVICE_ORDER_LOCATION_EVIDENCE_VERSION =
+  "recording-location-attempt-service-order-safety-v2" as const;
 export const V2_STAGE_LOCATION_MAX_AGE_MS = 5 * 60 * 1000;
 
 const V2_STAGE_LOCATION_EVIDENCE_VERSIONS = new Set<string>([
   V2_STAGE_LOCATION_EVIDENCE_LEGACY_VERSION,
   V2_STAGE_LOCATION_EVIDENCE_VERSION,
   V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
+  SERVICE_ORDER_LOCATION_EVIDENCE_VERSION,
 ]);
 const V2_STAGE_LOCATION_COORDINATE_DECIMALS = 7;
 
@@ -120,6 +123,7 @@ export function buildV2StageLocationEvidence(input: V2StageLocationIdentity & {
 }
 
 export async function persistV2StageLocationAttempt(input: V2StageLocationIdentity & {
+  evidenceVersion?: string;
   actorUserId: string | null;
   proof: RecordingLocationProof;
   result: RecordingLocationVerification;
@@ -177,9 +181,10 @@ export async function persistV2StageLocationAttempt(input: V2StageLocationIdenti
       actorUserId: input.actorUserId,
       attemptedAt,
       evidenceVersion:
-        input.stage === "SERVICE_ORDER"
+        input.evidenceVersion ||
+        (input.stage === "SERVICE_ORDER"
           ? V2_SERVICE_ORDER_LOCATION_EVIDENCE_VERSION
-          : V2_STAGE_LOCATION_EVIDENCE_VERSION,
+          : V2_STAGE_LOCATION_EVIDENCE_VERSION),
       canonicalJson: canonical.canonicalJson,
       evidenceHash: canonical.evidenceHash,
     },

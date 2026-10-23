@@ -30,6 +30,7 @@ export function EmployeeV2ServiceOrderPanel(props: {
   onCancel: () => void;
   onComplete: (body: any) => void | Promise<void>;
   onLegalAssented: () => void | Promise<void>;
+  scopeConfirmed: boolean;
   safetyAndLocationComplete: boolean;
   completedStageCount: number;
   totalStageCount: number;
@@ -40,6 +41,7 @@ export function EmployeeV2ServiceOrderPanel(props: {
   const requiredSteps = buildEmployeeServiceOrderSteps({
     legalAssentCurrent,
     participationStatus: status,
+    scopeConfirmed: props.scopeConfirmed,
     safetyAndLocationComplete: props.safetyAndLocationComplete,
     completedStageCount: props.completedStageCount,
     totalStageCount: props.totalStageCount,

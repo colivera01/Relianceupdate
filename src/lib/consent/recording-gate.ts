@@ -15,8 +15,8 @@ import {
   type AuthorityValidationResult,
 } from "./authority-validation";
 import {
-  EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
-  resolveV2StageSafetyReadiness,
+  isServiceOrderSafetyContractVersion,
+  resolveServiceOrderSafetyReadiness,
   type V2StageSafetyReadiness,
 } from "@/lib/recording/employee-safety";
 import {
@@ -24,6 +24,7 @@ import {
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
 } from "@/lib/recording/assessment-v2";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import { SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION } from "@/lib/recording/scope-assessment";
 import { validateV2SafetyLocationAttempt } from "@/lib/recording/v2-safety-location";
 import { resolveV2CustomerRecordingAuthorization } from "@/lib/recording/v2-customer-recording-authorization";
 import {
@@ -122,6 +123,7 @@ export type RecordingPermissionGate = {
   locationExceptionId: string | null;
   workRecordStatus: string | null;
   correctionRequestedStages: RecordingStage[];
+  serviceOrderSafetyRequired: boolean;
   employeeParticipation?: EmployeeRecordingParticipationResolution;
   v2Safety?: V2StageSafetyReadiness;
   blockCode: string | null;
@@ -310,6 +312,7 @@ export function resolveRecordingPermissionGate(input: {
     locationExceptionId: null,
     workRecordStatus: null,
     correctionRequestedStages: [],
+    serviceOrderSafetyRequired: false,
     blockCode,
     blockMessage: block ? `${block.why} ${block.resolution}` : null,
     block,
@@ -524,6 +527,11 @@ export async function loadCanonicalRecordingGate(input: {
     })
     : null;
   const capability = input.capability || "record";
+  const serviceOrderSafetyRequired = Boolean(
+    assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION ||
+      (assessment?.contractVersion === SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION &&
+        employeeRecordingParticipationContractEnabled(authoritativeMetadata)),
+  );
   const employeeParticipation =
     assessment &&
     (employeeRecordingParticipationContractEnabled(authoritativeMetadata) ||
@@ -538,7 +546,7 @@ export async function loadCanonicalRecordingGate(input: {
       : undefined;
   const safetyRows =
     capability === "record" &&
-    assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+    serviceOrderSafetyRequired &&
     db.employeeRecordingSafetyEvidence?.findMany
       ? await db.employeeRecordingSafetyEvidence.findMany({
           where: {
@@ -549,8 +557,8 @@ export async function loadCanonicalRecordingGate(input: {
       : [];
   let v2Safety =
     capability === "record" &&
-    assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
-      ? resolveV2StageSafetyReadiness({
+    serviceOrderSafetyRequired
+      ? resolveServiceOrderSafetyReadiness({
           bookingId: input.bookingId,
           vendorId: input.vendorId || assessment.vendorId,
           assessment,
@@ -581,8 +589,7 @@ export async function loadCanonicalRecordingGate(input: {
           : "",
         now: input.now,
         enforceFreshness:
-          v2Safety.safetyContractVersion !==
-          EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION,
+          !isServiceOrderSafetyContractVersion(v2Safety.safetyContractVersion),
       });
       if (validated.evidenceHash !== v2Safety.locationAttemptEvidenceHash) {
         throw new Error("V2_LOCATION_EVIDENCE_HASH_MISMATCH");
@@ -596,9 +603,10 @@ export async function loadCanonicalRecordingGate(input: {
       };
     }
   }
-  const usesV2Safety = assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
-  const authoritativeLocationAttempt = usesV2Safety ? v2LocationAttempt : locationAttempt;
-  const authoritativeLocationException = usesV2Safety ? null : locationException;
+  const authoritativeLocationAttempt = serviceOrderSafetyRequired
+    ? v2LocationAttempt
+    : locationAttempt;
+  const authoritativeLocationException = serviceOrderSafetyRequired ? null : locationException;
   const v2AudioScopeValid = (() => {
     if (assessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) return true;
     try {
@@ -683,6 +691,7 @@ export async function loadCanonicalRecordingGate(input: {
     locationExceptionId: authoritativeLocationException?.id || null,
     workRecordStatus,
     correctionRequestedStages,
+    serviceOrderSafetyRequired,
     ...(employeeParticipation ? { employeeParticipation } : {}),
     ...(v2Safety ? { v2Safety } : {}),
   };
@@ -940,7 +949,7 @@ export async function loadCanonicalRecordingGate(input: {
       decision = blocked(base, {
         code: v2Safety.code || "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
         why: materialChange
-          ? "The onsite recording plan would expand or conflict with the approved V2 recording scope."
+          ? "The onsite recording plan would expand or conflict with the approved recording scope."
           : v2Safety.code === "V2_RUNTIME_SAFETY_BLOCKED"
             ? "The latest employee runtime-safety check found an unresolved condition."
             : currentBindingRequired

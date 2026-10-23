@@ -5,6 +5,8 @@ import {
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
   stableJsonV2,
 } from "./assessment-v2";
+import { interpretRecordingAssessment } from "./assessment-reader";
+import { SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION } from "./scope-assessment";
 
 export const EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION =
   "employee-pre-recording-safety-v1" as const;
@@ -12,6 +14,8 @@ export const EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION =
   "employee-pre-recording-safety-v2" as const;
 export const EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION =
   "employee-service-order-safety-v1" as const;
+export const EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION =
+  "employee-service-order-safety-v2" as const;
 
 export const EMPLOYEE_RECORDING_SAFETY_CHECK_TYPES = ["INITIAL", "STAGE_RECHECK"] as const;
 export const EMPLOYEE_RECORDING_SAFETY_STAGES = [
@@ -52,7 +56,8 @@ export type EmployeeRecordingSafetyEvidence = {
   contractVersion:
     | typeof EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION
     | typeof EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
-    | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION;
+    | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION
+    | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION;
   sequence: number;
   workRecord: {
     bookingId: string;
@@ -61,7 +66,9 @@ export type EmployeeRecordingSafetyEvidence = {
   assessment: {
     id: string;
     generation: number;
-    contractVersion: typeof RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+    contractVersion:
+      | typeof RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+      | typeof SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION;
     scopeHash: string;
   };
   location: {
@@ -228,7 +235,7 @@ function validateStageCheckPair(
   checkType: EmployeeRecordingSafetyCheckType,
   stage: EmployeeRecordingSafetyStage,
 ) {
-  if (contractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION) {
+  if (isServiceOrderSafetyContractVersion(contractVersion)) {
     if (stage === "SERVICE_ORDER" && checkType !== "INITIAL") {
       invalid("CHECK_STAGE_MISMATCH", "The Service Order baseline requires an INITIAL safety check.");
     }
@@ -297,7 +304,7 @@ export function parseEmployeeRecordingSafetyEvidence(
   );
   const hardened =
     input.contractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION ||
-    input.contractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION;
+    isServiceOrderSafetyContractVersion(String(input.contractVersion || ""));
   if (!hardened && input.contractVersion !== EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION) {
     invalid("CONTRACT_VERSION_MISMATCH", "The employee runtime-safety contract is required.");
   }
@@ -311,8 +318,16 @@ export function parseEmployeeRecordingSafetyEvidence(
     ["id", "generation", "contractVersion", "scopeHash"],
     "assessment",
   );
-  if (assessment.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
-    invalid("ASSESSMENT_VERSION_MISMATCH", "Safety evidence requires the V2 assessment contract.");
+  const expectedAssessmentContract =
+    input.contractVersion ===
+    EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION
+      ? SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION
+      : RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+  if (assessment.contractVersion !== expectedAssessmentContract) {
+    invalid(
+      "ASSESSMENT_VERSION_MISMATCH",
+      "Safety evidence does not match its approved assessment contract.",
+    );
   }
 
   const location = objectValue(input.location, "location");
@@ -380,7 +395,7 @@ export function parseEmployeeRecordingSafetyEvidence(
     assessment: {
       id: identifier(assessment.id, "assessment.id"),
       generation: positiveInteger(assessment.generation, "assessment.generation"),
-      contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+      contractVersion: expectedAssessmentContract,
       scopeHash: hashValue(assessment.scopeHash, "assessment.scopeHash"),
     },
     location: {
@@ -445,6 +460,32 @@ export function serviceOrderSafetyRequirement(): {
   return { stage: "SERVICE_ORDER", checkType: "INITIAL" };
 }
 
+export function isServiceOrderSafetyContractVersion(
+  value: string | null | undefined,
+): value is
+  | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION
+  | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION {
+  return (
+    value === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION ||
+    value === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION
+  );
+}
+
+export function serviceOrderSafetyContractForAssessment(
+  contractVersion: string | null | undefined,
+):
+  | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION
+  | typeof EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION
+  | null {
+  if (contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
+    return EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION;
+  }
+  if (contractVersion === SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION) {
+    return EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_SIMPLIFIED_CONTRACT_VERSION;
+  }
+  return null;
+}
+
 export function employeeSafetyChainKey(input: {
   bookingId: string;
   vendorId: string;
@@ -480,7 +521,7 @@ export function storedSafetyEvidenceToCanonicalInput(
       id: row.assessmentId,
       generation: row.assessmentGeneration,
       contractVersion:
-        row.assessmentContractVersion as typeof RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+        row.assessmentContractVersion as EmployeeRecordingSafetyEvidence["assessment"]["contractVersion"],
       scopeHash: row.assessmentScopeHash,
     },
     location: {
@@ -556,7 +597,7 @@ function blockedReadiness(
   };
 }
 
-export function resolveV2StageSafetyReadiness(input: {
+export function resolveServiceOrderSafetyReadiness(input: {
   bookingId: string;
   vendorId: string;
   assessment: {
@@ -565,6 +606,7 @@ export function resolveV2StageSafetyReadiness(input: {
     contractVersion: string | null;
     scopeHash: string;
     scopeJson: string;
+    subjectJson: string;
     status?: string | null;
   } | null;
   membershipId: string | null | undefined;
@@ -573,38 +615,55 @@ export function resolveV2StageSafetyReadiness(input: {
   recordingStage: string | null | undefined;
   evidence: StoredEmployeeRecordingSafetyEvidence[];
 }): V2StageSafetyReadiness {
-  if (input.assessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
+  const assessment = input.assessment;
+  const serviceOrderContractVersion = serviceOrderSafetyContractForAssessment(
+    assessment?.contractVersion,
+  );
+  if (!assessment || !serviceOrderContractVersion) {
     return notRequired();
   }
   const requirement = requiredSafetyCheckForStage(input.recordingStage);
   if (!requirement) return blockedReadiness("V2_RUNTIME_SAFETY_STAGE_REQUIRED", requirement);
-  if (input.assessment.status && input.assessment.status !== "COMPLETE") {
+  if (assessment.status && assessment.status !== "COMPLETE") {
     return blockedReadiness("V2_RUNTIME_SAFETY_ASSESSMENT_INVALID", requirement);
   }
 
-  let parsedAssessment;
+  let parsedLocationSnapshotEvidenceHash = "";
   try {
-    parsedAssessment = parseRecordingAssessmentV2(JSON.parse(input.assessment.scopeJson));
+    if (assessment.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) {
+      const parsedAssessment = parseRecordingAssessmentV2(JSON.parse(assessment.scopeJson));
+      if (
+        parsedAssessment.scopeJson !== assessment.scopeJson ||
+        parsedAssessment.scopeHash !== assessment.scopeHash ||
+        parsedAssessment.assessment.derived.participantPolicyStatus !== "SUPPORTED"
+      ) {
+        return blockedReadiness(
+          parsedAssessment.assessment.derived.participantPolicyStatus === "SUPPORTED"
+            ? "V2_RUNTIME_SAFETY_ASSESSMENT_INVALID"
+            : "V2_RUNTIME_SAFETY_PLAN_CHANGE_REQUIRED",
+          requirement,
+        );
+      }
+      parsedLocationSnapshotEvidenceHash =
+        parsedAssessment.assessment.location.snapshotEvidenceHash;
+    } else {
+      const interpretation = interpretRecordingAssessment(assessment);
+      if (
+        interpretation.kind !== "SIMPLIFIED_V1" ||
+        interpretation.scopeHash !== assessment.scopeHash
+      ) {
+        return blockedReadiness("V2_RUNTIME_SAFETY_ASSESSMENT_INVALID", requirement);
+      }
+      parsedLocationSnapshotEvidenceHash =
+        interpretation.canonical.locationSnapshotEvidenceHash;
+    }
   } catch {
     return blockedReadiness("V2_RUNTIME_SAFETY_ASSESSMENT_INVALID", requirement);
   }
   if (
-    parsedAssessment.scopeJson !== input.assessment.scopeJson ||
-    parsedAssessment.scopeHash !== input.assessment.scopeHash ||
-    parsedAssessment.assessment.derived.participantPolicyStatus !== "SUPPORTED"
-  ) {
-    return blockedReadiness(
-      parsedAssessment.assessment.derived.participantPolicyStatus === "SUPPORTED"
-        ? "V2_RUNTIME_SAFETY_ASSESSMENT_INVALID"
-        : "V2_RUNTIME_SAFETY_PLAN_CHANGE_REQUIRED",
-      requirement,
-    );
-  }
-  if (
     !input.membershipId ||
     !input.locationSnapshotEvidenceHash ||
-    parsedAssessment.assessment.location.snapshotEvidenceHash !==
-      input.locationSnapshotEvidenceHash
+    parsedLocationSnapshotEvidenceHash !== input.locationSnapshotEvidenceHash
   ) {
     return blockedReadiness("V2_RUNTIME_SAFETY_BINDING_STALE", requirement);
   }
@@ -706,7 +765,7 @@ export function resolveV2StageSafetyReadiness(input: {
   const serviceOrderRequirement = serviceOrderSafetyRequirement();
   const serviceOrderRows = input.evidence.filter(
     (row) =>
-      row.safetyContractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION &&
+      row.safetyContractVersion === serviceOrderContractVersion &&
       row.stage === serviceOrderRequirement.stage &&
       row.checkType === serviceOrderRequirement.checkType,
   );
@@ -721,7 +780,7 @@ export function resolveV2StageSafetyReadiness(input: {
     };
     const matchingStageExceptions = input.evidence.filter(
       (row) =>
-        row.safetyContractVersion === EMPLOYEE_RECORDING_SERVICE_ORDER_SAFETY_CONTRACT_VERSION &&
+        row.safetyContractVersion === serviceOrderContractVersion &&
         row.stage === stageExceptionRequirement.stage &&
         row.checkType === stageExceptionRequirement.checkType &&
         matchesCurrentContext(row),
@@ -738,6 +797,7 @@ export function resolveV2StageSafetyReadiness(input: {
   // rewritten or silently promoted into the new Service Order-level contract.
   const historicalStageRows = input.evidence.filter(
     (row) =>
+      input.assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
       row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION &&
       row.stage === requirement.stage &&
       row.checkType === requirement.checkType,
@@ -753,3 +813,6 @@ export function resolveV2StageSafetyReadiness(input: {
     serviceOrderRequirement,
   );
 }
+
+// Retain the historical export while callers move to the contract-neutral name.
+export const resolveV2StageSafetyReadiness = resolveServiceOrderSafetyReadiness;

@@ -43,6 +43,8 @@ vi.mock("@/lib/job-recording-location", () => ({
 
 vi.mock("@/lib/recording/v2-safety-location", () => ({
   persistV2StageLocationAttempt: mocks.persistV2StageLocationAttempt,
+  SERVICE_ORDER_LOCATION_EVIDENCE_VERSION:
+    "recording-location-attempt-service-order-safety-v2",
 }));
 
 vi.mock("@/lib/consent/recording-gate", () => ({
@@ -78,6 +80,7 @@ describe("employee recording location verification", () => {
         assessmentGeneration: 2,
         assessmentContractVersion: "recording-assessment-v4-multiscope-safety-v1",
         assignmentGeneration: 4,
+        serviceOrderSafetyRequired: true,
         location: "residence",
         blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
         block: {
@@ -92,6 +95,46 @@ describe("employee recording location verification", () => {
         block: { resolution: "Complete a fresh safety and location check for this stage." },
         recordingUnlocked: false,
       });
+  });
+
+  it("uses the shared Service Order location evidence for a simplified assessment", async () => {
+    mocks.loadRecordingPermissionGate.mockReset();
+    mocks.loadRecordingPermissionGate
+      .mockResolvedValueOnce({
+        assessmentId: "assessment-simplified-1",
+        assessmentGeneration: 1,
+        assessmentContractVersion:
+          "recording-assessment-v3-simplified-work-scope-v2",
+        assignmentGeneration: 4,
+        serviceOrderSafetyRequired: true,
+        location: "residence",
+        blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+        block: { resolution: "Complete one safety and location check." },
+      })
+      .mockResolvedValueOnce({
+        assessmentId: "assessment-simplified-1",
+        blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+        recordingUnlocked: false,
+      });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/booking-1/verify-location", {
+        method: "POST",
+        body: JSON.stringify({ recordingStage: "INTRO" }),
+      }),
+      { params: Promise.resolve({ jobId: "booking-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.persistV2StageLocationAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assessmentId: "assessment-simplified-1",
+        stage: "SERVICE_ORDER",
+        evidenceVersion: "recording-location-attempt-service-order-safety-v2",
+      }),
+    );
+    expect(mocks.recordJobRecordingLocationAttempt).not.toHaveBeenCalled();
   });
 
   it("persists successful evidence and returns the re-evaluated canonical gate", async () => {

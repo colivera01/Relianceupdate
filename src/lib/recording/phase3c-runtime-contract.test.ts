@@ -81,6 +81,7 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(panel).toContain("Recording participation for this job");
     expect(guidance).toContain('label: "Service Order agreement"');
     expect(guidance).toContain('label: "Recording participation for this job"');
+    expect(guidance).toContain('label: "Confirm recording scope"');
     expect(guidance).toContain('label: "Safety and location check"');
     expect(guidance).toContain('label: "Record three short videos"');
     expect(guidance).toContain("Allow or decline, then verify using the available contact method shown below.");
@@ -146,12 +147,16 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(safetyRoute).toContain("serviceOrderSafetyRequirement");
     expect(page).toContain("EmployeeStageSafetyCheck");
     expect(page).toContain("isEmployeeStageSafetyResolvableBlock");
+    expect(page).toContain("serviceOrderSafetyRequired");
+    expect(page).toContain("Start safety and location check");
+    expect(page).toContain("Locked until the one-time check");
     expect(safetyCheck).toContain("Verify location and complete check");
     expect(safetyCheck).toContain("same check supports all three Service Videos");
     expect(safetyCheck).toContain("/verify-location");
     expect(safetyCheck).toContain("/safety-check");
     expect(page).toContain("/recording-access");
-    expect(page).toContain("usesV2StageSafety");
+    expect(page).toContain("usesServiceOrderSafety");
+    expect(page).toContain("!serviceOrderSafetyRequired");
     expect(page).toContain("Safety or location conditions changed?");
   });
 });

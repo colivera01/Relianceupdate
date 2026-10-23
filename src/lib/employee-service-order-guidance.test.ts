@@ -10,6 +10,7 @@ describe("Employee Service Order guidance", () => {
     const steps = buildEmployeeServiceOrderSteps({
       legalAssentCurrent: false,
       participationStatus: "REQUIRED",
+      scopeConfirmed: false,
       safetyAndLocationComplete: false,
       completedStageCount: 0,
       totalStageCount: 3,
@@ -18,40 +19,84 @@ describe("Employee Service Order guidance", () => {
     expect(steps.map((step) => step.label)).toEqual([
       "Service Order agreement",
       "Recording participation for this job",
+      "Confirm recording scope",
       "Safety and location check",
       "Record three short videos",
     ]);
-    expect(steps.map((step) => step.state)).toEqual(["current", "waiting", "waiting", "waiting"]);
+    expect(steps.map((step) => step.state)).toEqual([
+      "current",
+      "waiting",
+      "waiting",
+      "waiting",
+      "waiting",
+    ]);
   });
 
   it("advances through participation, safety, and all three videos", () => {
     const participation = buildEmployeeServiceOrderSteps({
       legalAssentCurrent: true,
       participationStatus: "REQUIRED",
+      scopeConfirmed: false,
       safetyAndLocationComplete: false,
       completedStageCount: 0,
       totalStageCount: 3,
     });
-    expect(participation.map((step) => step.state)).toEqual(["complete", "current", "waiting", "waiting"]);
+    expect(participation.map((step) => step.state)).toEqual([
+      "complete",
+      "current",
+      "waiting",
+      "waiting",
+      "waiting",
+    ]);
+
+    const scope = buildEmployeeServiceOrderSteps({
+      legalAssentCurrent: true,
+      participationStatus: "ALLOWED",
+      scopeConfirmed: false,
+      safetyAndLocationComplete: false,
+      completedStageCount: 0,
+      totalStageCount: 3,
+    });
+    expect(scope.map((step) => step.state)).toEqual([
+      "complete",
+      "complete",
+      "current",
+      "waiting",
+      "waiting",
+    ]);
 
     const safety = buildEmployeeServiceOrderSteps({
       legalAssentCurrent: true,
       participationStatus: "ALLOWED",
+      scopeConfirmed: true,
       safetyAndLocationComplete: false,
       completedStageCount: 0,
       totalStageCount: 3,
     });
-    expect(safety.map((step) => step.state)).toEqual(["complete", "complete", "current", "waiting"]);
+    expect(safety.map((step) => step.state)).toEqual([
+      "complete",
+      "complete",
+      "complete",
+      "current",
+      "waiting",
+    ]);
 
     const videos = buildEmployeeServiceOrderSteps({
       legalAssentCurrent: true,
       participationStatus: "ALLOWED",
+      scopeConfirmed: true,
       safetyAndLocationComplete: true,
       completedStageCount: 2,
       totalStageCount: 3,
     });
-    expect(videos.map((step) => step.state)).toEqual(["complete", "complete", "complete", "current"]);
-    expect(videos[3].detail).toContain("2 of 3 videos saved");
+    expect(videos.map((step) => step.state)).toEqual([
+      "complete",
+      "complete",
+      "complete",
+      "complete",
+      "current",
+    ]);
+    expect(videos[4].detail).toContain("2 of 3 videos saved");
   });
 
   it("uses the exact current lock reason instead of claiming manager review", () => {
