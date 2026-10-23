@@ -1054,7 +1054,14 @@ export default function VendorJobDetailPage() {
               <span>I reviewed the three current stage videos and am submitting this exact package for Reliance Audit.</span>
             </label>
             <DialogFooter className="gap-2 sm:space-x-0">
-              <Button variant="outline" onClick={() => setAuditConfirmOpen(false)} disabled={submitting}>Cancel</Button>
+              <Button
+                variant="outline"
+                className="border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={() => setAuditConfirmOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={approveCompletion} disabled={submitting || !auditAcknowledged}>
                 {submitting ? "Submitting..." : "Submit to Reliance Audit"}
               </Button>
@@ -1105,7 +1112,14 @@ export default function VendorJobDetailPage() {
             />
             </label>
             <DialogFooter className="gap-2 sm:space-x-0">
-              <Button variant="outline" onClick={() => setCorrectionOpen(false)} disabled={submitting}>Cancel</Button>
+              <Button
+                variant="outline"
+                className="border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={() => setCorrectionOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
               <Button
                 className="bg-amber-600 hover:bg-amber-700"
                 onClick={requestStageCorrection}

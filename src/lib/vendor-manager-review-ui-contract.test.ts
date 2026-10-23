@@ -37,6 +37,14 @@ describe("Vendor Manager review UI contract", () => {
     expect(page).toContain("That action was not completed.");
   });
 
+  it("keeps both dark-dialog cancel actions readable", () => {
+    const page = source("src/app/vendor/jobs/[jobId]/page.tsx");
+    const readableCancelClasses =
+      "border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white";
+
+    expect(page.split(readableCancelClasses)).toHaveLength(3);
+  });
+
   it("uses compact, fully readable mobile navigation labels", () => {
     const layout = source("src/app/vendor/layout.tsx");
 
