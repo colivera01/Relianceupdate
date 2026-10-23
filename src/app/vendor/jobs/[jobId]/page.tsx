@@ -22,6 +22,7 @@ import {
   getVideoFileDurationSeconds,
   isOverStageVideoLimit,
 } from "@/lib/stage-video-guidance";
+import { resolveManagerStageAssetState } from "@/lib/service-video-manager-stage-state";
 
 type JobLike = {
   id: string;
@@ -117,6 +118,7 @@ type SessionDetails = {
     audioExpected?: boolean;
     audioPresence?: string | null;
     audioEvidenceVersion?: number;
+    uploadState?: string | null;
   }>;
 };
 
@@ -218,6 +220,7 @@ export default function VendorJobDetailPage() {
   const normalizedStatus = normalizeStatus(job?.status);
   const isManager = role === "MANAGER";
   const isEmployee = role === "EMPLOYEE";
+  const correctionPending = String(job?.serviceVideoPackage?.status || "").toUpperCase() === "CORRECTION_REQUESTED";
   const lastAutoLoadKeyRef = useRef<string>("");
 
   const stageMap = useMemo(() => {
@@ -241,7 +244,7 @@ export default function VendorJobDetailPage() {
   const nextMissingStage = useMemo(() => {
     for (const stage of STAGE_ORDER) {
       const stageSession = stageMap.get(stage.key);
-      const hasUpload = Boolean(stageSession?.mediaAssets?.some((a) => !a?.id ? false : true));
+      const hasUpload = resolveManagerStageAssetState(stageSession).saved;
       if (!hasUpload) return stage.key;
     }
     return null;
@@ -263,6 +266,7 @@ export default function VendorJobDetailPage() {
       adminAuditRejectionCategory: job?.adminAuditDecision?.rejectionCategory,
       adminAuditRejectionReason: job?.adminAuditDecision?.reason,
       adminAuditDecidedAt: job?.adminAuditDecision?.decidedAt,
+      correctionPending,
       locationSelected: Boolean(job?.recordingCompliance?.location),
       permissionRequired: job?.recordingCompliance?.permissionRequired === true,
       permissionState: job?.recordingCompliance?.permissionStatus,
@@ -273,7 +277,7 @@ export default function VendorJobDetailPage() {
       serviceOrderSent: job?.recordingCompliance?.serviceOrderCurrent === true,
       consentRecipientLabel: job?.customerEmail || job?.customerPhone || "the customer",
     });
-  }, [allStagesExist, job, nextMissingStage, normalizedStatus]);
+  }, [allStagesExist, correctionPending, job, nextMissingStage, normalizedStatus]);
 
   const load = async () => {
     if (!jobId) {
@@ -611,8 +615,10 @@ export default function VendorJobDetailPage() {
     if (job?.assignedEmployees?.length) events.push(`Assigned: ${job.assignedEmployees.join(", ")}`);
     for (const stage of STAGE_ORDER) {
       const s = stageMap.get(stage.key);
-      const ts = s?.mediaAssets?.[0]?.createdAt || s?.createdAt;
-      if (ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
+      const stageState = resolveManagerStageAssetState(s);
+      const ts = stageState.asset?.createdAt || s?.createdAt;
+      if (stageState.saved && ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
+      if (stageState.correctionRequested) events.push(`${stage.label} returned for correction`);
     }
     if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
     if (allStagesExist && ["AWAITING_REVIEW", "COMPLETED"].includes(normalizedStatus)) {
@@ -896,10 +902,14 @@ export default function VendorJobDetailPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   {STAGE_ORDER.map((stage) => {
                     const stageSession = stageMap.get(stage.key);
-                    const latestAsset = stageSession?.mediaAssets?.[0];
-                    const hasUpload = Boolean(latestAsset?.id);
+                    const stageState = resolveManagerStageAssetState(stageSession);
+                    const latestAsset = stageState.asset;
+                    const hasUpload = stageState.saved;
+                    const correctionRequestedForStage = correctionPending && stageState.correctionRequested;
                     const stageIsNext = nextMissingStage === stage.key;
-                    const stageCardClass = hasUpload
+                    const stageCardClass = correctionRequestedForStage
+                      ? "border-amber-400/40 bg-amber-500/10"
+                      : hasUpload
                       ? "border-emerald-400/35 bg-emerald-500/12"
                       : "border-blue-300/18 bg-slate-950/70";
                     return (
@@ -913,15 +923,15 @@ export default function VendorJobDetailPage() {
                             variant="outline"
                             className={hasUpload ? "border-emerald-300/55 text-emerald-100" : "border-amber-300/55 text-amber-100"}
                           >
-                            {hasUpload ? "Uploaded" : "Missing"}
+                            {correctionRequestedForStage ? "Correction requested" : hasUpload ? "Uploaded" : "Missing"}
                           </Badge>
                         </div>
                         <p className="mt-2 text-sm text-blue-50/75">{stage.cue}</p>
                         <p className="mt-1 text-xs font-medium text-blue-200">{getStageVideoLimitCopy()}</p>
-                        {hasUpload ? (
+                        {hasUpload || correctionRequestedForStage ? (
                           <div className="mt-3 space-y-2">
                             <p className="text-xs text-blue-50/70">
-                              Uploaded:{" "}
+                              {correctionRequestedForStage ? "Prior upload:" : "Uploaded:"}{" "}
                               {latestAsset?.createdAt || stageSession?.createdAt
                                 ? formatDateTimeUtc(String(latestAsset?.createdAt || stageSession?.createdAt))
                                 : "Unknown"}
@@ -940,10 +950,16 @@ export default function VendorJobDetailPage() {
                               disabled={resolvingPlaybackStage === stage.key}
                               className="bg-blue-600 text-white shadow-sm hover:bg-blue-700 disabled:bg-blue-500"
                             >
-                              {resolvingPlaybackStage === stage.key ? "Opening..." : "Watch"}
+                              {resolvingPlaybackStage === stage.key
+                                ? "Opening..."
+                                : correctionRequestedForStage
+                                  ? "Watch prior version"
+                                  : "Watch"}
                             </Button>
                             <p className="text-xs text-blue-50/70">
-                              Retakes happen from the employee recording workspace before manager review.
+                              {correctionRequestedForStage
+                                ? "This preserved video remains in history but cannot satisfy the current stage. The Employee must save a new retake."
+                                : "Retakes happen from the employee recording workspace before manager review."}
                             </p>
                           </div>
                         ) : (

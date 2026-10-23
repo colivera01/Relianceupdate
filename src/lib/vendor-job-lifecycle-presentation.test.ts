@@ -49,6 +49,22 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.responsibleParticipant).toBe("Vendor manager");
   });
 
+  it("shows a pending stage correction before generic upload progress", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "IN_PROGRESS",
+      correctionPending: true,
+      rejectionReason: "Retake the Starting Condition video.",
+      assigned: true,
+      allVideosPresent: false,
+      serviceOrderSent: true,
+    });
+
+    expect(state.label).toBe("Correction requested");
+    expect(state.detail).toContain("Retake the Starting Condition video");
+    expect(state.responsibleParticipant).toBe("Assigned employee");
+    expect(state.resolution).toContain("resubmit");
+  });
+
   it("distinguishes terminal Reliance Admin rejection from historical rejection", () => {
     const state = resolveVendorJobLifecyclePresentation({
       status: "REJECTED",
