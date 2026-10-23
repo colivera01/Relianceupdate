@@ -113,6 +113,7 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(legalGate).toContain("peer-checked:bg-blue-700");
     expect(legalGate).toContain('<Check className="h-4 w-4 text-white" strokeWidth={3} />');
     expect(legalGate).toContain('checked ? "border-blue-700 bg-blue-50"');
+    expect(legalGate).toContain('className="mt-3 break-words text-xs text-blue-100/60"');
   });
 
   it("renders an explicit high-contrast checked state for Manager Work Record attestation", () => {

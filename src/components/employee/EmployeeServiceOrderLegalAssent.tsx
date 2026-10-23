@@ -269,7 +269,9 @@ export function EmployeeServiceOrderLegalAssent(props: {
         </p>
       ) : null}
       {roleNotice ? (
-        <p className="mt-3 text-xs text-blue-100/60">Exact notice: {roleNotice.version} - {roleNotice.contentHash}</p>
+        <p className="mt-3 break-words text-xs text-blue-100/60">
+          Exact notice: {roleNotice.version} - {roleNotice.contentHash}
+        </p>
       ) : null}
       {error ? <p role="alert" className="mt-3 text-sm text-rose-200">{error}</p> : null}
     </div>
