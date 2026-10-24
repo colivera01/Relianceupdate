@@ -406,6 +406,17 @@ describe("employee job lifecycle routes", () => {
       stageProgress: { INTRO: true, IN_PROGRESS: true, COMPLETED: true },
       canMarkComplete: true,
     });
+    expect(hoisted.mediaSessionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          mediaAssets: {
+            where: { deletedAt: null, archiveStatus: "active", uploadState: "SAVED" },
+            select: { id: true },
+            take: 1,
+          },
+        }),
+      }),
+    );
   });
 
   it("does not reopen an awaiting-review job from a rejection note alone", async () => {

@@ -123,7 +123,7 @@ export async function GET(request: Request): Promise<NextResponse> {
             bookingId: true,
             vendorJobVideoStage: true,
             mediaAssets: {
-              where: { deletedAt: null, archiveStatus: "active" },
+              where: { deletedAt: null, archiveStatus: "active", uploadState: "SAVED" },
               select: { id: true },
               take: 1,
             },

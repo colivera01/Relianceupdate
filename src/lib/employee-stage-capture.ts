@@ -30,6 +30,15 @@ export function getCompletedEmployeeCaptureCount(progress: EmployeeStageProgress
   return EMPLOYEE_STAGE_ORDER.filter((stage) => progress[stage]).length;
 }
 
+export function areEmployeeCorrectionReplacementsSaved(
+  progress: EmployeeStageProgress,
+  correctionStages: VendorJobVideoStage[] | null | undefined,
+): boolean {
+  return Boolean(
+    correctionStages?.length && correctionStages.every((stage) => progress[stage]),
+  );
+}
+
 export function getEmployeeCaptureActionLabel(
   stage: VendorJobVideoStage,
   hasExistingVideo: boolean

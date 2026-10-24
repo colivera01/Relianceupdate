@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { normalizeEmployeeJobStatusLabel, shouldShowEmployeeStartButton } from "@/lib/employee-job-status";
 import {
+  areEmployeeCorrectionReplacementsSaved,
   getCompletedEmployeeCaptureCount,
   getEmployeeCaptureDeviceLabel,
   getEmployeeCaptureStageHeading,
@@ -319,8 +320,14 @@ function submitButtonLabel(status: string | null | undefined, correctionRequeste
 
 function submitHelperText(job: EmployeeJob): string | null {
   const correctionRequested = isCorrectionRequested(job);
+  const correctionReplacementsReady = areEmployeeCorrectionReplacementsSaved(
+    job.stageProgress,
+    job.recordingCompliance?.correctionRequestedStages,
+  );
   const normalized = String(job.status || "").trim().toUpperCase();
-  if (correctionRequested && job.canMarkComplete) return "Send the corrected video package back to your manager.";
+  if (correctionRequested && correctionReplacementsReady && job.canMarkComplete) {
+    return "All requested replacements are saved. Send the corrected videos back to your manager.";
+  }
   if (correctionRequested) return "Manager requested changes. Retake the needed stage, then send the videos back.";
   if (normalized === "AWAITING_REVIEW") return "All 3 stage videos are uploaded. Manager review is in progress.";
   if (normalized === "COMPLETED") return "All 3 stage videos are complete and manager-approved.";
@@ -373,7 +380,7 @@ export default function EmployeeJobsPage() {
   const [legalAssentByJobId, setLegalAssentByJobId] = useState<
     Record<string, { contextKey: string; current: boolean | null }>
   >({});
-  const [managerSubmitCompleteOpen, setManagerSubmitCompleteOpen] = useState(false);
+  const [managerSubmitCompleteMode, setManagerSubmitCompleteMode] = useState<"initial" | "correction" | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
   const [pairedDevice, setPairedDevice] = useState<PairedDeviceState | null>(null);
@@ -650,6 +657,9 @@ export default function EmployeeJobsPage() {
 
   const completeJob = async (jobId: string) => {
     setActionMessage(null);
+    const correctionSubmission = jobs.some(
+      (candidate) => candidate.id === jobId && isCorrectionRequested(candidate),
+    );
     const res = await fetch(`/api/employee/jobs/${jobId}/complete`, {
       method: "POST",
       headers: employeeRequestHeaders(),
@@ -662,17 +672,19 @@ export default function EmployeeJobsPage() {
     const nextStatus = String(json?.job?.status || "").trim().toUpperCase();
     setActionMessage(
       nextStatus === "AWAITING_REVIEW"
-        ? "Completed service order sent for manager approval."
+        ? correctionSubmission
+          ? "Corrected Service Videos sent for manager review."
+          : "Service Videos sent for manager review."
         : "Job update submitted."
     );
     await loadJobs();
     if (nextStatus === "AWAITING_REVIEW") {
-      setManagerSubmitCompleteOpen(true);
+      setManagerSubmitCompleteMode(correctionSubmission ? "correction" : "initial");
     }
   };
 
   const closeCompletedOrder = () => {
-    setManagerSubmitCompleteOpen(false);
+    setManagerSubmitCompleteMode(null);
     if (hasCaptureToken && typeof window !== "undefined") {
       window.close();
       window.setTimeout(() => {
@@ -1495,6 +1507,12 @@ export default function EmployeeJobsPage() {
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
     const awaitingManagerReview = normalizedStatus === "AWAITING_REVIEW";
     const correctionRequested = isCorrectionRequested(job);
+    const correctionReplacementsReady =
+      correctionRequested &&
+      areEmployeeCorrectionReplacementsSaved(
+        job.stageProgress,
+        job.recordingCompliance?.correctionRequestedStages,
+      );
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
     const helperText = historyMode ? null : submitHelperText(job);
     const selectedStageKey =
@@ -2127,10 +2145,16 @@ export default function EmployeeJobsPage() {
             ) : null}
             {correctionRequested ? (
               <div className="rounded-2xl border border-amber-300/35 bg-amber-300/12 px-4 py-3 text-amber-50">
-                <p className="text-sm font-bold">Manager requested changes</p>
-                <p className="mt-1 text-base leading-6 text-amber-50/95">{job.rejectionReason}</p>
+                <p className="text-sm font-bold">
+                  {correctionReplacementsReady ? "Requested replacements saved" : "Manager requested changes"}
+                </p>
+                <p className="mt-1 text-base leading-6 text-amber-50/95">
+                  <span className="font-semibold">Manager&apos;s instruction:</span> {job.rejectionReason}
+                </p>
                 <p className="mt-2 text-xs leading-5 text-amber-100/80">
-                  Retake the stage your manager called out, then send the corrected videos back for review.
+                  {correctionReplacementsReady
+                    ? "All requested replacement videos are saved. Send the corrected videos back for manager review."
+                    : "Retake the stage your manager called out, then send the corrected videos back for review."}
                 </p>
                 {job.rejectedAt ? (
                   <p className="mt-1 text-[11px] text-amber-100/70">
@@ -2227,7 +2251,7 @@ export default function EmployeeJobsPage() {
                               ? "Locked - no correction requested"
                               : correctionRequested && stageCorrectionRequested
                                 ? done
-                                  ? "Correction requested - tap to replace"
+                                  ? "Replacement saved"
                                   : "Correction requested - tap to record"
                             : stageBlocked
                             ? stageCanResolveSafety
@@ -2310,7 +2334,7 @@ export default function EmployeeJobsPage() {
                     {awaitingManagerReview
                       ? "This stage is locked while your manager reviews the submitted Service Videos."
                       : correctionRequested && job.recordingCompliance?.correctionRequestedStages?.includes(selectedStage.key)
-                        ? "Your manager requested a replacement for this stage."
+                        ? "Replacement saved. This stage is ready to send back to your manager."
                         : correctionRequested
                           ? "This stage remains locked because your manager did not request a change to it."
                           : "This stage is saved. You can replace it before sending all videos to the manager."}
@@ -2319,7 +2343,7 @@ export default function EmployeeJobsPage() {
                     {awaitingManagerReview
                       ? "If a correction is requested, only the requested stage will reopen."
                       : correctionRequested && job.recordingCompliance?.correctionRequestedStages?.includes(selectedStage.key)
-                        ? "The prior version remains in the evidence history after you confirm the replacement."
+                        ? "The prior version remains preserved in the evidence history."
                         : correctionRequested
                           ? "The submitted video remains unchanged."
                           : "Retaking this stage replaces the current video for this step after you confirm the new preview."}
@@ -2557,24 +2581,26 @@ export default function EmployeeJobsPage() {
           );
         }}
       />
-      {managerSubmitCompleteOpen ? (
+      {managerSubmitCompleteMode ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-sm rounded-3xl border border-emerald-300/30 bg-slate-950 p-5 text-white shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
-              Sent for approval
+              Sent for manager review
             </p>
             <h2 className="mt-3 text-2xl font-bold leading-tight">
-              Completed service order sent to your manager.
+              {managerSubmitCompleteMode === "correction"
+                ? "Corrected Service Videos sent to your manager."
+                : "Service Videos sent to your manager."}
             </h2>
             <p className="mt-3 text-sm leading-6 text-blue-50/75">
-              Your manager has been notified by email/SMS when available. You can close this completed order now.
+              Your manager has been notified by email/SMS when available. You can close this Service Order page now.
             </p>
             <button
               type="button"
               onClick={closeCompletedOrder}
               className="mt-5 w-full rounded-2xl border border-emerald-200 bg-emerald-600 px-5 py-4 text-base font-bold text-white shadow-lg shadow-emerald-950/40 transition hover:bg-emerald-700 active:scale-[0.99]"
             >
-              Close Completed Order
+              Close Service Order Page
             </button>
           </div>
         </div>

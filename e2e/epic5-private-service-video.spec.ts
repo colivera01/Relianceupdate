@@ -67,6 +67,7 @@ async function installEmployeeFixture(
   } = {},
 ) {
   let saved = Boolean(options.allSaved);
+  let submitted = false;
 
   await page.addInitScript(({ denyMicrophone }) => {
     Object.defineProperty(window.navigator, "geolocation", {
@@ -121,9 +122,16 @@ async function installEmployeeFixture(
     const pathname = url.pathname;
 
     if (pathname === "/api/employee/jobs") {
+      const awaitingReview = Boolean(options.awaitingReview || submitted);
       const stageProgress = saved
         ? { INTRO: true, IN_PROGRESS: true, COMPLETED: true }
-        : unlockedEmployeeJob.stageProgress;
+        : options.correctionStage
+          ? {
+              INTRO: options.correctionStage !== "INTRO",
+              IN_PROGRESS: options.correctionStage !== "IN_PROGRESS",
+              COMPLETED: options.correctionStage !== "COMPLETED",
+            }
+          : unlockedEmployeeJob.stageProgress;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -132,16 +140,16 @@ async function installEmployeeFixture(
           pendingServiceOrder: false,
           jobs: [{
             ...unlockedEmployeeJob,
-            status: options.awaitingReview
+            status: awaitingReview
               ? "AWAITING_REVIEW"
               : options.correctionStage
                 ? "REJECTED"
                 : unlockedEmployeeJob.status,
             rejectionReason: options.correctionStage ? "Please replace the Final Result stage." : null,
             stageProgress,
-            canMarkComplete: options.awaitingReview ? false : saved,
+            canMarkComplete: awaitingReview ? false : saved,
             recordingCompliance: {
-              ...(options.awaitingReview
+              ...(awaitingReview
               ? {
                   ...unlockedEmployeeJob.recordingCompliance,
                   recordingUnlocked: false,
@@ -234,6 +242,16 @@ async function installEmployeeFixture(
             },
           }],
         }),
+      });
+      return;
+    }
+
+    if (pathname === `/api/employee/jobs/${EMPLOYEE_JOB_ID}/complete` && request.method() === "POST") {
+      submitted = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, job: { id: EMPLOYEE_JOB_ID, status: "AWAITING_REVIEW" } }),
       });
       return;
     }
@@ -417,13 +435,32 @@ test.describe("Epic 5 safe Private Service Video UX", () => {
 
   test("reopens only the exact stage requested by the manager", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await installEmployeeFixture(page, { allSaved: true, correctionStage: "COMPLETED" });
+    await installEmployeeFixture(page, { correctionStage: "COMPLETED" });
     await openEmployeeCapture(page);
 
     await expect(page.getByText("Manager requested changes", { exact: true })).toBeVisible();
     await expect(page.getByText("Locked - no correction requested", { exact: true })).toHaveCount(2);
-    await expect(page.getByText("Correction requested - tap to replace", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("Correction requested - tap to record", { exact: true })).toHaveCount(1);
     await expect(page.getByText("Saved - tap to replace", { exact: true })).toHaveCount(0);
+  });
+
+  test("shows saved replacements as ready, then confirms correction resubmission truthfully", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installEmployeeFixture(page, { allSaved: true, correctionStage: "COMPLETED" });
+    await openEmployeeCapture(page);
+
+    await expect(page.getByText("Requested replacements saved", { exact: true })).toBeVisible();
+    await expect(page.getByText("Replacement saved", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("Correction requested - tap to replace", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("replacement-ready-mobile.png"), fullPage: true });
+
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.screenshot({ path: testInfo.outputPath("replacement-ready-desktop.png"), fullPage: true });
+
+    await page.getByRole("button", { name: "Send Corrected Videos to Manager" }).click();
+    await expect(page.getByRole("heading", { name: "Corrected Service Videos sent to your manager." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close Service Order Page" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("correction-submitted-desktop.png"), fullPage: true });
   });
 
   test("shows server-confirmed Saved stages and ready-to-submit progress", async ({ page }) => {

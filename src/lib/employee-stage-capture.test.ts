@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  areEmployeeCorrectionReplacementsSaved,
   getCompletedEmployeeCaptureCount,
   getEmployeeCaptureActionLabel,
   getEmployeeCaptureDeviceLabel,
@@ -64,6 +65,27 @@ describe("employee-stage-capture", () => {
         COMPLETED: true,
       })
     ).toBe(2);
+  });
+
+  it("reports correction readiness only after every requested replacement is saved", () => {
+    expect(
+      areEmployeeCorrectionReplacementsSaved(
+        { INTRO: true, IN_PROGRESS: true, COMPLETED: false },
+        ["COMPLETED"],
+      ),
+    ).toBe(false);
+    expect(
+      areEmployeeCorrectionReplacementsSaved(
+        { INTRO: true, IN_PROGRESS: true, COMPLETED: true },
+        ["COMPLETED"],
+      ),
+    ).toBe(true);
+    expect(
+      areEmployeeCorrectionReplacementsSaved(
+        { INTRO: true, IN_PROGRESS: true, COMPLETED: true },
+        [],
+      ),
+    ).toBe(false);
   });
 
   it("describes capture source for current and future devices", () => {
