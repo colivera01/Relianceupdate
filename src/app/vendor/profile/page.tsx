@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Settings, CheckCircle, XCircle, User, Shield, Camera, Sparkles } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
 import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
 import { getVendorSpecialtyOptions } from '@/lib/vendor-specialties';
@@ -1230,6 +1230,9 @@ export default function VendorProfilePage() {
               <Shield className="w-5 h-5 text-blue-300" />
               Security Settings
             </DialogTitle>
+            <DialogDescription className="text-slate-300">
+              Review email sign-in alerts and the timeout applied to this Vendor dashboard session.
+            </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">

@@ -19,6 +19,9 @@ describe("Vendor operations UI contract", () => {
     expect(page).not.toContain("Top rated");
     expect(page).not.toContain("Needs attention");
     expect(page).toContain('aria-labelledby="edit-team-member-title"');
+    expect(page).toContain('aria-describedby="edit-team-member-description"');
+    expect(page).toContain('aria-describedby="remove-team-member-description"');
+    expect(page).toContain('fixed inset-0 z-[60]');
     expect(page).toContain('aria-controls={`pending-invite-${invite.id}`}');
     expect(page).toContain("A sign-in email can be changed only by the account owner");
     expect(page).toContain('aria-labelledby="remove-team-member-title"');
@@ -50,6 +53,8 @@ describe("Vendor operations UI contract", () => {
     expect(page).toContain("block sm:hidden");
     expect(page).toContain("Edit ${service.name}");
     expect(page).toContain('aria-labelledby="service-editor-title"');
+    expect(page).toContain('aria-describedby="service-editor-description"');
+    expect(page).toContain('fixed inset-0 z-[60]');
     expect(page).toContain("Service created and queued for admin approval.");
     expect(page).toContain('type="submit"');
     expect(page).toContain("formatRelianceDate(service.updatedAt)");
@@ -66,6 +71,7 @@ describe("Vendor operations UI contract", () => {
     expect(page).toContain("Business-reported coverage status");
     expect(page).toContain("profileFieldErrors");
     expect(page).toContain("securitySettingsError");
+    expect(page).toContain("<DialogDescription");
     expect(page).toContain('aria-label={`${businessHourDayLabels[day.day]} hours enabled`}');
     expect(page).toContain('type="button"');
   });

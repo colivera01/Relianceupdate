@@ -683,11 +683,12 @@ export default function VendorServicesPage() {
         )}
 
         {showFormModal && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-3 py-5 sm:items-center sm:p-4">
+          <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/75 p-3 py-5 sm:items-center sm:p-4">
             <div
               role="dialog"
               aria-modal="true"
               aria-labelledby="service-editor-title"
+              aria-describedby="service-editor-description"
               className="flex max-h-[calc(100dvh-2.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-slate-950 text-white shadow-2xl sm:max-h-[88vh]"
             >
               <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
@@ -695,7 +696,7 @@ export default function VendorServicesPage() {
                   <h2 id="service-editor-title" className="text-2xl font-bold text-white">
                     {editingService ? 'Edit Service' : 'Add Service'}
                   </h2>
-                  <p className="mt-1 max-w-xl text-sm leading-5 text-slate-300">
+                  <p id="service-editor-description" className="mt-1 max-w-xl text-sm leading-5 text-slate-300">
                     Save one service customers can choose later. Jobs and videos are created separately.
                   </p>
                 </div>

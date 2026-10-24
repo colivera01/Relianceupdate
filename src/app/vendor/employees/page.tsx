@@ -721,17 +721,18 @@ export default function EmployeesPage() {
         </div>
       </div>
       {editingMember ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 py-6 sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-3 py-6 sm:items-center sm:p-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-team-member-title"
+            aria-describedby="edit-team-member-description"
             className="max-h-[calc(100dvh-3rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 id="edit-team-member-title" className="text-lg font-semibold text-white">Edit team member contact</h3>
-                <p className="mt-1 text-sm leading-6 text-slate-300">
+                <p id="edit-team-member-description" className="mt-1 text-sm leading-6 text-slate-300">
                   Update the active roster details used for job assignments and team communication.
                 </p>
               </div>
@@ -815,11 +816,12 @@ export default function EmployeesPage() {
         </div>
       ) : null}
       {memberPendingRemoval ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="remove-team-member-title"
+            aria-describedby="remove-team-member-description"
             className="w-full max-w-md rounded-xl border border-red-300/30 bg-slate-950 p-5 shadow-2xl"
           >
             <div className="flex items-start gap-3">
@@ -828,7 +830,7 @@ export default function EmployeesPage() {
                 <h3 id="remove-team-member-title" className="text-lg font-semibold text-white">
                   Remove {memberPendingRemoval.name} from the team?
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
+                <p id="remove-team-member-description" className="mt-2 text-sm leading-6 text-slate-300">
                   Their team access will be revoked. Existing Work Records, assignments, consent evidence,
                   Service Orders, and saved media remain unchanged.
                 </p>
