@@ -12,6 +12,10 @@ vi.mock("@/server/db", () => ({
     },
     serviceVideoPackageEvidence: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
+    },
+    serviceVideoManagerDecisionEvidence: {
+      findMany: vi.fn(),
     },
     serviceVideoAdminAuditDecisionEvidence: {
       findFirst: vi.fn(),
@@ -43,6 +47,8 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(prisma.booking.findFirst).mockReset();
     vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockReset();
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findMany).mockReset();
+    vi.mocked((prisma as any).serviceVideoManagerDecisionEvidence.findMany).mockReset();
     vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockReset();
     vi.mocked((prisma as any).recordingScopeAssessment.findFirst).mockReset();
     vi.mocked(loadRecordingPermissionGate).mockReset();
@@ -62,6 +68,8 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       scopeHash: "scope-hash-2",
     } as any);
     vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue(null);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findMany).mockResolvedValue([]);
+    vi.mocked((prisma as any).serviceVideoManagerDecisionEvidence.findMany).mockResolvedValue([]);
     vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue(null);
     vi.mocked((prisma as any).recordingScopeAssessment.findFirst).mockResolvedValue(null);
     vi.mocked(loadPackageVisibilityView).mockResolvedValue(null);
@@ -247,6 +255,107 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
           canceledByUserId: "manager-1",
           canceledBy: "Vendor manager",
         },
+      },
+    });
+  });
+
+  it("returns immutable package and Manager correction history for the review timeline", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-corrected",
+      title: "Outlet Installation",
+      clientName: "Reliance Demo Customer",
+      status: "AWAITING_REVIEW",
+      date: new Date("2026-10-21T21:38:13.000Z"),
+      createdAt: new Date("2026-10-21T21:38:13.000Z"),
+      updatedAt: new Date("2026-10-24T01:59:41.000Z"),
+      customerMetadata: "{}",
+      rejectionReason: null,
+      rejectedAt: null,
+      service: { name: "Outlet Installation" },
+      user: { name: "Reliance Demo Customer", email: null, phone: null },
+    } as any);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue({
+      id: "package-2",
+      version: 2,
+      status: "MANAGER_REVIEW_PENDING",
+      stageEvidenceJson: JSON.stringify([
+        {
+          stage: "INTRO",
+          stageEvidenceId: "stage-intro-2",
+          stageVersion: 2,
+          mediaAssetId: "media-intro-2",
+        },
+      ]),
+      submittedAt: new Date("2026-10-24T01:59:41.000Z"),
+      createdAt: new Date("2026-10-24T01:59:40.000Z"),
+      adminAuditDecisionId: null,
+      audioExpected: false,
+      audioConformance: "CONFORMING",
+      audioEvidenceVersion: "service-video-audio-evidence-v1",
+    });
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findMany).mockResolvedValue([
+      {
+        id: "package-1",
+        version: 1,
+        status: "CORRECTION_REQUESTED",
+        isCurrent: false,
+        submittedAt: new Date("2026-10-23T23:30:00.000Z"),
+        createdAt: new Date("2026-10-23T23:29:00.000Z"),
+      },
+      {
+        id: "package-2",
+        version: 2,
+        status: "MANAGER_REVIEW_PENDING",
+        isCurrent: true,
+        submittedAt: new Date("2026-10-24T01:59:41.000Z"),
+        createdAt: new Date("2026-10-24T01:59:40.000Z"),
+      },
+    ]);
+    vi.mocked((prisma as any).serviceVideoManagerDecisionEvidence.findMany).mockResolvedValue([
+      {
+        id: "manager-decision-1",
+        packageId: "package-1",
+        packageVersion: 1,
+        decision: "CORRECTION_REQUESTED",
+        targetedStagesJson: JSON.stringify(["INTRO", "IN_PROGRESS", "COMPLETED"]),
+        reason: "Each video must show its named stage.",
+        decidedAt: new Date("2026-10-24T00:15:00.000Z"),
+      },
+    ]);
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-corrected"),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-corrected" }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        serviceVideoPackage: {
+          id: "package-2",
+          version: 2,
+          stageEvidence: [
+            {
+              stage: "INTRO",
+              stageEvidenceId: "stage-intro-2",
+              stageVersion: 2,
+              mediaAssetId: "media-intro-2",
+            },
+          ],
+        },
+        serviceVideoPackageHistory: [
+          { id: "package-1", version: 1, isCurrent: false },
+          { id: "package-2", version: 2, isCurrent: true },
+        ],
+        managerReviewHistory: [
+          {
+            id: "manager-decision-1",
+            packageVersion: 1,
+            decision: "CORRECTION_REQUESTED",
+            targetedStages: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+            reason: "Each video must show its named stage.",
+          },
+        ],
       },
     });
   });

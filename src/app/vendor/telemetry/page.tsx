@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RefreshCw } from "lucide-react";
+import { formatRelianceDateTime } from "@/lib/reliance-date-time";
 
 type DeviceTelemetryEvent = {
   id: string;
@@ -60,7 +62,14 @@ type ServiceVideoActivityRow = {
   visibilityStatus: string;
   bytes: string;
   createdAt: string;
+  isCurrentPackageAsset: boolean;
+  currentPackageId: string | null;
+  currentPackageVersion: number | null;
+  currentPackageStatus: string | null;
+  currentPackageStageVersion: number | null;
 };
+
+type ServiceVideoActivityFilter = "all" | "current" | "history";
 
 const SUPPORTED_EVENT_TYPES = [
   "device_boot",
@@ -92,6 +101,20 @@ function indicatorClass(indicator: DeviceStatusRow["indicator"]) {
   return "bg-blue-50 text-blue-800 border-blue-200";
 }
 
+function friendlyStageLabel(stage: string | null) {
+  const normalized = String(stage || "").trim().toUpperCase();
+  if (normalized === "INTRO") return "Starting Condition";
+  if (normalized === "IN_PROGRESS") return "Work in Progress";
+  if (normalized === "COMPLETED") return "Final Result";
+  return normalized ? normalized.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Stage not identified";
+}
+
+function friendlyStatusLabel(value: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "customer_only") return "Customer only";
+  return normalized.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export default function VendorTelemetryPage() {
   const { user } = useAuth();
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
@@ -106,6 +129,8 @@ export default function VendorTelemetryPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<ServiceVideoActivityFilter>("all");
 
   const [eventType, setEventType] = useState<string>("all");
   const [deviceUid, setDeviceUid] = useState<string>("");
@@ -249,6 +274,7 @@ export default function VendorTelemetryPage() {
 
   const fetchServiceVideoActivity = useCallback(async () => {
     if (!userId || !resolvedVendorId) return;
+    setActivityLoading(true);
     setActivityError(null);
     try {
       const res = await fetch(`/api/vendors/${resolvedVendorId}/media?activity=true`, {
@@ -276,13 +302,38 @@ export default function VendorTelemetryPage() {
             visibilityStatus: String(asset.visibilityStatus || "private"),
             bytes: String(asset.bytes || "0"),
             createdAt: String(asset.createdAt),
+            isCurrentPackageAsset: Boolean(asset.isCurrentPackageAsset),
+            currentPackageId: asset.currentPackageId ? String(asset.currentPackageId) : null,
+            currentPackageVersion: asset.currentPackageVersion != null && Number.isFinite(Number(asset.currentPackageVersion))
+              ? Number(asset.currentPackageVersion)
+              : null,
+            currentPackageStatus: asset.currentPackageStatus ? String(asset.currentPackageStatus) : null,
+            currentPackageStageVersion: asset.currentPackageStageVersion != null && Number.isFinite(Number(asset.currentPackageStageVersion))
+              ? Number(asset.currentPackageStageVersion)
+              : null,
           }))
       );
     } catch (e) {
       setActivityError(e instanceof Error ? e.message : "Failed to fetch service video activity");
       setServiceVideoActivity([]);
+    } finally {
+      setActivityLoading(false);
     }
   }, [userId, resolvedVendorId]);
+
+  const currentPackageUploadCount = useMemo(
+    () => serviceVideoActivity.filter((asset) => asset.isCurrentPackageAsset).length,
+    [serviceVideoActivity]
+  );
+  const visibleServiceVideoActivity = useMemo(() => {
+    if (activityFilter === "current") {
+      return serviceVideoActivity.filter((asset) => asset.isCurrentPackageAsset);
+    }
+    if (activityFilter === "history") {
+      return serviceVideoActivity.filter((asset) => !asset.isCurrentPackageAsset);
+    }
+    return serviceVideoActivity;
+  }, [activityFilter, serviceVideoActivity]);
 
   const displayFilters = useMemo(() => {
     const parts: string[] = [];
@@ -295,8 +346,8 @@ export default function VendorTelemetryPage() {
   }, [eventType, deviceUid, sinceLocal, limit, buildSinceIso]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([fetchDeviceStatuses(), fetchEvents(), fetchServiceVideoActivity()]);
-  }, [fetchDeviceStatuses, fetchEvents, fetchServiceVideoActivity]);
+    await fetchServiceVideoActivity();
+  }, [fetchServiceVideoActivity]);
 
   const showRawTelemetryForDevice = useCallback((uid: string | null) => {
     if (!uid) return;
@@ -319,16 +370,16 @@ export default function VendorTelemetryPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Service Video Activity</h1>
           <p className="text-sm text-gray-600 mt-1">
-            See whether employee devices are connected and sending service-video activity for assigned work.
+            Review saved Service Video uploads and see which files belong to each Work Record&apos;s current package.
           </p>
         </div>
         <Button
           variant="outline"
           onClick={() => void refreshAll()}
-          disabled={loading || statusLoading || vendorProfileLoading}
+          disabled={activityLoading || vendorProfileLoading}
         >
           <RefreshCw className="h-4 w-4 mr-2" />
-          {loading || statusLoading ? "Refreshing..." : "Refresh"}
+          {activityLoading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
 
@@ -337,7 +388,7 @@ export default function VendorTelemetryPage() {
           <span>
             <span className="block text-base font-semibold text-gray-900">Recent service video recordings</span>
             <span className="mt-1 block text-xs text-gray-500">
-              {serviceVideoActivity.length} upload{serviceVideoActivity.length === 1 ? "" : "s"} saved from employee service orders
+              {serviceVideoActivity.length} upload{serviceVideoActivity.length === 1 ? "" : "s"}; {currentPackageUploadCount} in current packages
             </span>
           </span>
           <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 group-open:hidden">
@@ -349,16 +400,63 @@ export default function VendorTelemetryPage() {
         </summary>
         <div className="border-t border-gray-100 px-6 py-4">
           {activityError ? (
-            <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {activityError}
+            <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <span>{activityError}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void fetchServiceVideoActivity()}>
+                Retry
+              </Button>
+            </div>
+          ) : null}
+
+          {serviceVideoActivity.length > 0 ? (
+            <div className="mb-4">
+              <label className="block sm:hidden">
+                <span className="mb-2 block text-xs font-semibold uppercase text-gray-600">Show uploads</span>
+                <select
+                  aria-label="Filter Service Video uploads"
+                  value={activityFilter}
+                  onChange={(event) => setActivityFilter(event.target.value as ServiceVideoActivityFilter)}
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900"
+                >
+                  <option value="all">All uploads ({serviceVideoActivity.length})</option>
+                  <option value="current">Current packages ({currentPackageUploadCount})</option>
+                  <option value="history">Media history ({serviceVideoActivity.length - currentPackageUploadCount})</option>
+                </select>
+              </label>
+              <div role="tablist" aria-label="Filter Service Video uploads" className="hidden flex-wrap gap-2 sm:flex">
+                {([
+                  ["all", "All uploads", serviceVideoActivity.length],
+                  ["current", "Current packages", currentPackageUploadCount],
+                  ["history", "Media history", serviceVideoActivity.length - currentPackageUploadCount],
+                ] as const).map(([value, label, count]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={activityFilter === value}
+                    onClick={() => setActivityFilter(value)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                      activityFilter === value
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-blue-300"
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 
           {serviceVideoActivity.length === 0 ? (
             <div className="text-sm text-gray-600 py-4">No service video uploads have been saved yet.</div>
+          ) : visibleServiceVideoActivity.length === 0 ? (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+              No uploads match this filter.
+            </div>
           ) : (
             <div className="space-y-3">
-              {serviceVideoActivity.map((asset) => (
+              {visibleServiceVideoActivity.map((asset) => (
                 <div key={asset.id} className="rounded-lg border border-gray-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
@@ -370,13 +468,28 @@ export default function VendorTelemetryPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {asset.stage ? <Badge variant="outline">{asset.stage.replace(/_/g, " ")}</Badge> : null}
-                      <Badge variant="outline">{asset.moderationStatus.replace(/_/g, " ")}</Badge>
-                      <Badge variant="outline">{asset.visibilityStatus.replace(/_/g, " ")}</Badge>
+                      <Badge variant="outline">{friendlyStageLabel(asset.stage)}</Badge>
+                      {asset.isCurrentPackageAsset ? (
+                        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-800">
+                          Current package v{asset.currentPackageVersion}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline">Media history</Badge>
+                      )}
+                      <Badge variant="outline">{friendlyStatusLabel(asset.moderationStatus)}</Badge>
+                      <Badge variant="outline">{friendlyStatusLabel(asset.visibilityStatus)}</Badge>
                     </div>
                   </div>
-                  <div className="mt-2 text-xs text-gray-500">
-                    Saved: {new Date(asset.createdAt).toLocaleString()}
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500">
+                    <span>Saved: {formatRelianceDateTime(asset.createdAt)}</span>
+                    {asset.bookingId ? (
+                      <Link
+                        href={`/vendor/jobs/${asset.bookingId}`}
+                        className="font-semibold text-blue-700 underline-offset-4 hover:underline"
+                      >
+                        Open Work Record
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               ))}

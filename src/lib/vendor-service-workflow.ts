@@ -10,7 +10,7 @@ export const VENDOR_SERVICE_WORKFLOW_TABS: ReadonlyArray<{
   value: VendorServiceWorkflowFilter;
   label: string;
 }> = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'All active' },
   { value: 'published', label: 'Published' },
   { value: 'pending_approval', label: 'Pending Admin Review' },
   { value: 'archived', label: 'Archived' },

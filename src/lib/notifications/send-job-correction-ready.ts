@@ -64,7 +64,7 @@ export async function sendJobCorrectionReadyNotification(
       "",
       `Job: ${jobTitle}`,
       "",
-      "Open the review package to approve completion or reject the completed work order:",
+      "Open the current package to submit it to Reliance Audit or request a correction for specific stages:",
       link,
       "",
       "- Reliance Team",
@@ -76,7 +76,7 @@ export async function sendJobCorrectionReadyNotification(
       bodyHtml: `<p style="margin:0 0 18px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(employeeName)}</strong> submitted the completed service video package for <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>.</p>`,
       details: [{ label: "Service order", value: jobTitle }],
       cta: { label: "Review Package", href: link },
-      secondaryHtml: `<p style="margin:0;">Open the package to approve completion or reject the completed work order.</p>`,
+      secondaryHtml: `<p style="margin:0;">Open the current package to submit it to Reliance Audit or request a correction for specific stages.</p>`,
       fallbackHref: link,
     });
     const result = await sendEmail({ to: email, subject, text, html });

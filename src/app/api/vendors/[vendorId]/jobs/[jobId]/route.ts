@@ -57,6 +57,36 @@ function normalizeVendorJobStatus(status: string | null | undefined): string {
   return normalized || "UNKNOWN";
 }
 
+function parseStringArrayJson(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function parsePackageStageEvidence(value: string | null | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => ({
+        stage: String(item?.stage || "").trim().toUpperCase(),
+        stageEvidenceId: String(item?.stageEvidenceId || "").trim(),
+        stageVersion: Number(item?.stageVersion || 0),
+        mediaAssetId: String(item?.mediaAssetId || "").trim(),
+      }))
+      .filter((item) => item.stage && item.stageEvidenceId && item.mediaAssetId);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
@@ -99,8 +129,46 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
 
     const currentServiceVideoPackage = await (prisma as any).serviceVideoPackageEvidence.findFirst({
       where: { bookingId: booking.id, vendorId, isCurrent: true },
-      select: { id: true, version: true, status: true, adminAuditDecisionId: true, audioExpected: true, audioConformance: true, audioEvidenceVersion: true },
+      select: {
+        id: true,
+        version: true,
+        status: true,
+        stageEvidenceJson: true,
+        submittedAt: true,
+        createdAt: true,
+        adminAuditDecisionId: true,
+        audioExpected: true,
+        audioConformance: true,
+        audioEvidenceVersion: true,
+      },
     });
+    const [serviceVideoPackageHistory, managerReviewHistory] = await Promise.all([
+      (prisma as any).serviceVideoPackageEvidence.findMany({
+        where: { bookingId: booking.id, vendorId },
+        orderBy: { version: "asc" },
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          isCurrent: true,
+          submittedAt: true,
+          createdAt: true,
+        },
+      }),
+      (prisma as any).serviceVideoManagerDecisionEvidence.findMany({
+        where: { bookingId: booking.id, vendorId },
+        orderBy: { decidedAt: "asc" },
+        select: {
+          id: true,
+          packageId: true,
+          packageVersion: true,
+          decision: true,
+          targetedStagesJson: true,
+          reason: true,
+          decidedAt: true,
+        },
+      }),
+    ]);
     const currentRecordingAssessment = await (prisma as any).recordingScopeAssessment.findFirst({
       where: { bookingId: booking.id, vendorId, isCurrent: true },
       orderBy: { generation: "desc" },
@@ -245,11 +313,32 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
               id: currentServiceVideoPackage.id,
               version: currentServiceVideoPackage.version,
               status: currentServiceVideoPackage.status,
+              submittedAt:
+                currentServiceVideoPackage.submittedAt?.toISOString?.() ||
+                currentServiceVideoPackage.createdAt?.toISOString?.() ||
+                null,
+              stageEvidence: parsePackageStageEvidence(currentServiceVideoPackage.stageEvidenceJson),
               audioExpected: currentServiceVideoPackage.audioExpected,
               audioConformance: currentServiceVideoPackage.audioConformance,
               audioEvidenceVersion: currentServiceVideoPackage.audioEvidenceVersion,
             }
           : null,
+        serviceVideoPackageHistory: serviceVideoPackageHistory.map((pkg: any) => ({
+          id: String(pkg.id),
+          version: Number(pkg.version || 0),
+          status: String(pkg.status || ""),
+          isCurrent: Boolean(pkg.isCurrent),
+          submittedAt: pkg.submittedAt?.toISOString?.() || pkg.createdAt?.toISOString?.() || null,
+        })),
+        managerReviewHistory: managerReviewHistory.map((decision: any) => ({
+          id: String(decision.id),
+          packageId: String(decision.packageId),
+          packageVersion: decision.packageVersion == null ? null : Number(decision.packageVersion),
+          decision: String(decision.decision || ""),
+          targetedStages: parseStringArrayJson(decision.targetedStagesJson),
+          reason: decision.reason ? String(decision.reason) : null,
+          decidedAt: decision.decidedAt?.toISOString?.() || null,
+        })),
         adminAuditDecision: adminAuditDecision
           ? {
               decision: adminAuditDecision.decision,

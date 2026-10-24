@@ -13,6 +13,7 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetFindUnique = vi.fn();
   const mediaAssetUpdate = vi.fn();
   const serviceVideoPackageEvidenceFindFirst = vi.fn();
+  const serviceVideoPackageEvidenceFindMany = vi.fn();
   const prisma = {
     mediaAsset: {
       findMany: mediaAssetFindMany,
@@ -20,7 +21,10 @@ const hoisted = vi.hoisted(() => {
       findUnique: mediaAssetFindUnique,
       update: mediaAssetUpdate,
     },
-    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
+    serviceVideoPackageEvidence: {
+      findFirst: serviceVideoPackageEvidenceFindFirst,
+      findMany: serviceVideoPackageEvidenceFindMany,
+    },
   };
   return {
     prisma,
@@ -29,6 +33,7 @@ const hoisted = vi.hoisted(() => {
     mediaAssetFindUnique,
     mediaAssetUpdate,
     serviceVideoPackageEvidenceFindFirst,
+    serviceVideoPackageEvidenceFindMany,
   };
 });
 
@@ -88,6 +93,8 @@ describe("GET /api/vendors/[vendorId]/media", () => {
     hoisted.mediaAssetAggregate.mockReset();
     hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
     hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
+    hoisted.serviceVideoPackageEvidenceFindMany.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindMany.mockResolvedValue([]);
   });
 
   it("returns 403 when vendor auth fails", async () => {
@@ -180,6 +187,98 @@ describe("GET /api/vendors/[vendorId]/media", () => {
       archiveStatus: ARCHIVE_ACTIVE,
     });
     expect(assets[1].archiveStatus).toBe(ARCHIVE_ARCHIVED);
+  });
+
+  it("identifies only exact assets in the current Service Video package for activity view", async () => {
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      {
+        id: "asset-current",
+        vendorId: "v1",
+        mediaSessionId: "ms-current",
+        membershipId: "m1",
+        uploadedByMembershipId: "m1",
+        deviceId: null,
+        bytes: BigInt(100),
+        mimeType: "video/mp4",
+        blobKey: "current",
+        blobUrl: "https://cdn/current",
+        moderationStatus: "pending_review",
+        visibilityStatus: "private",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-10-23T13:00:00.000Z"),
+        deletedAt: null,
+        mediaSession: {
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "INTRO",
+          booking: { id: "job-1", title: "Outlet Installation", clientName: "Reliance Demo Customer" },
+          service: { id: "service-1", name: "Outlet Installation" },
+          employee: { id: "employee-1", name: "Bradley Coopers" },
+        },
+      },
+      {
+        id: "asset-history",
+        vendorId: "v1",
+        mediaSessionId: "ms-history",
+        membershipId: "m1",
+        uploadedByMembershipId: "m1",
+        deviceId: null,
+        bytes: BigInt(90),
+        mimeType: "video/mp4",
+        blobKey: "history",
+        blobUrl: "https://cdn/history",
+        moderationStatus: "pending_review",
+        visibilityStatus: "private",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-10-22T13:00:00.000Z"),
+        deletedAt: null,
+        mediaSession: {
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "INTRO",
+          booking: { id: "job-1", title: "Outlet Installation", clientName: "Reliance Demo Customer" },
+          service: { id: "service-1", name: "Outlet Installation" },
+          employee: { id: "employee-1", name: "Bradley Coopers" },
+        },
+      },
+    ]);
+    hoisted.mediaAssetAggregate.mockResolvedValue({ _sum: { bytes: BigInt(190) } });
+    hoisted.serviceVideoPackageEvidenceFindMany.mockResolvedValue([
+      {
+        id: "package-2",
+        version: 2,
+        status: "AWAITING_MANAGER_REVIEW",
+        stageEvidenceJson: JSON.stringify([
+          {
+            mediaAssetId: "asset-current",
+            stageEvidenceId: "stage-evidence-2",
+            stageVersion: 2,
+            stage: "INTRO",
+          },
+        ]),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/vendors/v1/media?activity=true", { method: "GET" });
+    const res = await mediaListGET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    const assets = body.assets as Array<Record<string, unknown>>;
+    expect(assets[0]).toMatchObject({
+      assetId: "asset-current",
+      isCurrentPackageAsset: true,
+      currentPackageId: "package-2",
+      currentPackageVersion: 2,
+      currentPackageStatus: "AWAITING_MANAGER_REVIEW",
+      currentPackageStageVersion: 2,
+    });
+    expect(assets[1]).toMatchObject({
+      assetId: "asset-history",
+      isCurrentPackageAsset: false,
+      currentPackageId: null,
+    });
   });
 });
 

@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import type { VendorNotification } from "@/types/vendor";
+import { formatRelianceDateTime } from "@/lib/reliance-date-time";
 
 type Filter = "all" | "unread" | "read";
 
@@ -21,6 +22,7 @@ export default function VendorNotificationsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = async () => {
     if (!vendor?.id) return;
@@ -52,12 +54,17 @@ export default function VendorNotificationsPage() {
     if (filter === "read") return notification.read;
     return true;
   }), [filter, notifications]);
+  const unreadCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications],
+  );
 
   const markRead = async (
     notification: VendorNotification,
     transition: "MARK_READ" | "VIEW_DETAILS",
   ) => {
     if (!vendor?.id || notification.historical || (transition === "MARK_READ" && notification.read)) return;
+    setActionError(null);
     const response = await fetch(
       `/api/vendors/${encodeURIComponent(vendor.id)}/notifications/${encodeURIComponent(notification.id)}/read`,
       {
@@ -89,6 +96,14 @@ export default function VendorNotificationsPage() {
     if (notification.href) router.push(notification.href);
   };
 
+  const markReadFromPage = async (notification: VendorNotification) => {
+    try {
+      await markRead(notification, "MARK_READ");
+    } catch (markError) {
+      setActionError(markError instanceof Error ? markError.message : "Unable to mark notification as read.");
+    }
+  };
+
   return (
     <div className="space-y-6 text-white">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -111,13 +126,26 @@ export default function VendorNotificationsPage() {
           <Button
             key={value}
             type="button"
+            role="tab"
+            aria-selected={filter === value}
+            tabIndex={filter === value ? 0 : -1}
             variant={filter === value ? "default" : "outline"}
             onClick={() => setFilter(value)}
           >
-            {value === "all" ? "All" : value === "unread" ? "Unread" : "Read"}
+            {value === "all"
+              ? `All (${notifications.length})`
+              : value === "unread"
+                ? `Unread (${unreadCount})`
+                : `Read (${notifications.length - unreadCount})`}
           </Button>
         ))}
       </div>
+
+      {actionError ? (
+        <div className="rounded-lg border border-rose-300/40 bg-rose-950/35 p-4 text-sm text-rose-100" role="alert">
+          {actionError}
+        </div>
+      ) : null}
 
       {error ? (
         <Card className="border-rose-300/40 bg-rose-950/35 text-white">
@@ -144,17 +172,27 @@ export default function VendorNotificationsPage() {
                     <p className="font-semibold text-white">{notification.title}</p>
                     <p className="mt-1 text-sm leading-6 text-white/72">{notification.message}</p>
                     <p className="mt-2 text-xs text-white/48">
-                      {new Date(notification.time).toLocaleString()}
+                      {formatRelianceDateTime(notification.time)}
                       {notification.historical ? " · Historical notice" : ""}
                     </p>
                   </div>
                 </div>
                 {notification.href ? (
-                  <Button type="button" variant="outline" onClick={() => void viewDetails(notification)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    aria-label={`View details for ${notification.title}`}
+                    onClick={() => void viewDetails(notification)}
+                  >
                     <ExternalLink className="mr-2 h-4 w-4" /> View details
                   </Button>
                 ) : !notification.read && !notification.historical ? (
-                  <Button type="button" variant="outline" onClick={() => void markRead(notification, "MARK_READ")}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    aria-label={`Mark ${notification.title} as read`}
+                    onClick={() => void markReadFromPage(notification)}
+                  >
                     Mark read
                   </Button>
                 ) : null}

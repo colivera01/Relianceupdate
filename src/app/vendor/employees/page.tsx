@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
+import { formatRelianceDate, formatRelianceDateTime } from "@/lib/reliance-date-time";
+import { AlertTriangle } from "lucide-react";
 import {
   fetchVendorTeamMembers,
   avatarUrlForName,
@@ -34,18 +36,12 @@ function roleLabel(role: string) {
   return role || "Member";
 }
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "Unknown date";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const employeeAccessSteps = [
+  "Send an invite with the team member's contact details.",
+  "They accept the invite and become an active team member. A password is not required.",
+  "A manager assigns scheduled work from Manage Jobs.",
+  "The employee opens the secure Service Order link to complete assigned work.",
+];
 
 function getPerformanceBadge(rating: number, reviewCount: number): { label: string; className: string } {
   if (reviewCount <= 0) {
@@ -101,6 +97,8 @@ export default function EmployeesPage() {
   const [editMessage, setEditMessage] = useState("");
   const [savingMembershipId, setSavingMembershipId] = useState<string | null>(null);
   const [sendingParticipationMembershipId, setSendingParticipationMembershipId] = useState<string | null>(null);
+  const [memberPendingRemoval, setMemberPendingRemoval] = useState<VendorTeamMember | null>(null);
+  const [removeError, setRemoveError] = useState("");
 
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -255,6 +253,7 @@ export default function EmployeesPage() {
     if (!vendorId || !authUserId || !membershipId) return;
     setRemovingMembershipId(membershipId);
     setInviteMessage("");
+    setRemoveError("");
     try {
       const res = await fetch(`/api/vendors/${vendorId}/memberships/${membershipId}`, {
         method: "DELETE",
@@ -270,8 +269,11 @@ export default function EmployeesPage() {
       }
       await loadRosterAndInvites();
       setInviteMessage("Team member removed.");
+      setMemberPendingRemoval(null);
     } catch (e) {
-      setInviteMessage(e instanceof Error ? e.message : "Failed to remove team member");
+      const message = e instanceof Error ? e.message : "Failed to remove team member";
+      setInviteMessage(message);
+      setRemoveError(message);
     } finally {
       setRemovingMembershipId(null);
     }
@@ -383,8 +385,15 @@ export default function EmployeesPage() {
       </div>
 
       {(profileError || loadError) && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          {profileError || loadError}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300/40 bg-red-950/55 p-4 text-sm text-red-100" role="alert">
+          <span>{profileError || loadError}</span>
+          <button
+            type="button"
+            className="rounded-lg border border-red-200/40 px-3 py-2 font-semibold text-white hover:bg-red-500/10"
+            onClick={() => void loadRosterAndInvites()}
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -404,15 +413,19 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-blue-400/20 bg-blue-950/30 p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">How employee access works</p>
+      <details className="mb-4 rounded-xl border border-blue-400/20 bg-blue-950/30 p-4 shadow-sm md:hidden">
+        <summary className="cursor-pointer text-sm font-semibold text-blue-100">How team access works</summary>
+        <ol className="mt-3 space-y-2 text-sm leading-6 text-slate-200">
+          {employeeAccessSteps.map((step, index) => (
+            <li key={step}><span className="font-semibold text-blue-200">{index + 1}.</span> {step}</li>
+          ))}
+        </ol>
+      </details>
+
+      <div className="mb-6 hidden rounded-2xl border border-blue-400/20 bg-blue-950/30 p-5 shadow-sm md:block">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">How team access works</p>
         <div className="mt-3 grid gap-3 md:grid-cols-4">
-          {[
-            "Send an invite with the team member's contact details.",
-            "They accept the invite and become an active team member. A password is not required.",
-            "A manager assigns scheduled work from Manage Jobs.",
-            "The employee opens the secure Service Order link to complete assigned work.",
-          ].map((step, index) => (
+          {employeeAccessSteps.map((step, index) => (
             <div key={step} className="rounded-xl border border-white/10 bg-slate-950/50 p-3 text-sm leading-6 text-slate-200">
               <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
                 {index + 1}
@@ -424,38 +437,52 @@ export default function EmployeesPage() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-950/75 p-4 shadow-sm">
-        <h3 className="text-lg font-semibold text-white">Invite Employee</h3>
+        <h3 className="text-lg font-semibold text-white">Invite team member</h3>
         <p className="mt-1 text-sm leading-6 text-slate-300">
           Add the person who will help with scheduled work. The invite does not create a job by itself.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <input
-            value={inviteName}
-            onChange={(e) => setInviteName(e.target.value)}
-            placeholder="Full name"
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-          />
-          <input
-            value={invitePhone}
-            onChange={(e) => setInvitePhone(e.target.value)}
-            placeholder="Phone"
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-          />
-          <input
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="Email"
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-          />
-          <select
-            value={inviteRole}
-            onChange={(e) => setInviteRole(e.target.value)}
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
-            style={{ colorScheme: "dark" }}
-          >
-            <option value="EMPLOYEE">Employee</option>
-            <option value="MANAGER">Manager</option>
-          </select>
+          <label className="text-sm font-medium text-slate-200">
+            Full name
+            <input
+              value={inviteName}
+              onChange={(e) => setInviteName(e.target.value)}
+              autoComplete="name"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-200">
+            Phone
+            <input
+              value={invitePhone}
+              onChange={(e) => setInvitePhone(e.target.value)}
+              type="tel"
+              autoComplete="tel"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-200">
+            Email
+            <input
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              type="email"
+              autoComplete="email"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+            />
+          </label>
+          <label className="text-sm font-medium text-slate-200">
+            Team role
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+              style={{ colorScheme: "dark" }}
+            >
+              <option value="EMPLOYEE">Employee</option>
+              <option value="MANAGER">Manager</option>
+            </select>
+          </label>
         </div>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
@@ -466,7 +493,7 @@ export default function EmployeesPage() {
           >
             {inviteSubmitting ? "Creating..." : "Create Invite"}
           </button>
-          {inviteMessage ? <p className="text-xs text-slate-300">{inviteMessage}</p> : null}
+          {inviteMessage ? <p className="text-xs text-slate-300" role="status" aria-live="polite">{inviteMessage}</p> : null}
         </div>
       </div>
 
@@ -500,7 +527,7 @@ export default function EmployeesPage() {
                     <div>
                       <p className="font-semibold text-white">{recipientName}</p>
                       <p className="mt-1 text-xs text-slate-400">
-                        Sent {formatDateTime(invite.sentAt)} · {recipientRole}
+                        Sent {formatRelianceDateTime(invite.sentAt)} · {recipientRole}
                       </p>
                       <p className="mt-1 text-xs text-slate-300">
                         Email: <span className="text-slate-100">{recipientEmail}</span>
@@ -535,7 +562,7 @@ export default function EmployeesPage() {
                         </p>
                         <p>
                           <span className="font-semibold text-white">Expires:</span>{" "}
-                          {formatDateTime(invite.expiresAt)}
+                          {formatRelianceDateTime(invite.expiresAt)}
                         </p>
                       </div>
                       <p className="mt-3 break-all">
@@ -597,7 +624,7 @@ export default function EmployeesPage() {
                   </div>
                   {String(emp.role).toUpperCase() === "EMPLOYEE" ? (
                     <div className="mt-2 text-xs text-slate-300">
-                      Public media participation:{" "}
+                      Public Service Video participation:{" "}
                       <span className="font-semibold text-white">
                         {emp.publicMediaConsentStatus === "ALLOWED"
                           ? "Allowed"
@@ -605,7 +632,7 @@ export default function EmployeesPage() {
                             ? "Not allowed"
                             : "No choice recorded"}
                       </span>
-                      {emp.publicMediaConsentDecidedAt ? ` · ${new Date(emp.publicMediaConsentDecidedAt).toLocaleDateString()}` : ""}
+                      {emp.publicMediaConsentDecidedAt ? ` · ${formatRelianceDate(emp.publicMediaConsentDecidedAt)}` : ""}
                     </div>
                   ) : null}
                   {(() => {
@@ -641,6 +668,7 @@ export default function EmployeesPage() {
                     type="button"
                     onClick={() => void handleSendParticipationLink(emp.membershipId)}
                     disabled={sendingParticipationMembershipId === emp.membershipId}
+                    aria-label={`Send Public Service Video participation link to ${emp.name}`}
                     className="rounded border border-emerald-300 px-2 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10 disabled:opacity-60"
                   >
                     {sendingParticipationMembershipId === emp.membershipId
@@ -651,6 +679,7 @@ export default function EmployeesPage() {
                 <button
                   type="button"
                   onClick={() => openEditMember(emp)}
+                  aria-label={`Edit contact for ${emp.name}`}
                   className="rounded border border-blue-300 px-2 py-1 text-[11px] font-medium text-blue-100 hover:bg-blue-500/10"
                 >
                   Edit contact
@@ -658,9 +687,13 @@ export default function EmployeesPage() {
                 {emp.userId !== authUserId ? (
                   <button
                     type="button"
-                    onClick={() => void handleRemoveMember(emp.membershipId)}
+                    onClick={() => {
+                      setRemoveError("");
+                      setMemberPendingRemoval(emp);
+                    }}
                     disabled={removingMembershipId === emp.membershipId}
-                    className="rounded border border-red-300 px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-60"
+                    aria-label={`Remove ${emp.name} from the team`}
+                    className="rounded border border-red-300/60 px-2 py-1 text-[11px] text-red-100 hover:bg-red-500/10 disabled:opacity-60"
                   >
                     {removingMembershipId === emp.membershipId ? "Removing..." : "Remove from team"}
                   </button>
@@ -742,6 +775,51 @@ export default function EmployeesPage() {
                 className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60 sm:w-auto"
               >
                 {savingMembershipId === editingMember.membershipId ? "Saving..." : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {memberPendingRemoval ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-team-member-title"
+            className="w-full max-w-md rounded-xl border border-red-300/30 bg-slate-950 p-5 shadow-2xl"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+              <div>
+                <h3 id="remove-team-member-title" className="text-lg font-semibold text-white">
+                  Remove {memberPendingRemoval.name} from the team?
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Their team access will be revoked. Existing Work Records, assignments, consent evidence,
+                  Service Orders, and saved media remain unchanged.
+                </p>
+                {removeError ? <p className="mt-3 text-sm text-red-200" role="alert">{removeError}</p> : null}
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                onClick={() => {
+                  setMemberPendingRemoval(null);
+                  setRemoveError("");
+                }}
+                disabled={Boolean(removingMembershipId)}
+              >
+                Keep team member
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+                onClick={() => void handleRemoveMember(memberPendingRemoval.membershipId)}
+                disabled={Boolean(removingMembershipId)}
+              >
+                {removingMembershipId ? "Removing..." : "Remove team member"}
               </button>
             </div>
           </div>

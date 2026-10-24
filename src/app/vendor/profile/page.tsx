@@ -101,6 +101,7 @@ export default function VendorProfilePage() {
   
   const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(() => defaultBusinessHours());
   const [showBusinessHoursToast, setShowBusinessHoursToast] = useState(false);
+  const [businessHoursError, setBusinessHoursError] = useState('');
   const [securitySettings, setSecuritySettings] = useState({
     twoFactorEnabled: false,
     loginNotifications: true,
@@ -247,6 +248,7 @@ export default function VendorProfilePage() {
     dayKey: BusinessHoursDayKey,
     updates: Partial<BusinessHoursSchedule['days'][number]>
   ) => {
+    if (businessHoursError) setBusinessHoursError('');
     setBusinessHours((current) => ({
       ...current,
       days: current.days.map((day) => (day.day === dayKey ? { ...day, ...updates } : day)),
@@ -254,6 +256,7 @@ export default function VendorProfilePage() {
   };
 
   const handleSaveBusinessHours = async () => {
+    setBusinessHoursError('');
     try {
       const serialized = serializeBusinessHours(businessHours);
       await updateProfile({ businessHoursJson: serialized });
@@ -262,6 +265,7 @@ export default function VendorProfilePage() {
       setTimeout(() => setShowBusinessHoursToast(false), 2000);
     } catch (err) {
       console.error('Error saving business hours:', err);
+      setBusinessHoursError(err instanceof Error ? err.message : 'Business hours could not be saved.');
     }
   };
 
@@ -309,8 +313,12 @@ export default function VendorProfilePage() {
       ? 'Verified customer ratings support this business average.'
       : 'No verified customer ratings are available yet.',
   ].filter(Boolean) as string[];
-  const savedBusinessHoursStatus = getBusinessHoursStatus(localFormData.businessHoursJson ? businessHours : null);
-  const editedBusinessHoursStatus = getBusinessHoursStatus(businessHours);
+  const savedBusinessHoursJson =
+    typeof localFormData.businessHoursJson === 'string' && localFormData.businessHoursJson.trim()
+      ? serializeBusinessHours(normalizeBusinessHours(localFormData.businessHoursJson))
+      : null;
+  const savedBusinessHoursStatus = getBusinessHoursStatus(savedBusinessHoursJson);
+  const businessHoursDirty = serializeBusinessHours(businessHours) !== savedBusinessHoursJson;
 
   const requestVendorCopySuggestion = async () => {
     if (!vendorId) return;
@@ -376,13 +384,13 @@ export default function VendorProfilePage() {
       )}
 
       {error && !loading && !profile && (
-        <div className="flex items-center justify-center min-h-[60vh]">
+        <div role="alert" className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="text-red-600 mb-4">
               <XCircle className="w-12 h-12 mx-auto" />
             </div>
             <p className="text-red-600 mb-4">{error}</p>
-            <Button onClick={refetch}>
+            <Button type="button" onClick={refetch}>
               Try Again
             </Button>
           </div>
@@ -427,7 +435,7 @@ export default function VendorProfilePage() {
                         <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
                           <img
                             src={localFormData.profilePhoto || profile.profilePhoto || ''}
-                            alt="Business Profile"
+                            alt={`${businessDisplayName} business profile`}
                             className="h-full w-full rounded-xl object-contain"
                           />
                         </div>
@@ -438,6 +446,7 @@ export default function VendorProfilePage() {
                       )}
                       <button
                         type="button"
+                        aria-label={localFormData.profilePhoto || profile.profilePhoto ? 'Change business profile photo' : 'Upload business profile photo'}
                         className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
@@ -474,8 +483,9 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">Business Name *</label>
+                    <label htmlFor="business-name" className="block text-sm font-medium mb-2 text-slate-100">Business Name *</label>
                     <Input 
+                      id="business-name"
                       name="businessName" 
                       value={localFormData.businessName || ''} 
                       onChange={(event) => {
@@ -490,8 +500,9 @@ export default function VendorProfilePage() {
                     ) : null}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">Business Type *</label>
+                    <label htmlFor="business-type" className="block text-sm font-medium mb-2 text-slate-100">Business Type *</label>
                     <Input 
+                      id="business-type"
                       name="businessType" 
                       value={localFormData.businessType || ''} 
                       onChange={handleChange}
@@ -506,8 +517,9 @@ export default function VendorProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-slate-100">Service Category *</label>
+                  <label htmlFor="service-category" className="block text-sm font-medium mb-2 text-slate-100">Service Category *</label>
                   <Input 
+                    id="service-category"
                     name="category" 
                     value={localFormData.category || ''} 
                     onChange={handleChange}
@@ -524,7 +536,7 @@ export default function VendorProfilePage() {
                 <div className="mb-6">
                   <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Business Bio</label>
+                      <label htmlFor="business-bio" className="block text-sm font-medium text-gray-700">Business Bio</label>
                       <p className="mt-1 text-xs text-slate-400">
                         Write it yourself, or let AI improve the same bio using the business details you already shared.
                       </p>
@@ -545,6 +557,7 @@ export default function VendorProfilePage() {
                     </Button>
                   </div>
                   <textarea
+                    id="business-bio"
                     name="bio"
                     value={localFormData.bio || ''}
                     onChange={handleChange}
@@ -664,8 +677,9 @@ export default function VendorProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-slate-100">Business Address *</label>
+                  <label htmlFor="business-address" className="block text-sm font-medium mb-2 text-slate-100">Business Address *</label>
                   <AddressAutocompleteInput
+                    id="business-address"
                     name="address"
                     value={localFormData.address || ''}
                     onChange={(value) => setLocalFormData(prev => ({ ...prev, address: value }))}
@@ -678,8 +692,9 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">City *</label>
+                    <label htmlFor="business-city" className="block text-sm font-medium mb-2 text-slate-100">City *</label>
                     <Input 
+                      id="business-city"
                       name="city" 
                       value={localFormData.city || ''} 
                       onChange={handleChange}
@@ -688,8 +703,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">State *</label>
+                    <label htmlFor="business-state" className="block text-sm font-medium mb-2 text-slate-100">State *</label>
                     <Input 
+                      id="business-state"
                       name="state" 
                       value={localFormData.state || ''} 
                       onChange={handleChange}
@@ -698,8 +714,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">ZIP Code *</label>
+                    <label htmlFor="business-zip" className="block text-sm font-medium mb-2 text-slate-100">ZIP Code *</label>
                     <Input 
+                      id="business-zip"
                       name="zipCode" 
                       value={localFormData.zipCode || ''} 
                       onChange={handleChange}
@@ -708,8 +725,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">Founded Year</label>
+                    <label htmlFor="founded-year" className="block text-sm font-medium mb-2 text-slate-100">Founded Year</label>
                     <Input 
+                      id="founded-year"
                       name="foundedYear" 
                       type="number"
                       value={localFormData.foundedYear || ''} 
@@ -734,8 +752,9 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">Email *</label>
+                    <label htmlFor="business-email" className="block text-sm font-medium mb-2 text-slate-100">Email *</label>
                     <Input 
+                      id="business-email"
                       name="email" 
                       type="email"
                       value={localFormData.email || ''} 
@@ -745,8 +764,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">Phone *</label>
+                    <label htmlFor="business-phone" className="block text-sm font-medium mb-2 text-slate-100">Phone *</label>
                     <Input 
+                      id="business-phone"
                       name="phone" 
                       value={localFormData.phone || ''} 
                       onChange={handleChange}
@@ -755,8 +775,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-slate-100">Website</label>
+                    <label htmlFor="business-website" className="block text-sm font-medium mb-2 text-slate-100">Website</label>
                     <Input 
+                      id="business-website"
                       name="website" 
                       type="url"
                       value={localFormData.website || ''} 
@@ -769,8 +790,9 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Emergency Contact</label>
+                    <label htmlFor="emergency-contact" className="block text-sm font-medium mb-2 text-gray-700">Emergency Contact</label>
                     <Input 
+                      id="emergency-contact"
                       name="emergencyContact" 
                       value={localFormData.emergencyContact || ''} 
                       onChange={handleChange}
@@ -779,8 +801,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Response Time Settings</label>
+                    <label htmlFor="response-time" className="block text-sm font-medium mb-2 text-gray-700">Response Time Settings</label>
                     <Input 
+                      id="response-time"
                       name="responseTimeSettings" 
                       value={localFormData.responseTimeSettings || ''} 
                       onChange={handleChange}
@@ -795,7 +818,7 @@ export default function VendorProfilePage() {
 
                 {/* Insurance & Bonding */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2">
+                  <label className="flex cursor-pointer items-center space-x-2">
                     <input
                       type="checkbox"
                       name="insuranceStatus"
@@ -803,9 +826,9 @@ export default function VendorProfilePage() {
                       onChange={(e) => setLocalFormData(prev => ({...prev, insuranceStatus: e.target.checked}))}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <label className="text-sm font-medium text-gray-700">Insured</label>
-                  </div>
-                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">Insured</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center space-x-2">
                     <input
                       type="checkbox"
                       name="bondingStatus"
@@ -813,14 +836,15 @@ export default function VendorProfilePage() {
                       onChange={(e) => setLocalFormData(prev => ({...prev, bondingStatus: e.target.checked}))}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <label className="text-sm font-medium text-gray-700">Bonded</label>
-                  </div>
+                    <span className="text-sm font-medium text-gray-700">Bonded</span>
+                  </label>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">License Number</label>
+                    <label htmlFor="license-number" className="block text-sm font-medium mb-2 text-gray-700">License Number</label>
                     <Input 
+                      id="license-number"
                       name="licenseNumber" 
                       value={localFormData.licenseNumber || ''} 
                       onChange={handleChange}
@@ -828,8 +852,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Insurance Provider</label>
+                    <label htmlFor="insurance-provider" className="block text-sm font-medium mb-2 text-gray-700">Insurance Provider</label>
                     <Input 
+                      id="insurance-provider"
                       name="insuranceProvider" 
                       value={localFormData.insuranceProvider || ''} 
                       onChange={handleChange}
@@ -840,8 +865,9 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Policy Expiration Date</label>
+                    <label htmlFor="insurance-expiry" className="block text-sm font-medium mb-2 text-gray-700">Policy Expiration Date</label>
                     <Input 
+                      id="insurance-expiry"
                       name="insuranceExpiry" 
                       type="date"
                       value={localFormData.insuranceExpiry ? new Date(localFormData.insuranceExpiry).toISOString().split('T')[0] : ''} 
@@ -850,8 +876,9 @@ export default function VendorProfilePage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Total Employees</label>
+                    <label htmlFor="total-employees" className="block text-sm font-medium mb-2 text-gray-700">Total Employees</label>
                     <Input 
+                      id="total-employees"
                       name="totalEmployees" 
                       type="number" 
                       value={profile.totalEmployees} 
@@ -863,18 +890,19 @@ export default function VendorProfilePage() {
                 </div>
 
                 {showSuccessToast && (
-                  <div className="p-3 bg-green-100 border border-green-300 rounded-lg text-green-700 font-medium">
-                    ✓ Profile updated successfully!
+                  <div role="status" aria-live="polite" className="p-3 bg-green-100 border border-green-300 rounded-lg text-green-700 font-medium">
+                    Profile updated successfully.
                   </div>
                 )}
 
                 {profileSaveError && String(localFormData.businessName || '').trim() ? (
-                  <div className="rounded-lg border border-red-400/40 bg-red-950/50 p-3 text-sm font-medium text-red-100">
+                  <div role="alert" className="rounded-lg border border-red-400/40 bg-red-950/50 p-3 text-sm font-medium text-red-100">
                     {profileSaveError}
                   </div>
                 ) : null}
 
                 <Button 
+                  type="button"
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-200" 
                   onClick={handleSave} 
                   disabled={saving}
@@ -914,14 +942,21 @@ export default function VendorProfilePage() {
                   Current customer label
                 </p>
                 <p className="mt-2 text-lg font-semibold text-white">
-                  {savedBusinessHoursStatus.configured ? editedBusinessHoursStatus.label : savedBusinessHoursStatus.label}
+                  {savedBusinessHoursStatus.label}
                 </p>
-                {savedBusinessHoursStatus.configured && editedBusinessHoursStatus.todayLabel ? (
-                  <p className="mt-1 text-sm text-slate-300">{editedBusinessHoursStatus.todayLabel}</p>
+                {savedBusinessHoursStatus.configured && savedBusinessHoursStatus.todayLabel ? (
+                  <p className="mt-1 text-sm text-slate-300">{savedBusinessHoursStatus.todayLabel}</p>
                 ) : (
                   <p className="mt-1 text-sm text-slate-300">Customers will see that hours are not listed yet.</p>
                 )}
               </div>
+              {businessHoursDirty ? (
+                <div role="status" className="rounded-xl border border-amber-300/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-100">
+                  {savedBusinessHoursJson
+                    ? 'You have unsaved hour changes. Customers still see the saved hours above until you select Save Business Hours.'
+                    : 'Suggested weekday hours are shown as a draft. Customers still see Hours not listed until you select Save Business Hours.'}
+                </div>
+              ) : null}
               <div className="grid gap-3">
                 {businessHours.days.map((day) => (
                   <div
@@ -931,6 +966,7 @@ export default function VendorProfilePage() {
                     <label className="flex cursor-pointer items-center gap-3">
                       <input
                         type="checkbox"
+                        aria-label={`${businessHourDayLabels[day.day]} hours enabled`}
                         checked={day.enabled}
                         onChange={(event) => updateBusinessHourDay(day.day, { enabled: event.target.checked })}
                         className="peer sr-only"
@@ -950,6 +986,7 @@ export default function VendorProfilePage() {
                       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-blue-100/60">Open</span>
                       <input
                         type="time"
+                        aria-label={`${businessHourDayLabels[day.day]} opening time`}
                         value={day.open}
                         disabled={!day.enabled}
                         onChange={(event) => updateBusinessHourDay(day.day, { open: event.target.value })}
@@ -960,6 +997,7 @@ export default function VendorProfilePage() {
                       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-blue-100/60">Close</span>
                       <input
                         type="time"
+                        aria-label={`${businessHourDayLabels[day.day]} closing time`}
                         value={day.close}
                         disabled={!day.enabled}
                         onChange={(event) => updateBusinessHourDay(day.day, { close: event.target.value })}
@@ -979,8 +1017,13 @@ export default function VendorProfilePage() {
                   Save Business Hours
                 </Button>
                 {showBusinessHoursToast ? (
-                  <span className="rounded-lg border border-emerald-300/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100">
+                  <span role="status" aria-live="polite" className="rounded-lg border border-emerald-300/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100">
                     Hours saved.
+                  </span>
+                ) : null}
+                {businessHoursError ? (
+                  <span role="alert" className="rounded-lg border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100">
+                    {businessHoursError}
                   </span>
                 ) : null}
               </div>
@@ -1069,14 +1112,16 @@ export default function VendorProfilePage() {
               </div>
               <input 
                 type="checkbox" 
+                aria-label="Email login alerts"
                 checked={securitySettings.loginNotifications}
                 onChange={(e) => setSecuritySettings(s => ({ ...s, loginNotifications: e.target.checked }))}
                 className="mt-1 h-4 w-4 accent-blue-600"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Vendor session timeout (minutes)</label>
+              <label htmlFor="vendor-session-timeout" className="block text-sm font-medium mb-2">Vendor session timeout (minutes)</label>
               <Input 
+                id="vendor-session-timeout"
                 type="number" 
                 min={5}
                 max={1440}
@@ -1089,6 +1134,7 @@ export default function VendorProfilePage() {
               </p>
             </div>
             <Button 
+              type="button"
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               onClick={handleSaveSecuritySettings}
             >

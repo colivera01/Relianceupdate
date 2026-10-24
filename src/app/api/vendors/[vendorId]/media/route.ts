@@ -21,6 +21,24 @@ function deriveMediaPurposeFromSessionType(sessionType: unknown): "progress" | "
   return normalized.includes("completion") ? "completion" : "progress";
 }
 
+function parsePackageStageAssets(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => ({
+        mediaAssetId: String(item?.mediaAssetId || "").trim(),
+        stageEvidenceId: String(item?.stageEvidenceId || "").trim(),
+        stageVersion: Number(item?.stageVersion || 0),
+        stage: String(item?.stage || "").trim().toUpperCase(),
+      }))
+      .filter((item) => item.mediaAssetId);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * GET /api/vendors/[vendorId]/media
  * List all media assets for a vendor (vendor-scoped, excludes deleted)
@@ -85,6 +103,52 @@ export async function GET(
       take: activityMode ? 100 : undefined,
     });
 
+    const currentPackageByAssetId = new Map<
+      string,
+      {
+        packageId: string;
+        packageVersion: number;
+        packageStatus: string;
+        stageEvidenceId: string;
+        stageVersion: number;
+        stage: string;
+      }
+    >();
+
+    if (activityMode) {
+      const bookingIds = Array.from(
+        new Set(
+          assets
+            .map((asset: any) => String(asset.mediaSession?.booking?.id || "").trim())
+            .filter(Boolean)
+        )
+      );
+      const currentPackages = bookingIds.length
+        ? await (prisma as any).serviceVideoPackageEvidence.findMany({
+            where: { vendorId, bookingId: { in: bookingIds }, isCurrent: true },
+            select: {
+              id: true,
+              version: true,
+              status: true,
+              stageEvidenceJson: true,
+            },
+          })
+        : [];
+
+      for (const currentPackage of currentPackages) {
+        for (const stageAsset of parsePackageStageAssets(currentPackage.stageEvidenceJson)) {
+          currentPackageByAssetId.set(stageAsset.mediaAssetId, {
+            packageId: String(currentPackage.id),
+            packageVersion: Number(currentPackage.version || 0),
+            packageStatus: String(currentPackage.status || ""),
+            stageEvidenceId: stageAsset.stageEvidenceId,
+            stageVersion: stageAsset.stageVersion,
+            stage: stageAsset.stage,
+          });
+        }
+      }
+    }
+
     // Calculate total storage for this vendor (non-deleted only)
     const storageAggregate = await (prisma as any).mediaAsset.aggregate({
       where: countableMediaAssetWhere({ vendorId }),
@@ -96,7 +160,9 @@ export async function GET(
     const totalBytes = storageAggregate._sum.bytes || BigInt(0);
 
     return NextResponse.json({
-      assets: assets.map((asset: any) => ({
+      assets: assets.map((asset: any) => {
+        const currentPackage = currentPackageByAssetId.get(String(asset.id)) || null;
+        return {
         assetId: asset.id,
         id: asset.id,
         vendorId: asset.vendorId,
@@ -126,9 +192,17 @@ export async function GET(
         vendorJobVideoStage: asset.mediaSession?.vendorJobVideoStage || null,
         mediaPurpose: deriveMediaPurposeFromSessionType(asset.mediaSession?.sessionType),
         employeeName: asset.mediaSession?.employee?.name || null,
+        isCurrentPackageAsset: Boolean(currentPackage),
+        currentPackageId: currentPackage?.packageId || null,
+        currentPackageVersion: currentPackage?.packageVersion || null,
+        currentPackageStatus: currentPackage?.packageStatus || null,
+        currentPackageStageEvidenceId: currentPackage?.stageEvidenceId || null,
+        currentPackageStageVersion: currentPackage?.stageVersion || null,
+        currentPackageStage: currentPackage?.stage || null,
         createdAt: asset.createdAt,
         deletedAt: asset.deletedAt,
-      })),
+        };
+      }),
       storage: {
         totalBytes: totalBytes.toString(),
         totalMB: (Number(totalBytes) / (1024 * 1024)).toFixed(2),

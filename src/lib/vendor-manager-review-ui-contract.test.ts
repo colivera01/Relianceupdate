@@ -15,7 +15,9 @@ describe("Vendor Manager review UI contract", () => {
     expect(page).toContain("I reviewed the three current stage videos");
     expect(page).toContain("managerReviewAcknowledged: true");
     expect(page).toContain("packageId: job.serviceVideoPackage.id");
-    expect(page).toContain("disabled={submitting || !auditAcknowledged}");
+    expect(page).toContain("disabled={submitting || !auditAcknowledged || !allStagesReviewed}");
+    expect(page).toContain("Manager review progress");
+    expect(page).toContain("allStagesReviewed");
   });
 
   it("presents a non-terminal exact-stage correction workflow", () => {
@@ -37,12 +39,16 @@ describe("Vendor Manager review UI contract", () => {
     expect(page).toContain("That action was not completed.");
   });
 
-  it("keeps both dark-dialog cancel actions readable", () => {
+  it("keeps dark-dialog actions readable", () => {
     const page = source("src/app/vendor/jobs/[jobId]/page.tsx");
     const readableCancelClasses =
       "border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white";
 
-    expect(page.split(readableCancelClasses)).toHaveLength(3);
+    expect(page).toContain(readableCancelClasses);
+    expect(page).toContain('aria-label="Watch previous stage video"');
+    expect(page).toContain('aria-label="Watch next stage video"');
+    expect(page).toContain("Corrected replacement");
+    expect(page).toContain('aria-label={`${correctionRequestedForStage ? "Watch prior" : "Watch"} ${stage.label} video`}');
   });
 
   it("uses compact, fully readable mobile navigation labels", () => {

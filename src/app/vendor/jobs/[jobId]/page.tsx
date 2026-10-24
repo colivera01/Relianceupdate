@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { CheckCircle2, ChevronLeft, ChevronRight, PlayCircle, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,7 @@ import {
   isOverStageVideoLimit,
 } from "@/lib/stage-video-guidance";
 import { resolveManagerStageAssetState } from "@/lib/service-video-manager-stage-state";
+import { formatRelianceDateTime } from "@/lib/reliance-date-time";
 
 type JobLike = {
   id: string;
@@ -45,8 +47,31 @@ type JobLike = {
     id: string;
     version: number;
     status: string;
+    submittedAt?: string | null;
+    stageEvidence?: Array<{
+      stage: string;
+      stageEvidenceId: string;
+      stageVersion: number;
+      mediaAssetId: string;
+    }>;
     audioExpected?: boolean;
   } | null;
+  serviceVideoPackageHistory?: Array<{
+    id: string;
+    version: number;
+    status: string;
+    isCurrent: boolean;
+    submittedAt?: string | null;
+  }>;
+  managerReviewHistory?: Array<{
+    id: string;
+    packageId: string;
+    packageVersion?: number | null;
+    decision: string;
+    targetedStages: string[];
+    reason?: string | null;
+    decidedAt?: string | null;
+  }>;
   adminAuditDecision?: {
     decision: string;
     rejectionCategory?: string | null;
@@ -136,13 +161,6 @@ function normalizeStatus(value: string | null | undefined) {
   return normalized;
 }
 
-function formatDateTimeUtc(value: string | null | undefined) {
-  if (!value) return "Unknown";
-  const parsed = new Date(String(value));
-  if (Number.isNaN(parsed.getTime())) return "Unknown";
-  return parsed.toLocaleString("en-US");
-}
-
 function lifecycleBadgeClass(tone: string) {
   if (tone === "green") return "bg-emerald-100 text-emerald-800";
   if (tone === "blue") return "bg-blue-100 text-blue-800";
@@ -167,6 +185,13 @@ function isRealAzureBlobHostUrl(value: string) {
 function stageVideoTitle(stageKey: string) {
   const stage = STAGE_ORDER.find((item) => item.key === stageKey);
   return stage ? `${stage.label} Video` : "Stage Video";
+}
+
+function stageListLabel(stageKeys: string[]) {
+  const labels = stageKeys
+    .map((key) => STAGE_ORDER.find((stage) => stage.key === String(key).toUpperCase())?.label)
+    .filter(Boolean);
+  return labels.length > 0 ? labels.join(", ") : "selected stage";
 }
 
 function actionErrorMessage(payload: any, fallback: string) {
@@ -213,6 +238,9 @@ export default function VendorJobDetailPage() {
   const [playbackTitle, setPlaybackTitle] = useState("");
   const [playbackError, setPlaybackError] = useState("");
   const [playbackOpen, setPlaybackOpen] = useState(false);
+  const [playbackStage, setPlaybackStage] = useState<ReviewStage | null>(null);
+  const [playbackCompleted, setPlaybackCompleted] = useState(false);
+  const [reviewedStages, setReviewedStages] = useState<ReviewStage[]>([]);
   const [resendingCompletedOrder, setResendingCompletedOrder] = useState(false);
   const [resolvingPlaybackStage, setResolvingPlaybackStage] = useState<string | null>(null);
   const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
@@ -240,6 +268,31 @@ export default function VendorJobDetailPage() {
     }
     return out;
   }, [sessions]);
+
+  const packageStageMap = useMemo(() => {
+    const out = new Map<
+      string,
+      NonNullable<NonNullable<JobLike["serviceVideoPackage"]>["stageEvidence"]>[number]
+    >();
+    for (const stage of job?.serviceVideoPackage?.stageEvidence || []) {
+      const key = String(stage?.stage || "").trim().toUpperCase();
+      if (key) out.set(key, stage);
+    }
+    return out;
+  }, [job?.serviceVideoPackage?.stageEvidence]);
+
+  const reviewableStageKeys = useMemo(
+    () => STAGE_ORDER.filter((stage) => resolveManagerStageAssetState(stageMap.get(stage.key)).saved).map((stage) => stage.key),
+    [stageMap],
+  );
+  const allStagesReviewed = reviewableStageKeys.length === STAGE_ORDER.length &&
+    reviewableStageKeys.every((stage) => reviewedStages.includes(stage));
+
+  useEffect(() => {
+    setReviewedStages([]);
+    setPlaybackStage(null);
+    setPlaybackCompleted(false);
+  }, [job?.serviceVideoPackage?.id, job?.serviceVideoPackage?.version]);
 
   const nextMissingStage = useMemo(() => {
     for (const stage of STAGE_ORDER) {
@@ -361,7 +414,7 @@ export default function VendorJobDetailPage() {
     void load();
   }, [effectiveVendorId, jobId, vendorProfileLoading]);
 
-  const watchStage = async (stageKey: string) => {
+  const watchStage = async (stageKey: ReviewStage) => {
     if (!effectiveVendorId) return;
     const session = stageMap.get(stageKey);
     const asset = session?.mediaAssets?.[0];
@@ -381,12 +434,28 @@ export default function VendorJobDetailPage() {
       }
       setPlaybackUrl(downloadUrl);
       setPlaybackTitle(stageVideoTitle(stageKey));
+      setPlaybackStage(stageKey);
+      setPlaybackCompleted(false);
       setPlaybackOpen(true);
     } catch (e) {
       setPlaybackError(e instanceof Error ? e.message : "Unable to open this video.");
     } finally {
       setResolvingPlaybackStage(null);
     }
+  };
+
+  const markPlaybackReviewed = () => {
+    if (!playbackStage) return;
+    setPlaybackCompleted(true);
+    setReviewedStages((current) => Array.from(new Set([...current, playbackStage])));
+  };
+
+  const adjacentPlaybackStage = (direction: -1 | 1): ReviewStage | null => {
+    if (!playbackStage) return null;
+    const currentIndex = STAGE_ORDER.findIndex((stage) => stage.key === playbackStage);
+    const next = STAGE_ORDER[currentIndex + direction];
+    if (!next) return null;
+    return resolveManagerStageAssetState(stageMap.get(next.key)).saved ? next.key : null;
   };
 
   const uploadStage = async (stageKey: string, file: File, durationSeconds: number) => {
@@ -509,6 +578,10 @@ export default function VendorJobDetailPage() {
 
   const approveCompletion = async () => {
     if (!effectiveVendorId || !jobId || !job?.serviceVideoPackage) return;
+    if (!allStagesReviewed) {
+      setActionError("Review all three current stage videos before submitting this package to Reliance Audit.");
+      return;
+    }
     if (!auditAcknowledged) {
       setActionError("Confirm that you reviewed the exact current stage videos before submitting them for Reliance Audit.");
       return;
@@ -610,49 +683,87 @@ export default function VendorJobDetailPage() {
   };
 
   const activityEvents = useMemo(() => {
-    const events: string[] = [];
-    if (job?.createdAt) events.push(`Created: ${formatDateTimeUtc(job.createdAt)}`);
-    if (job?.assignedEmployees?.length) events.push(`Assigned: ${job.assignedEmployees.join(", ")}`);
+    const events: Array<{ key: string; at: number; label: string }> = [];
+    const addEvent = (key: string, value: string | null | undefined, label: string) => {
+      const at = value ? new Date(value).getTime() : Number.NaN;
+      events.push({ key, at: Number.isFinite(at) ? at : Number.MAX_SAFE_INTEGER, label });
+    };
+    if (job?.createdAt) {
+      addEvent("created", job.createdAt, `Created: ${formatRelianceDateTime(job.createdAt)}`);
+    }
+    if (job?.assignedEmployees?.length) {
+      addEvent("assigned", job.createdAt, `Assigned: ${job.assignedEmployees.join(", ")}`);
+    }
     for (const stage of STAGE_ORDER) {
       const s = stageMap.get(stage.key);
       const stageState = resolveManagerStageAssetState(s);
       const ts = stageState.asset?.createdAt || s?.createdAt;
-      if (stageState.saved && ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
-      if (stageState.correctionRequested) events.push(`${stage.label} returned for correction`);
+      const packageStage = packageStageMap.get(stage.key);
+      if (stageState.saved && ts) {
+        addEvent(
+          `stage-${stage.key}-${String(ts)}`,
+          ts,
+          `${stage.label} ${Number(packageStage?.stageVersion || 1) > 1 ? "replacement saved" : "saved"}: ${formatRelianceDateTime(ts)}`,
+        );
+      }
     }
-    if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
-    if (allStagesExist && ["AWAITING_REVIEW", "COMPLETED"].includes(normalizedStatus)) {
-      events.push("Employee recording completed");
+
+    const packageHistory = job?.serviceVideoPackageHistory || [];
+    for (const pkg of packageHistory) {
+      const when = pkg.submittedAt || null;
+      addEvent(
+        `package-${pkg.id}`,
+        when,
+        `${pkg.version > 1 ? "Corrected package" : "Package"} v${pkg.version} submitted for Manager Review${when ? `: ${formatRelianceDateTime(when)}` : ""}`,
+      );
+    }
+    for (const decision of job?.managerReviewHistory || []) {
+      const packageVersion = decision.packageVersion ?? packageHistory.find((pkg) => pkg.id === decision.packageId)?.version;
+      const packageLabel = packageVersion ? `package v${packageVersion}` : "the reviewed package";
+      if (String(decision.decision).toUpperCase() === "CORRECTION_REQUESTED") {
+        const when = decision.decidedAt || null;
+        const reason = String(decision.reason || "").trim();
+        addEvent(
+          `manager-decision-${decision.id}`,
+          when,
+          `Manager requested correction for ${stageListLabel(decision.targetedStages)} on ${packageLabel}${reason ? `: ${reason}` : ""}${when ? ` (${formatRelianceDateTime(when)})` : ""}`,
+        );
+      }
+    }
+    if (packageHistory.length === 0 && normalizedStatus === "AWAITING_REVIEW") {
+      addEvent("manager-review-current", job?.updatedAt, "Current package submitted for Manager Review");
     }
     if (String(job?.operationalPhase || "").toUpperCase() === "AWAITING_ADMIN_REVIEW") {
-      events.push("Submitted to Reliance Audit");
+      addEvent("audit-submitted", job?.updatedAt, "Submitted to Reliance Audit");
     }
     if (job?.adminAuditDecision?.decision === "PASS") {
-      events.push(`Reliance Audit passed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
+      addEvent("audit-pass", job.adminAuditDecision.decidedAt, `Reliance Audit passed: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
       if (job.packageVisibility?.privateProofReleased) {
-        events.push(`Customer Private Proof released: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
+        addEvent("private-proof", job.adminAuditDecision.decidedAt, `Customer Private Proof released: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
       }
     } else if (job?.adminAuditDecision?.decision === "REJECT") {
-      events.push(`Reliance Audit failed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
-    } else if (job?.rejectionReason) {
-      events.push("Stage correction requested by manager");
+      addEvent("audit-reject", job.adminAuditDecision.decidedAt, `Reliance Audit failed: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
+    } else if (job?.rejectionReason && (job?.managerReviewHistory || []).length === 0) {
+      addEvent("legacy-correction", job.rejectedAt, "Stage correction requested by manager");
     }
     if (job?.packageVisibility?.decision === "KEEP_PRIVATE") {
-      events.push(`Customer kept Private: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
+      addEvent("visibility-private", job.packageVisibility.decidedAt, `Customer kept Private: ${formatRelianceDateTime(job.packageVisibility.decidedAt)}`);
     } else if (job?.packageVisibility?.decision === "SHARE_PUBLICLY") {
-      events.push(`Customer authorized Public sharing: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
-      if (job.packageVisibility.state === "PUBLIC_WAITING_PERMISSION") events.push("Waiting for Public-sharing permission");
-      if (job.packageVisibility.state === "PUBLIC_REVIEW_PENDING") events.push("Historical Public processing pending");
-      if (job.packageVisibility.state === "PUBLIC") events.push("Service Video became Public");
+      addEvent("visibility-public", job.packageVisibility.decidedAt, `Customer authorized Public sharing: ${formatRelianceDateTime(job.packageVisibility.decidedAt)}`);
+      if (job.packageVisibility.state === "PUBLIC_WAITING_PERMISSION") addEvent("public-permission", job.packageVisibility.decidedAt, "Waiting for Public-sharing permission");
+      if (job.packageVisibility.state === "PUBLIC_REVIEW_PENDING") addEvent("public-review", job.packageVisibility.decidedAt, "Historical Public processing pending");
+      if (job.packageVisibility.state === "PUBLIC") addEvent("public-live", job.packageVisibility.decidedAt, "Service Video became Public");
     }
     if (normalizedStatus === "CANCELED") {
       const actor = String(job?.cancellation?.canceledBy || "Vendor manager").trim();
       const reason = String(job?.cancellation?.reason || "No reason recorded").trim();
-      const when = formatDateTimeUtc(job?.cancellation?.canceledAt || job?.updatedAt);
-      events.push(`Canceled by ${actor}: ${reason} (${when})`);
+      const when = formatRelianceDateTime(job?.cancellation?.canceledAt || job?.updatedAt);
+      addEvent("canceled", job?.cancellation?.canceledAt || job?.updatedAt, `Canceled by ${actor}: ${reason} (${when})`);
     }
-    return events;
-  }, [allStagesExist, job, stageMap, normalizedStatus]);
+    return events
+      .sort((left, right) => left.at - right.at || left.key.localeCompare(right.key))
+      .map((event) => event.label);
+  }, [job, normalizedStatus, packageStageMap, stageMap]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -712,7 +823,7 @@ export default function VendorJobDetailPage() {
                     <Badge variant="outline">
                       Source: {String(job.source || "").toLowerCase() === "customer_booking" ? "Customer Booking" : "Vendor-Created Job"}
                     </Badge>
-                    {job.date ? <Badge variant="outline">Date: {formatDateTimeUtc(job.date)}</Badge> : null}
+                    {job.date ? <Badge variant="outline">Date: {formatRelianceDateTime(job.date)}</Badge> : null}
                     {job.assignedEmployees?.length ? (
                       <Badge variant="outline">Assigned: {job.assignedEmployees.join(", ")}</Badge>
                     ) : (
@@ -740,32 +851,9 @@ export default function VendorJobDetailPage() {
                     </Button>
                   ) : null}
                   {canManagerReview ? (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => {
-                          setActionError(null);
-                          setAuditAcknowledged(false);
-                          setAuditConfirmOpen(true);
-                        }}
-                        disabled={submitting || !allStagesExist}
-                      >
-                        Submit to Reliance Audit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-amber-300 text-amber-900"
-                        onClick={() => {
-                          setActionError(null);
-                          setCorrectionReason("");
-                          setCorrectionStages([]);
-                          setCorrectionOpen(true);
-                        }}
-                        disabled={submitting}
-                      >
-                        Request Stage Correction
-                      </Button>
-                    </div>
+                    <p className="max-w-sm text-sm text-blue-50/75 lg:text-right">
+                      Review the exact current package below. Manager decisions appear after the three stage videos.
+                    </p>
                   ) : null}
                 </div>
               </CardContent>
@@ -774,10 +862,20 @@ export default function VendorJobDetailPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardContent className="p-4">
-                  <p className="text-xs font-semibold uppercase text-gray-500">Completed prerequisite</p>
-                  <p className="mt-1 font-semibold text-white">Customer recording permission</p>
-                  <p className="mt-1 text-sm text-blue-50/85">{readableEvidenceValue(job.recordingCompliance?.permissionStatus)}</p>
-                  <p className="mt-2 text-xs text-blue-50/65">This evidence authorized recording only. It does not determine Private or Public visibility.</p>
+                  <p className="text-xs font-semibold uppercase text-gray-500">Recording permission requirement</p>
+                  <p className="mt-1 font-semibold text-white">
+                    {job.recordingCompliance?.permissionRequired
+                      ? "Customer recording permission"
+                      : "Customer permission not required for this location"}
+                  </p>
+                  <p className="mt-1 text-sm text-blue-50/85">
+                    {job.recordingCompliance?.permissionRequired
+                      ? readableEvidenceValue(job.recordingCompliance?.permissionStatus)
+                      : "The Customer is not an intended recording participant in the approved scope."}
+                  </p>
+                  <p className="mt-2 text-xs text-blue-50/65">
+                    Recording participation and Private or Public visibility remain separate decisions.
+                  </p>
                 </CardContent>
               </Card>
               <Card>
@@ -848,7 +946,7 @@ export default function VendorJobDetailPage() {
                     Reliance approved the exact submitted Service Video package and released the Private Proof to the customer. No video was made Public.
                   </p>
                   <p className="mt-2 text-xs text-emerald-800">
-                    Audit completed: {formatDateTimeUtc(job.adminAuditDecision.decidedAt)}. This record is read-only.
+                    Audit completed: {formatRelianceDateTime(job.adminAuditDecision.decidedAt)}. This record is read-only.
                   </p>
                 </CardContent>
               </Card>
@@ -862,7 +960,7 @@ export default function VendorJobDetailPage() {
                   {job.adminAuditDecision.rejectionCategory ? (
                     <p className="mt-2 text-xs text-rose-800">Category: {coreAdminAuditRejectionCategoryLabel(job.adminAuditDecision.rejectionCategory)}</p>
                   ) : null}
-                  <p className="mt-1 text-xs text-rose-800">Audit completed: {formatDateTimeUtc(job.adminAuditDecision.decidedAt)}</p>
+                  <p className="mt-1 text-xs text-rose-800">Audit completed: {formatRelianceDateTime(job.adminAuditDecision.decidedAt)}</p>
                   {job.adminAuditDecision.reason ? (
                     <p className="mt-1 text-xs text-rose-800">Reason: {job.adminAuditDecision.reason}</p>
                   ) : null}
@@ -895,8 +993,18 @@ export default function VendorJobDetailPage() {
             ) : null}
 
             <Card>
-              <CardHeader>
-                <CardTitle>Video Timeline</CardTitle>
+              <CardHeader className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Video Timeline</CardTitle>
+                  <p className="mt-1 text-sm text-blue-50/70">
+                    Review the exact current package in stage order before making a Manager decision.
+                  </p>
+                </div>
+                {job.serviceVideoPackage ? (
+                  <Badge variant="outline" className="w-fit border-blue-300/40 text-blue-100">
+                    {job.serviceVideoPackage.version > 1 ? "Corrected package" : "Current package"} v{job.serviceVideoPackage.version}
+                  </Badge>
+                ) : null}
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -905,6 +1013,9 @@ export default function VendorJobDetailPage() {
                     const stageState = resolveManagerStageAssetState(stageSession);
                     const latestAsset = stageState.asset;
                     const hasUpload = stageState.saved;
+                    const packageStage = packageStageMap.get(stage.key);
+                    const correctedReplacement = Number(packageStage?.stageVersion || 1) > 1;
+                    const reviewed = reviewedStages.includes(stage.key);
                     const correctionRequestedForStage = correctionPending && stageState.correctionRequested;
                     const stageIsNext = nextMissingStage === stage.key;
                     const stageCardClass = correctionRequestedForStage
@@ -917,14 +1028,30 @@ export default function VendorJobDetailPage() {
                         key={stage.key}
                         className={`rounded-xl border p-4 text-white shadow-sm ${stageCardClass}`}
                       >
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-start justify-between gap-2">
                           <p className="font-semibold text-white">{stage.label}</p>
-                          <Badge
-                            variant="outline"
-                            className={hasUpload ? "border-emerald-300/55 text-emerald-100" : "border-amber-300/55 text-amber-100"}
-                          >
-                            {correctionRequestedForStage ? "Correction requested" : hasUpload ? "Uploaded" : "Missing"}
-                          </Badge>
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Badge
+                              variant="outline"
+                              className={hasUpload ? "border-emerald-300/55 text-emerald-100" : "border-amber-300/55 text-amber-100"}
+                            >
+                              {correctionRequestedForStage
+                                ? "Correction requested"
+                                : hasUpload
+                                  ? correctedReplacement
+                                    ? "Corrected replacement"
+                                    : "Current package video"
+                                  : "Missing"}
+                            </Badge>
+                            {canManagerReview && hasUpload ? (
+                              <Badge
+                                variant="outline"
+                                className={reviewed ? "border-cyan-300/55 text-cyan-100" : "border-slate-400/45 text-slate-300"}
+                              >
+                                {reviewed ? "Reviewed" : "Review required"}
+                              </Badge>
+                            ) : null}
+                          </div>
                         </div>
                         <p className="mt-2 text-sm text-blue-50/75">{stage.cue}</p>
                         <p className="mt-1 text-xs font-medium text-blue-200">{getStageVideoLimitCopy()}</p>
@@ -933,7 +1060,7 @@ export default function VendorJobDetailPage() {
                             <p className="text-xs text-blue-50/70">
                               {correctionRequestedForStage ? "Prior upload:" : "Uploaded:"}{" "}
                               {latestAsset?.createdAt || stageSession?.createdAt
-                                ? formatDateTimeUtc(String(latestAsset?.createdAt || stageSession?.createdAt))
+                                ? formatRelianceDateTime(String(latestAsset?.createdAt || stageSession?.createdAt))
                                 : "Unknown"}
                             </p>
                             <p className="text-xs font-medium text-blue-100">
@@ -949,12 +1076,14 @@ export default function VendorJobDetailPage() {
                               onClick={() => void watchStage(stage.key)}
                               disabled={resolvingPlaybackStage === stage.key}
                               className="bg-blue-600 text-white shadow-sm hover:bg-blue-700 disabled:bg-blue-500"
+                              aria-label={`${correctionRequestedForStage ? "Watch prior" : "Watch"} ${stage.label} video`}
                             >
+                              <PlayCircle className="mr-2 h-4 w-4" />
                               {resolvingPlaybackStage === stage.key
                                 ? "Opening..."
                                 : correctionRequestedForStage
                                   ? "Watch prior version"
-                                  : "Watch"}
+                                  : `Watch ${stage.label}`}
                             </Button>
                             <p className="text-xs text-blue-50/70">
                               {correctionRequestedForStage
@@ -980,6 +1109,54 @@ export default function VendorJobDetailPage() {
                     );
                   })}
                 </div>
+                {canManagerReview ? (
+                  <div className="mt-6 rounded-lg border border-blue-300/25 bg-slate-950/55 p-4 text-white" data-testid="manager-review-decision-panel">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold">Manager review progress: {reviewedStages.length} of 3 stages reviewed</p>
+                        <p className="mt-1 text-sm text-blue-50/70">
+                          Watch each current video through once. Then submit the exact package or request correction only for the affected stage.
+                        </p>
+                      </div>
+                      {allStagesReviewed ? (
+                        <Badge className="w-fit bg-emerald-600 text-white">Review complete</Badge>
+                      ) : (
+                        <Badge variant="outline" className="w-fit border-amber-300/55 text-amber-100">Review in progress</Badge>
+                      )}
+                    </div>
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => {
+                          setActionError(null);
+                          setAuditAcknowledged(false);
+                          setAuditConfirmOpen(true);
+                        }}
+                        disabled={submitting || !allStagesExist || !allStagesReviewed}
+                      >
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        Submit to Reliance Audit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-amber-300 text-amber-100 hover:bg-amber-500/10 hover:text-amber-50"
+                        onClick={() => {
+                          setActionError(null);
+                          setCorrectionReason("");
+                          setCorrectionStages([]);
+                          setCorrectionOpen(true);
+                        }}
+                        disabled={submitting}
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Request Stage Correction
+                      </Button>
+                    </div>
+                    {!allStagesReviewed ? (
+                      <p className="mt-3 text-xs text-amber-100">Submit becomes available after all three current stage videos have been reviewed.</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {canSubmitForManagerReview ? (
                   <div className="mt-6 rounded-lg border border-emerald-300 bg-emerald-50 p-4">
                     <p className="text-sm text-emerald-900 font-semibold">
@@ -1006,8 +1183,8 @@ export default function VendorJobDetailPage() {
                   <p><span className="text-gray-600">Customer phone:</span> {job.customerPhone || "Not saved"}</p>
                   <p><span className="text-gray-600">Service:</span> {job.serviceName || job.serviceType || "General Service"}</p>
                   <p><span className="text-gray-600">Job ID:</span> {job.id}</p>
-                  <p><span className="text-gray-600">Created:</span> {formatDateTimeUtc(job.createdAt || null)}</p>
-                  <p><span className="text-gray-600">Updated:</span> {formatDateTimeUtc(job.updatedAt || null)}</p>
+                  <p><span className="text-gray-600">Created:</span> {formatRelianceDateTime(job.createdAt || null)}</p>
+                  <p><span className="text-gray-600">Updated:</span> {formatRelianceDateTime(job.updatedAt || null)}</p>
                   <p><span className="text-gray-600">Notes:</span> {job.notes?.[0]?.text || "No notes available"}</p>
                 </CardContent>
               </Card>
@@ -1055,7 +1232,16 @@ export default function VendorJobDetailPage() {
                 <p className="font-semibold text-white">Exact stage videos</p>
                 <ul className="mt-1 space-y-1 text-blue-50/80">
                   {STAGE_ORDER.map((stage) => (
-                    <li key={stage.key}>{stage.label}: {stageMap.get(stage.key)?.mediaAssets?.[0]?.id ? "reviewed package video present" : "missing"}</li>
+                    <li key={stage.key} className="flex items-center justify-between gap-3">
+                      <span>{stage.label}</span>
+                      <span className={reviewedStages.includes(stage.key) ? "text-emerald-200" : "text-amber-200"}>
+                        {stageMap.get(stage.key)?.mediaAssets?.[0]?.id
+                          ? reviewedStages.includes(stage.key)
+                            ? "Current package video reviewed"
+                            : "Current package video present; review required"
+                          : "Missing"}
+                      </span>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -1078,7 +1264,7 @@ export default function VendorJobDetailPage() {
               >
                 Cancel
               </Button>
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={approveCompletion} disabled={submitting || !auditAcknowledged}>
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={approveCompletion} disabled={submitting || !auditAcknowledged || !allStagesReviewed}>
                 {submitting ? "Submitting..." : "Submit to Reliance Audit"}
               </Button>
             </DialogFooter>
@@ -1154,32 +1340,73 @@ export default function VendorJobDetailPage() {
             if (!open) {
               setPlaybackUrl("");
               setPlaybackTitle("");
+              setPlaybackStage(null);
+              setPlaybackCompleted(false);
             }
           }}
         >
-          <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] flex-col overflow-hidden sm:max-w-3xl">
+          <DialogContent className="reliance-mobile-dialog flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] flex-col overflow-hidden border-white/10 bg-[#08101d] text-white sm:max-w-3xl">
             <DialogHeader className="flex-shrink-0">
               <DialogTitle>{playbackTitle || "Stage Video"}</DialogTitle>
-              <DialogDescription>
-                Playback for this stage video. Use the video controls to expand full screen.
+              <DialogDescription className="text-blue-50/75">
+                Watch this current package video through once to mark the stage reviewed. Use the video controls to expand full screen.
               </DialogDescription>
             </DialogHeader>
             {playbackUrl ? (
-              <video
-                className="max-h-[60dvh] w-full rounded-lg border border-slate-700 bg-black object-contain"
-                controls
-                autoPlay
-                src={playbackUrl}
-              >
-                Your browser does not support HTML5 video playback.
-              </video>
+              <div className="space-y-3">
+                <video
+                  key={`${playbackStage || "stage"}:${playbackUrl}`}
+                  className="max-h-[58dvh] w-full rounded-lg border border-slate-700 bg-black object-contain"
+                  controls
+                  autoPlay
+                  onEnded={markPlaybackReviewed}
+                  src={playbackUrl}
+                >
+                  Your browser does not support HTML5 video playback.
+                </video>
+                <div className={`rounded-lg border px-3 py-2 text-sm ${
+                  playbackCompleted || (playbackStage && reviewedStages.includes(playbackStage))
+                    ? "border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
+                    : "border-blue-300/20 bg-white/5 text-blue-50/75"
+                }`}>
+                  {playbackCompleted || (playbackStage && reviewedStages.includes(playbackStage))
+                    ? "This stage is marked reviewed for the current page visit."
+                    : "Review status updates when playback reaches the end."}
+                </div>
+              </div>
             ) : (
-              <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="rounded border border-rose-400/35 bg-rose-500/10 p-3 text-sm text-rose-100">
                 {playbackError || "Video preview is temporarily unavailable."}
               </div>
             )}
-            <DialogFooter className="flex-shrink-0">
-              <Button variant="outline" onClick={() => setPlaybackOpen(false)}>
+            <DialogFooter className="flex-shrink-0 gap-2 sm:space-x-0">
+              <Button
+                variant="outline"
+                className="border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={() => {
+                  const previous = adjacentPlaybackStage(-1);
+                  if (previous) void watchStage(previous);
+                }}
+                disabled={!adjacentPlaybackStage(-1) || Boolean(resolvingPlaybackStage)}
+                aria-label="Watch previous stage video"
+              >
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                className="border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                onClick={() => {
+                  const next = adjacentPlaybackStage(1);
+                  if (next) void watchStage(next);
+                }}
+                disabled={!adjacentPlaybackStage(1) || Boolean(resolvingPlaybackStage)}
+                aria-label="Watch next stage video"
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+              <Button variant="outline" className="border-slate-500 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={() => setPlaybackOpen(false)}>
                 Close
               </Button>
             </DialogFooter>

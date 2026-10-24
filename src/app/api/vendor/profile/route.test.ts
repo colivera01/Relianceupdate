@@ -5,6 +5,7 @@ const hoisted = vi.hoisted(() => {
   const vendorFindUnique = vi.fn();
   const vendorUpdate = vi.fn();
   const serviceCount = vi.fn();
+  const vendorMembershipCount = vi.fn();
   return {
     prisma: {
       vendor: {
@@ -14,10 +15,14 @@ const hoisted = vi.hoisted(() => {
       service: {
         count: serviceCount,
       },
+      vendorMembership: {
+        count: vendorMembershipCount,
+      },
     },
     vendorFindUnique,
     vendorUpdate,
     serviceCount,
+    vendorMembershipCount,
   };
 });
 
@@ -152,6 +157,7 @@ describe("vendor profile onboarding access", () => {
     hoisted.vendorFindUnique.mockReset();
     hoisted.vendorUpdate.mockReset();
     hoisted.serviceCount.mockReset();
+    hoisted.vendorMembershipCount.mockReset();
 
     hoisted.vendorFindUnique.mockResolvedValue(vendorRow());
     hoisted.vendorUpdate.mockResolvedValue(vendorRow());
@@ -160,6 +166,7 @@ describe("vendor profile onboarding access", () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(0);
+    hoisted.vendorMembershipCount.mockResolvedValue(2);
   });
 
   it("lets pending vendors load onboarding profile truth", async () => {
@@ -173,6 +180,10 @@ describe("vendor profile onboarding access", () => {
     const json = await readJson(response);
     expect(json.approvalPending).toBe(true);
     expect(json.profile.membershipStatus).toBe("PENDING");
+    expect(json.profile.totalEmployees).toBe(2);
+    expect(hoisted.vendorMembershipCount).toHaveBeenCalledWith({
+      where: { vendorId: "vendor-1", role: "EMPLOYEE", status: "ACTIVE" },
+    });
     expect(json.profile.onboarding.readyForAdminReview).toBe(true);
     expect(json.profile.onboarding.nextStep).toContain("Wait for admin approval");
   });

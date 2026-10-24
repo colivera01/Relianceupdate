@@ -406,9 +406,11 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(page.getByText("Advanced stage controls")).toHaveCount(0);
 
     await page.getByRole("button", { name: "PASS Audit" }).click();
-    await expect(page.getByRole("dialog", { name: "Confirm Reliance Audit PASS" })).toBeVisible();
+    const passDialog = page.getByRole("dialog", { name: "Confirm Reliance Audit PASS" });
+    await expect(passDialog).toBeVisible();
     expect(decisionRequests).toBe(0);
-    await page.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
+    await passDialog.getByLabel("Eligible for Public display").check();
+    await passDialog.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
     expect(decisionRequests).toBe(1);
     expect(passRequest).toMatchObject({
       action: "pass",
@@ -550,22 +552,23 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(cancelDialog.getByLabel("Cancellation reason")).toBeVisible();
   });
 
-  test("keeps Manager Review controls in one place and Actions separate", async ({ page }) => {
+  test("funnels Manager Review through the exact current package and keeps Actions separate", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installVendorFixture(page, [managerReviewJob]);
     await openVendorJobs(page);
 
     const progress = page.getByLabel("Work record progress");
     await expect(progress).toContainText("Awaiting Manager Review");
-    await expect(page.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Request Changes" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Review Current Package" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Request Stage Correction" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Actions" }).click();
     const actionsMenu = page.getByRole("menu");
     await expect(actionsMenu.getByRole("button", { name: "View Details" })).toBeVisible();
     await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(0);
-    await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
+    await expect(actionsMenu.getByRole("button", { name: "Request Stage Correction" })).toHaveCount(0);
   });
 
   test("renders canonical Admin PASS and requires approved evidence for the Private Proof filter", async ({ page }) => {

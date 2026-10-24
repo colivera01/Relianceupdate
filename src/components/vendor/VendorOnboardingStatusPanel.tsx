@@ -25,14 +25,14 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
 
   if (compact) {
     return (
-      <section className="rounded-3xl border border-white/10 bg-slate-950/70 px-5 py-4 text-white shadow-[0_18px_48px_rgba(15,23,42,0.22)]">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <section className="rounded-xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white shadow-[0_18px_48px_rgba(15,23,42,0.22)] sm:px-5 sm:py-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-200/75">
               Vendor status
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h2 className="text-xl font-semibold text-white">{statusTitle}</h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 sm:mt-2 sm:gap-3">
+              <h2 className="text-base font-semibold text-white sm:text-xl">{statusTitle}</h2>
               <Badge variant="outline" className="border-blue-300/25 bg-blue-500/10 text-blue-100">
                 {onboarding.approvalLabel}
               </Badge>
@@ -40,14 +40,17 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
                 {onboarding.publicVisibilityLabel}
               </Badge>
             </div>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-white/68">
+            <p className="mt-2 hidden max-w-4xl text-sm leading-6 text-white/68 sm:block">
               {recommendedAction
                 ? `${recommendedAction.label}: ${recommendedAction.detail}`
                 : onboarding.nextStep}
             </p>
+            <p className="mt-1.5 text-xs leading-5 text-white/68 sm:hidden">
+              {recommendedAction ? `Next: ${recommendedAction.label}` : onboarding.nextStep}
+            </p>
           </div>
 
-          <div className="flex flex-wrap gap-2 xl:justify-end">
+          <div className="hidden flex-wrap gap-2 sm:flex xl:justify-end">
             <Badge variant="outline" className="border-white/15 bg-white/6 text-white/88">
               {onboarding.serviceDraftCount} saved service{onboarding.serviceDraftCount === 1 ? '' : 's'}
             </Badge>
@@ -73,10 +76,15 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
           </div>
         </div>
 
-        <details className="group mt-3 border-t border-white/8 pt-3">
+        <details className="group mt-2 border-t border-white/8 pt-2 sm:mt-3 sm:pt-3">
           <summary className="cursor-pointer list-none text-xs font-semibold text-blue-100/75 transition hover:text-blue-100">
             View setup details
           </summary>
+          <p className="mt-2 text-xs leading-5 text-white/68 sm:hidden">
+            {recommendedAction
+              ? `${recommendedAction.label}: ${recommendedAction.detail}`
+              : onboarding.nextStep}
+          </p>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             {onboarding.checklist.map((item) => (
               <div

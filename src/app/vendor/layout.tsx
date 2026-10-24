@@ -390,18 +390,21 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         <div className="flex-1 overflow-x-hidden">
           <div className="w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-10 md:pb-6">
             {availableRoles.length > 1 ? (
-              <div className="mb-6 rounded-[28px] border border-white/10 bg-white/6 px-5 py-4 shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="mb-3 rounded-xl border border-white/10 bg-white/6 px-3 py-3 shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl sm:mb-6 sm:rounded-[28px] sm:px-5 sm:py-4">
+                <div className="flex flex-col gap-2 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78">
+                    <p className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78 sm:block">
                       Linked account access
                     </p>
-                    <p className="text-sm font-medium text-white">
+                    <p className="text-xs font-medium text-white sm:text-sm">
+                      <span className="sm:hidden">Switch account view</span>
+                      <span className="hidden sm:inline">
                       {hasCustomerVendorLinkedAccess
                         ? 'This sign-in is connected to both your customer and vendor views.'
                         : 'This sign-in can switch between multiple Reliance roles.'}
+                      </span>
                     </p>
-                    <p className="text-sm leading-6 text-white/68">
+                    <p className="hidden text-sm leading-6 text-white/68 sm:block">
                       {hasCustomerVendorLinkedAccess
                         ? 'Move between requesting service as a customer and managing your business as a vendor without signing out.'
                         : 'Use the toggle to move between the areas this account can access.'}

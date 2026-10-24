@@ -108,6 +108,21 @@ function extractUploadedVideoStagesFromMetadata(value: string | null | undefined
     .filter((stageKey) => ["INTRO", "IN_PROGRESS", "COMPLETED"].includes(stageKey));
 }
 
+function countCurrentPackageStages(value: string | null | undefined): number {
+  if (!value) return 0;
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return 0;
+    return new Set(
+      parsed
+        .map((item) => String(item?.stage || "").trim().toUpperCase())
+        .filter((stage) => ["INTRO", "IN_PROGRESS", "COMPLETED"].includes(stage)),
+    ).size;
+  } catch {
+    return 0;
+  }
+}
+
 function extractCancellationFromMetadata(value: string | null | undefined) {
   const metadata = parseCustomerMetadata(value);
   const raw = metadata.vendor_job_cancellation;
@@ -838,6 +853,7 @@ export async function GET(
               id: currentServiceVideoPackage.id,
               version: currentServiceVideoPackage.version,
               status: currentServiceVideoPackage.status,
+              stageCount: countCurrentPackageStages(currentServiceVideoPackage.stageEvidenceJson),
             }
           : null,
         adminAuditDecision: adminAuditDecision

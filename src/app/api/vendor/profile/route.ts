@@ -125,7 +125,7 @@ export async function GET(request: Request) {
     const vendorId = vendorContext.vendorId;
 
     // Fetch vendor from Prisma
-    const [vendor, serviceDraftCount, publishedServiceCount] = await Promise.all([
+    const [vendor, serviceDraftCount, publishedServiceCount, activeEmployeeCount] = await Promise.all([
       prisma.vendor.findUnique({
         where: { id: vendorId },
         select: VENDOR_PROFILE_SELECT,
@@ -135,6 +135,9 @@ export async function GET(request: Request) {
       }),
       prisma.service.count({
         where: { vendorId, isPublished: true },
+      }),
+      prisma.vendorMembership.count({
+        where: { vendorId, role: "EMPLOYEE", status: "ACTIVE" },
       }),
     ]);
 
@@ -146,7 +149,7 @@ export async function GET(request: Request) {
     }
 
     // Calculate derived fields
-    const totalEmployees = Number((vendor as any)?._count?.employees || 0);
+    const totalEmployees = Number(activeEmployeeCount || 0);
     const yearsInBusiness = vendor.foundedYear
       ? new Date().getFullYear() - vendor.foundedYear
       : null;
@@ -491,13 +494,16 @@ export async function PUT(request: Request) {
       data: updateData,
       select: VENDOR_PROFILE_SELECT,
     });
-    const [serviceDraftCount, publishedServiceCount] = await Promise.all([
+    const [serviceDraftCount, publishedServiceCount, activeEmployeeCount] = await Promise.all([
       prisma.service.count({ where: { vendorId } }),
       prisma.service.count({ where: { vendorId, isPublished: true } }),
+      prisma.vendorMembership.count({
+        where: { vendorId, role: "EMPLOYEE", status: "ACTIVE" },
+      }),
     ]);
 
     // Map back to VendorProfile format
-    const totalEmployees = Number((updatedVendor as any)?._count?.employees || 0);
+    const totalEmployees = Number(activeEmployeeCount || 0);
     const yearsInBusiness = updatedVendor.foundedYear
       ? new Date().getFullYear() - updatedVendor.foundedYear
       : null;

@@ -505,6 +505,11 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
         isCurrent: true,
         status: "PRIVATE_APPROVED",
         adminAuditDecisionId: "audit-pass",
+        stageEvidenceJson: JSON.stringify([
+          { stage: "INTRO" },
+          { stage: "IN_PROGRESS" },
+          { stage: "COMPLETED" },
+        ]),
       },
     ]);
     hoisted.serviceVideoAdminAuditDecisionEvidenceFindMany.mockResolvedValue([
@@ -530,11 +535,12 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(body.recentJobs).toEqual([
       expect.objectContaining({
         id: "job-1",
-        serviceVideoPackage: {
+        serviceVideoPackage: expect.objectContaining({
           id: "package-pass",
           version: 2,
           status: "PRIVATE_APPROVED",
-        },
+          stageCount: 3,
+        }),
         adminAuditDecision: expect.objectContaining({
           decision: "PASS",
           packageVersion: 2,

@@ -3,6 +3,7 @@ import {
   countVendorServicesByWorkflow,
   filterVendorServicesByWorkflow,
   getVendorServiceWorkflowBucket,
+  VENDOR_SERVICE_WORKFLOW_TABS,
 } from './vendor-service-workflow';
 
 const services = [
@@ -13,6 +14,10 @@ const services = [
 ];
 
 describe('vendor service workflow tabs', () => {
+  it('names the default bucket clearly because archived services are excluded', () => {
+    expect(VENDOR_SERVICE_WORKFLOW_TABS[0]).toEqual({ value: 'all', label: 'All active' });
+  });
+
   it('maps each service to its displayed workflow stage', () => {
     expect(getVendorServiceWorkflowBucket(services[0])).toBe('published');
     expect(getVendorServiceWorkflowBucket(services[2])).toBe('pending_approval');

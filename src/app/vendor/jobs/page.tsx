@@ -48,30 +48,11 @@ import {
 import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation, shouldShowPermissionRefreshFeedback } from '@/lib/vendor-job-lifecycle-presentation';
 import { getMaterialWorkRecordEditFields } from '@/lib/vendor-job-material-edit';
 import { resolveVendorServiceOrderPresentation } from '@/lib/vendor-service-order-presentation';
-
-function parseDate(value: string | number | Date | null | undefined): Date | null {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function formatDateOnlyUtc(value: string | number | Date | null | undefined): string {
-  const parsed = parseDate(value);
-  if (!parsed) return '-';
-  return parsed.toLocaleDateString('en-US', { timeZone: 'UTC' });
-}
-
-function formatDateTimeUtc(value: string | number | Date | null | undefined): string {
-  const parsed = parseDate(value);
-  if (!parsed) return '-';
-  return parsed.toLocaleString('en-US');
-}
-
-function formatTimeUtc(value: string | number | Date | null | undefined): string {
-  const parsed = parseDate(value);
-  if (!parsed) return '-';
-  return parsed.toLocaleTimeString('en-US');
-}
+import {
+  formatRelianceDate,
+  formatRelianceDateTime,
+  formatRelianceTime,
+} from '@/lib/reliance-date-time';
 
 // BACKEND DEVELOPER NOTES:
 // - Fetch jobs for this vendor from GET /api/vendor/jobs
@@ -5164,14 +5145,14 @@ export default function VendorJobs() {
         </div>
       )}
       {/* Enhanced Welcome Banner */}
-      <div className="reliance-operator-hero mb-6 rounded-2xl p-6 text-white shadow-lg">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-white/20 rounded-full">
+      <div className="reliance-operator-hero mb-3 rounded-xl p-3 text-white shadow-lg sm:mb-6 sm:rounded-2xl sm:p-6">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="hidden rounded-full bg-white/20 p-3 sm:block">
             <Info className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold mb-1">Manage jobs and scheduled work</h3>
-            <p className="text-blue-100 text-sm leading-relaxed">
+            <h3 className="text-base font-semibold sm:mb-1 sm:text-lg">Manage jobs and scheduled work</h3>
+            <p className="hidden text-sm leading-relaxed text-blue-100 sm:block">
               <strong>Services Offered</strong> is your customer-facing menu. This page is where you create
               the actual customer work record, assign employees, request verified recording permission when needed, and
               track the Starting Condition, Work in Progress, and Final Result videos.
@@ -5184,7 +5165,7 @@ export default function VendorJobs() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
+      <div className="mb-6 hidden rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm sm:block">
         <p className="font-semibold text-blue-950">Why this page matters for growth</p>
         <p className="mt-1 leading-6">
           Finished jobs, approved Starting Condition, Work in Progress, and Final Result videos, and
@@ -5333,8 +5314,23 @@ export default function VendorJobs() {
       </div>
 
       {!isEmployeeView ? (
-        <div className="mb-6 overflow-x-auto">
-          <div className="inline-flex min-w-full gap-2 rounded-2xl border border-white/10 bg-slate-950/55 p-2">
+        <div className="mb-4 sm:mb-6">
+          <label className="block sm:hidden">
+            <span className="sr-only">Filter work records</span>
+            <select
+              value={workflowFilter}
+              onChange={(event) => setWorkflowFilter(event.target.value)}
+              className="w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2.5 text-sm font-medium text-white"
+              aria-label="Filter work records"
+            >
+              {workflowTabs.map((tab) => (
+                <option key={tab.value} value={tab.value}>
+                  {tab.label} ({Number(workflowTabCounts[tab.value] || 0)})
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="hidden flex-wrap gap-2 rounded-2xl border border-white/10 bg-slate-950/55 p-2 sm:flex">
             {workflowTabs.map((tab) => {
               const active = workflowFilter === tab.value;
               const count = Number(workflowTabCounts[tab.value] || 0);
@@ -5408,7 +5404,7 @@ export default function VendorJobs() {
                     className="w-full p-2 pr-10 border border-gray-300 rounded-lg appearance-none bg-white text-left flex items-center justify-between"
                   >
                     <span className={archiveDateFilter ? 'text-gray-900' : 'text-gray-500'}>
-                      {archiveDateFilter ? formatDateOnlyUtc(archiveDateFilter) : 'Select Date'}
+                      {archiveDateFilter ? formatRelianceDate(archiveDateFilter) : 'Select Date'}
                     </span>
                     <Calendar className="w-4 h-4 text-gray-400" />
                   </button>
@@ -5612,7 +5608,7 @@ export default function VendorJobs() {
                             <p>Uploaded: {video.uploadDate || "Unknown"}</p>
                             <p>Service: {video.serviceType || "General Service"}</p>
                             {video.moderationReason ? <p>Reason: {video.moderationReason}</p> : null}
-                            {video.moderatedAt ? <p>Moderated: {formatDateTimeUtc(video.moderatedAt)}</p> : null}
+                            {video.moderatedAt ? <p>Moderated: {formatRelianceDateTime(video.moderatedAt)}</p> : null}
                           </div>
                         </div>
                       </div>
@@ -5797,11 +5793,11 @@ export default function VendorJobs() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Upload Date:</span>
-                      <span className="text-sm font-medium">{formatDateOnlyUtc(selectedVideoForDetails.reviewedAt)}</span>
+                      <span className="text-sm font-medium">{formatRelianceDate(selectedVideoForDetails.reviewedAt)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Upload Time:</span>
-                      <span className="text-sm font-medium">{formatTimeUtc(selectedVideoForDetails.reviewedAt)}</span>
+                      <span className="text-sm font-medium">{formatRelianceTime(selectedVideoForDetails.reviewedAt)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Mime Type:</span>
@@ -5845,11 +5841,11 @@ export default function VendorJobs() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Review Date</p>
-                      <p className="font-medium">{formatDateOnlyUtc(selectedVideoForDetails.reviewedAt)}</p>
+                      <p className="font-medium">{formatRelianceDate(selectedVideoForDetails.reviewedAt)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Review Time</p>
-                      <p className="font-medium">{formatTimeUtc(selectedVideoForDetails.reviewedAt)}</p>
+                      <p className="font-medium">{formatRelianceTime(selectedVideoForDetails.reviewedAt)}</p>
                     </div>
                   </div>
                   <div className="mt-4">
@@ -5871,8 +5867,8 @@ export default function VendorJobs() {
                     <div className="flex items-center gap-3 text-sm">
                       <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                       <span className="text-gray-600">
-                        {formatDateOnlyUtc(selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate)}{' '}
-                        {formatTimeUtc(selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate)}
+                        {formatRelianceDate(selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate)}{' '}
+                        {formatRelianceTime(selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate)}
                       </span>
                       <span className="font-medium">
                         Uploaded by {selectedVideoForDetails.employee || "assigned team member"}
@@ -5883,8 +5879,8 @@ export default function VendorJobs() {
                     <div className="flex items-center gap-3 text-sm">
                       <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                       <span className="text-gray-600">
-                        {formatDateOnlyUtc(selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt)}{' '}
-                        {formatTimeUtc(selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt)}
+                        {formatRelianceDate(selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt)}{' '}
+                        {formatRelianceTime(selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt)}
                       </span>
                       <span className="font-medium">
                         Moderation status: {String(selectedVideoForDetails.moderationStatus || selectedVideoForDetails.status || "pending_review").replace(/_/g, " ")}
@@ -8044,7 +8040,7 @@ export default function VendorJobs() {
                           <p>Service: {job.serviceName || job.serviceType || 'General Service'}</p>
                           <p>
                             Archived:{' '}
-                            {formatDateOnlyUtc(String(job.updatedAt || job.archivedAt || ''))}
+                            {formatRelianceDate(String(job.updatedAt || job.archivedAt || ''))}
                           </p>
                           <p>Media: {Number(job.linkedMediaCount || 0)} asset(s)</p>
                           {job.archiveReason ? <p className="text-orange-600">Reason: {job.archiveReason}</p> : null}
@@ -8132,11 +8128,23 @@ export default function VendorJobs() {
                        Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Service Record' : 'Vendor-Created Job'}
                      </p>
                     <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
-                    <p className="text-gray-600">Created: {formatDateOnlyUtc(job.createdAt)}</p>
-                    <p className="text-gray-600">Updated: {formatDateOnlyUtc(job.updatedAt)}</p>
-                    <p className="text-gray-600">
-                      Media: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
-                    </p>
+                    <p className="text-gray-600">Created: {formatRelianceDate(job.createdAt)}</p>
+                    <p className="text-gray-600">Updated: {formatRelianceDate(job.updatedAt)}</p>
+                    {job.serviceVideoPackage ? (
+                      <>
+                        <p className="text-gray-600">
+                          Current package: {Number(job.serviceVideoPackage.stageCount || 0)} of 3 stage videos
+                          {' '}(version {Number(job.serviceVideoPackage.packageVersion || 1)})
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Media history: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-gray-600">
+                        Media history: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
+                      </p>
+                    )}
                     <p className="text-sm text-blue-600 mt-1">
                       Assigned: {job.assignedEmployees && job.assignedEmployees.length > 0 ? job.assignedEmployees.join(', ') : 'Unassigned'}
                     </p>
@@ -8269,107 +8277,23 @@ export default function VendorJobs() {
                       return !jobHasRejectedMedia(job) && (status === 'awaiting_review' || status === 'awaiting review');
                     })() ? (
                       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-sm font-semibold text-amber-900">Manager Review Required</p>
+                        <p className="text-sm font-semibold text-amber-900">Manager Review Ready</p>
                         <p className="mt-1 text-xs text-amber-800">
-                          All required service video stages are uploaded. Review the package before approving completion.
+                          Current package version {Number(job.serviceVideoPackage?.packageVersion || 1)} contains{' '}
+                          {Number(job.serviceVideoPackage?.stageCount || 0)} of 3 stage videos. Open the exact package to
+                          review every stage before submitting it to Reliance Audit or requesting a stage correction.
                         </p>
-                        <div className="mt-3 space-y-2">
-                          {([
-                            { key: 'INTRO' as const, label: 'Starting Condition', actionLabel: 'Play Starting Condition Video' },
-                            { key: 'IN_PROGRESS' as const, label: 'Work in Progress', actionLabel: 'Play Work in Progress Video' },
-                            { key: 'COMPLETED' as const, label: 'Final Result', actionLabel: 'Play Final Result Video' },
-                          ]).map((stage) => {
-                            const stageVideo = getStageVideoForJob(job, stage.key);
-                            const stagePresent = jobHasVideoForStage(job, stage.key);
-                            return (
-                              <div
-                                key={`${job.id}-${stage.key}`}
-                                className="flex items-center justify-between rounded border border-amber-200 bg-white px-3 py-2"
-                              >
-                                <div className="space-y-0.5">
-                                  <p className="text-xs font-medium text-amber-950">{stage.label}</p>
-                                  <p className={`text-xs ${stagePresent ? 'text-emerald-700' : 'text-red-700'}`}>
-                                    {stagePresent ? 'Present' : 'Missing'}
-                                  </p>
-                                  {stagePresent && String(stageVideo?.captureProvenance || '').toUpperCase() === 'PRERECORDED_FALLBACK' ? (
-                                    <p className="text-xs font-medium text-blue-700">
-                                      Phone-camera fallback. Manager review required; Private proof only.
-                                    </p>
-                                  ) : null}
-                                </div>
-                                {stagePresent ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-amber-300 text-amber-900 hover:bg-amber-100"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void handleWatchVideo(stageVideo);
-                                    }}
-                                  >
-                                    {stage.actionLabel}
-                                  </Button>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <div className="mt-3">
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                            className="bg-amber-700 text-white hover:bg-amber-800"
                             onClick={(e) => {
                               e.stopPropagation();
                               openJobDetails(job);
                             }}
                           >
-                            View Review Package
+                            Review Current Package
                           </Button>
-                          {!isEmployeeView ? (
-                            <>
-                              {(() => {
-                                const hasAllReviewStages =
-                                  jobHasVideoForStage(job, 'INTRO') &&
-                                  jobHasVideoForStage(job, 'IN_PROGRESS') &&
-                                  jobHasVideoForStage(job, 'COMPLETED');
-                                return (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      className="bg-emerald-600 hover:bg-emerald-700"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openApproveConfirmModal(job);
-                                      }}
-                                      disabled={!hasAllReviewStages || Boolean(jobMutationLoadingId) || jobActionLoading || approveJobSubmitting}
-                                    >
-                                      Submit to Reliance Audit
-                                    </Button>
-                                    {!hasAllReviewStages ? (
-                                      <p className="text-xs text-amber-900">
-                                        All three video stages are required before approval.
-                                      </p>
-                                    ) : null}
-                                  </>
-                                );
-                              })()}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-amber-300 text-amber-900 hover:bg-amber-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openRejectJobModal(job);
-                                }}
-                                disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
-                              >
-                                Request Changes
-                              </Button>
-                            </>
-                          ) : (
-                            <p className="text-xs text-gray-700">Manager approval required.</p>
-                          )}
                         </div>
                       </div>
                     ) : null}
