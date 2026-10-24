@@ -17,15 +17,20 @@ type Filter = "all" | "unread" | "read";
 export default function VendorNotificationsPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { data: vendor } = useVendorProfile();
+  const { data: vendor, loading: vendorLoading, error: vendorError } = useVendorProfile();
   const [notifications, setNotifications] = useState<VendorNotification[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingNotificationId, setPendingNotificationId] = useState<string | null>(null);
 
   const load = async () => {
-    if (!vendor?.id) return;
+    if (!vendor?.id) {
+      setLoading(false);
+      setError(vendorError || "Vendor context is unavailable. Refresh the page or sign in again.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -44,10 +49,11 @@ export default function VendorNotificationsPage() {
   };
 
   useEffect(() => {
+    if (vendorLoading) return;
     void load();
     // load is intentionally keyed to the resolved account identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, vendor?.id]);
+  }, [user?.id, vendor?.id, vendorLoading, vendorError]);
 
   const visible = useMemo(() => notifications.filter((notification) => {
     if (filter === "unread") return !notification.read;
@@ -88,19 +94,25 @@ export default function VendorNotificationsPage() {
   };
 
   const viewDetails = async (notification: VendorNotification) => {
+    setPendingNotificationId(notification.id);
     try {
       await markRead(notification, "VIEW_DETAILS");
     } catch {
       // Read-state persistence is secondary; access to the work record must continue.
+    } finally {
+      setPendingNotificationId(null);
     }
     if (notification.href) router.push(notification.href);
   };
 
   const markReadFromPage = async (notification: VendorNotification) => {
+    setPendingNotificationId(notification.id);
     try {
       await markRead(notification, "MARK_READ");
     } catch (markError) {
       setActionError(markError instanceof Error ? markError.message : "Unable to mark notification as read.");
+    } finally {
+      setPendingNotificationId(null);
     }
   };
 
@@ -128,7 +140,7 @@ export default function VendorNotificationsPage() {
             type="button"
             role="tab"
             aria-selected={filter === value}
-            tabIndex={filter === value ? 0 : -1}
+            aria-controls="notification-list"
             variant={filter === value ? "default" : "outline"}
             onClick={() => setFilter(value)}
           >
@@ -147,6 +159,7 @@ export default function VendorNotificationsPage() {
         </div>
       ) : null}
 
+      <div id="notification-list" role="tabpanel" aria-label={`${filter} notifications`} aria-busy={loading}>
       {error ? (
         <Card className="border-rose-300/40 bg-rose-950/35 text-white">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
@@ -183,8 +196,10 @@ export default function VendorNotificationsPage() {
                     variant="outline"
                     aria-label={`View details for ${notification.title}`}
                     onClick={() => void viewDetails(notification)}
+                    disabled={pendingNotificationId === notification.id}
                   >
-                    <ExternalLink className="mr-2 h-4 w-4" /> View details
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    {pendingNotificationId === notification.id ? "Opening..." : "View details"}
                   </Button>
                 ) : !notification.read && !notification.historical ? (
                   <Button
@@ -192,8 +207,9 @@ export default function VendorNotificationsPage() {
                     variant="outline"
                     aria-label={`Mark ${notification.title} as read`}
                     onClick={() => void markReadFromPage(notification)}
+                    disabled={pendingNotificationId === notification.id}
                   >
-                    Mark read
+                    {pendingNotificationId === notification.id ? "Marking..." : "Mark read"}
                   </Button>
                 ) : null}
               </CardContent>
@@ -201,6 +217,7 @@ export default function VendorNotificationsPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

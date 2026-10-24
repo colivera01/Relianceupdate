@@ -13,6 +13,12 @@ import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
 import {
+  validateVendorProfileForm,
+  vendorProfileFieldLabels,
+  type VendorProfileField,
+  type VendorProfileFieldErrors,
+} from '@/lib/vendor-profile-form';
+import {
   defaultBusinessHours,
   formatBusinessTime,
   getBusinessHoursStatus,
@@ -88,6 +94,8 @@ export default function VendorProfilePage() {
   // Photo upload ref and state
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState('');
+  const [photoUploadMessage, setPhotoUploadMessage] = useState('');
   const [vendorCopySuggestion, setVendorCopySuggestion] = useState<VendorCopySuggestion | null>(null);
   const [vendorCopyLoading, setVendorCopyLoading] = useState(false);
   const [vendorCopyError, setVendorCopyError] = useState<string | null>(null);
@@ -97,7 +105,10 @@ export default function VendorProfilePage() {
   const [localFormData, setLocalFormData] = useState<Partial<VendorProfileUpdateRequest>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState('');
+  const [profileFieldErrors, setProfileFieldErrors] = useState<VendorProfileFieldErrors>({});
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securitySettingsError, setSecuritySettingsError] = useState('');
+  const [securitySettingsMessage, setSecuritySettingsMessage] = useState('');
   
   const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(() => defaultBusinessHours());
   const [showBusinessHoursToast, setShowBusinessHoursToast] = useState(false);
@@ -173,6 +184,15 @@ export default function VendorProfilePage() {
           ? (value ? Number(value) : undefined)
           : value,
     }));
+    if (name in vendorProfileFieldLabels) {
+      setProfileFieldErrors((current) => {
+        if (!current[name as VendorProfileField]) return current;
+        const next = { ...current };
+        delete next[name as VendorProfileField];
+        return next;
+      });
+    }
+    if (profileSaveError) setProfileSaveError('');
   };
 
   const handleAddressSuggestion = (suggestion: AddressAutocompleteSuggestion) => {
@@ -183,6 +203,15 @@ export default function VendorProfilePage() {
       state: suggestion.state,
       zipCode: suggestion.zipCode,
     }));
+    setProfileFieldErrors((current) => {
+      const next = { ...current };
+      delete next.address;
+      delete next.city;
+      delete next.state;
+      delete next.zipCode;
+      return next;
+    });
+    if (profileSaveError) setProfileSaveError('');
   };
 
   const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,6 +220,8 @@ export default function VendorProfilePage() {
 
     try {
       setUploadingPhoto(true);
+      setPhotoUploadError('');
+      setPhotoUploadMessage('');
 
       const formData = new FormData();
       formData.append('file', file);
@@ -214,9 +245,10 @@ export default function VendorProfilePage() {
       // Update local form state so the preview updates immediately
       setLocalFormData(prev => ({ ...prev, profilePhoto: url }));
       await refetch();
+      setPhotoUploadMessage('Business profile photo updated.');
     } catch (err) {
       console.error('Error uploading photo', err);
-      alert(err instanceof Error ? err.message : 'Profile photo upload failed.');
+      setPhotoUploadError(err instanceof Error ? err.message : 'Profile photo upload failed.');
     } finally {
       setUploadingPhoto(false);
       // Reset the input so the same file can be selected again
@@ -227,11 +259,28 @@ export default function VendorProfilePage() {
   };
 
   const handleSave = async () => {
-    const nextBusinessName = String(localFormData.businessName || '').trim();
-    if (!nextBusinessName) {
-      setProfileSaveError('Business Name is required before saving your profile.');
+    const validationErrors = validateVendorProfileForm(localFormData);
+    setProfileFieldErrors(validationErrors);
+    const invalidFields = Object.keys(validationErrors) as VendorProfileField[];
+    if (invalidFields.length > 0) {
+      setProfileSaveError('Review the highlighted profile fields before saving.');
+      const fieldIdByName: Record<VendorProfileField, string> = {
+        businessName: 'business-name',
+        businessType: 'business-type',
+        category: 'service-category',
+        address: 'business-address',
+        city: 'business-city',
+        state: 'business-state',
+        zipCode: 'business-zip',
+        email: 'business-email',
+        phone: 'business-phone',
+        website: 'business-website',
+        foundedYear: 'founded-year',
+      };
+      document.getElementById(fieldIdByName[invalidFields[0]])?.focus();
       return;
     }
+    const nextBusinessName = String(localFormData.businessName || '').trim();
     setProfileSaveError('');
     try {
       await updateProfile({ ...localFormData, businessName: nextBusinessName });
@@ -270,6 +319,8 @@ export default function VendorProfilePage() {
   };
 
   const handleSaveSecuritySettings = async () => {
+    setSecuritySettingsError('');
+    setSecuritySettingsMessage('');
     try {
       const normalizedSessionTimeout = Math.min(
         1440,
@@ -283,10 +334,10 @@ export default function VendorProfilePage() {
         ...current,
         sessionTimeout: normalizedSessionTimeout,
       }));
-      // Close modal after save
-      setShowSecurityModal(false);
+      setSecuritySettingsMessage(`Security settings saved. Vendor sessions now expire after ${normalizedSessionTimeout} minutes.`);
     } catch (err) {
       console.error('Error saving security settings:', err);
+      setSecuritySettingsError(err instanceof Error ? err.message : 'Security settings could not be saved.');
     }
   };
 
@@ -396,8 +447,17 @@ export default function VendorProfilePage() {
           </div>
         </div>
       )}
+
+      {error && !loading && profile ? (
+        <div role="alert" className="mb-6 flex flex-col gap-3 rounded-xl border border-red-300/30 bg-red-950/55 p-4 text-sm text-red-100 sm:flex-row sm:items-center sm:justify-between">
+          <span>Your saved profile is still shown, but the last request failed: {error}</span>
+          <Button type="button" variant="outline" onClick={() => void refetch()}>
+            Refresh saved profile
+          </Button>
+        </div>
+      ) : null}
       
-      {!loading && !error && profile && (
+      {!loading && profile && (
         <main className="flex flex-col xl:flex-row gap-8">
         {/* Profile Form */}
         <section className="flex flex-1 max-w-2xl flex-col gap-6">
@@ -418,7 +478,14 @@ export default function VendorProfilePage() {
               <div className="mb-6 rounded-lg border border-blue-300/20 bg-blue-500/10 p-3 text-sm leading-6 text-blue-100">
                 Profile fields on this page save to your vendor profile. Future-only launch features are marked where they appear.
               </div>
-              <form className="space-y-6">
+              <form
+                className="space-y-6"
+                noValidate
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSave();
+                }}
+              >
                 {/* Profile Photo Section */}
                 <div className="mb-6 rounded-2xl border border-blue-300/20 bg-slate-900/55 p-5">
                   <label className="mb-4 block text-base font-semibold text-white">Business Profile Photo</label>
@@ -477,6 +544,16 @@ export default function VendorProfilePage() {
                       {storage?.isOverLimit && (
                         <p className="mt-2 text-xs text-red-300">Uploads disabled - storage full</p>
                       )}
+                      {photoUploadMessage ? (
+                        <p className="mt-2 text-xs font-medium text-emerald-200" role="status" aria-live="polite">
+                          {photoUploadMessage}
+                        </p>
+                      ) : null}
+                      {photoUploadError ? (
+                        <p className="mt-2 text-xs font-medium text-red-200" role="alert">
+                          {photoUploadError}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -488,15 +565,14 @@ export default function VendorProfilePage() {
                       id="business-name"
                       name="businessName" 
                       value={localFormData.businessName || ''} 
-                      onChange={(event) => {
-                        handleChange(event);
-                        if (profileSaveError) setProfileSaveError('');
-                      }}
+                      onChange={handleChange}
                       required
+                      aria-invalid={Boolean(profileFieldErrors.businessName)}
+                      aria-describedby={profileFieldErrors.businessName ? 'business-name-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
-                    {profileSaveError && !String(localFormData.businessName || '').trim() ? (
-                      <p className="mt-1 text-xs font-medium text-red-300">{profileSaveError}</p>
+                    {profileFieldErrors.businessName ? (
+                      <p id="business-name-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.businessName}</p>
                     ) : null}
                   </div>
                   <div>
@@ -508,11 +584,16 @@ export default function VendorProfilePage() {
                       onChange={handleChange}
                       required
                       disabled={Boolean(profile.businessType)}
+                      aria-invalid={Boolean(profileFieldErrors.businessType)}
+                      aria-describedby={profileFieldErrors.businessType ? 'business-type-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white disabled:cursor-not-allowed disabled:opacity-70 focus:border-blue-500 focus:ring-blue-500"
                     />
                     <p className="mt-1 text-xs text-slate-400">
                       Locked after approval so public records stay tied to the correct business.
                     </p>
+                    {profileFieldErrors.businessType ? (
+                      <p id="business-type-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.businessType}</p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -525,11 +606,16 @@ export default function VendorProfilePage() {
                     onChange={handleChange}
                     required
                     disabled={Boolean(profile.category)}
+                    aria-invalid={Boolean(profileFieldErrors.category)}
+                    aria-describedby={profileFieldErrors.category ? 'service-category-error' : undefined}
                     className="border-slate-700 bg-slate-950 text-white disabled:cursor-not-allowed disabled:opacity-70 focus:border-blue-500 focus:ring-blue-500"
                   />
                   <p className="mt-1 text-xs text-slate-400">
                     Locked after approval so public records stay tied to the correct service category.
                   </p>
+                  {profileFieldErrors.category ? (
+                    <p id="service-category-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.category}</p>
+                  ) : null}
                 </div>
 
                 {/* Business Bio Section */}
@@ -682,12 +768,26 @@ export default function VendorProfilePage() {
                     id="business-address"
                     name="address"
                     value={localFormData.address || ''}
-                    onChange={(value) => setLocalFormData(prev => ({ ...prev, address: value }))}
+                    onChange={(value) => {
+                      setLocalFormData(prev => ({ ...prev, address: value }));
+                      setProfileFieldErrors((current) => {
+                        if (!current.address) return current;
+                        const next = { ...current };
+                        delete next.address;
+                        return next;
+                      });
+                      if (profileSaveError) setProfileSaveError('');
+                    }}
                     onSelectAddress={handleAddressSuggestion}
                     required
+                    aria-invalid={Boolean(profileFieldErrors.address)}
+                    aria-describedby={profileFieldErrors.address ? 'business-address-error' : undefined}
                     inputClassName="border-slate-700 bg-slate-950 pr-10 text-white focus:border-blue-500 focus:ring-blue-500"
                     placeholder="Enter your business street address"
                   />
+                  {profileFieldErrors.address ? (
+                    <p id="business-address-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.address}</p>
+                  ) : null}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -699,8 +799,11 @@ export default function VendorProfilePage() {
                       value={localFormData.city || ''} 
                       onChange={handleChange}
                       required
+                      aria-invalid={Boolean(profileFieldErrors.city)}
+                      aria-describedby={profileFieldErrors.city ? 'business-city-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.city ? <p id="business-city-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.city}</p> : null}
                   </div>
                   <div>
                     <label htmlFor="business-state" className="block text-sm font-medium mb-2 text-slate-100">State *</label>
@@ -710,8 +813,11 @@ export default function VendorProfilePage() {
                       value={localFormData.state || ''} 
                       onChange={handleChange}
                       required
+                      aria-invalid={Boolean(profileFieldErrors.state)}
+                      aria-describedby={profileFieldErrors.state ? 'business-state-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.state ? <p id="business-state-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.state}</p> : null}
                   </div>
                   <div>
                     <label htmlFor="business-zip" className="block text-sm font-medium mb-2 text-slate-100">ZIP Code *</label>
@@ -721,8 +827,11 @@ export default function VendorProfilePage() {
                       value={localFormData.zipCode || ''} 
                       onChange={handleChange}
                       required
+                      aria-invalid={Boolean(profileFieldErrors.zipCode)}
+                      aria-describedby={profileFieldErrors.zipCode ? 'business-zip-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.zipCode ? <p id="business-zip-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.zipCode}</p> : null}
                   </div>
                   <div>
                     <label htmlFor="founded-year" className="block text-sm font-medium mb-2 text-slate-100">Founded Year</label>
@@ -730,10 +839,15 @@ export default function VendorProfilePage() {
                       id="founded-year"
                       name="foundedYear" 
                       type="number"
+                      min={1000}
+                      max={new Date().getFullYear()}
                       value={localFormData.foundedYear || ''} 
                       onChange={handleChange}
+                      aria-invalid={Boolean(profileFieldErrors.foundedYear)}
+                      aria-describedby={profileFieldErrors.foundedYear ? 'founded-year-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.foundedYear ? <p id="founded-year-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.foundedYear}</p> : null}
                   </div>
                 </div>
                 
@@ -760,8 +874,11 @@ export default function VendorProfilePage() {
                       value={localFormData.email || ''} 
                       onChange={handleChange}
                       required
+                      aria-invalid={Boolean(profileFieldErrors.email)}
+                      aria-describedby={profileFieldErrors.email ? 'business-email-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.email ? <p id="business-email-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.email}</p> : null}
                   </div>
                   <div>
                     <label htmlFor="business-phone" className="block text-sm font-medium mb-2 text-slate-100">Phone *</label>
@@ -771,8 +888,11 @@ export default function VendorProfilePage() {
                       value={localFormData.phone || ''} 
                       onChange={handleChange}
                       required
+                      aria-invalid={Boolean(profileFieldErrors.phone)}
+                      aria-describedby={profileFieldErrors.phone ? 'business-phone-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.phone ? <p id="business-phone-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.phone}</p> : null}
                   </div>
                   <div>
                     <label htmlFor="business-website" className="block text-sm font-medium mb-2 text-slate-100">Website</label>
@@ -783,8 +903,11 @@ export default function VendorProfilePage() {
                       value={localFormData.website || ''} 
                       onChange={handleChange}
                       placeholder="https://example.com"
+                      aria-invalid={Boolean(profileFieldErrors.website)}
+                      aria-describedby={profileFieldErrors.website ? 'business-website-error' : undefined}
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileFieldErrors.website ? <p id="business-website-error" className="mt-1 text-xs font-medium text-red-300">{profileFieldErrors.website}</p> : null}
                   </div>
                 </div>
 
@@ -817,6 +940,13 @@ export default function VendorProfilePage() {
 
 
                 {/* Insurance & Bonding */}
+                <div className="rounded-xl border border-amber-300/25 bg-amber-500/10 p-4">
+                  <p className="text-sm font-semibold text-amber-100">Business-reported coverage status</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-100/85">
+                    Select these only while they are current. Reliance approval does not independently verify
+                    insurance, bonding, licensing, or policy expiration.
+                  </p>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="flex cursor-pointer items-center space-x-2">
                     <input
@@ -826,7 +956,7 @@ export default function VendorProfilePage() {
                       onChange={(e) => setLocalFormData(prev => ({...prev, insuranceStatus: e.target.checked}))}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <span className="text-sm font-medium text-gray-700">Insured</span>
+                    <span className="text-sm font-medium text-gray-700">Business reports insured</span>
                   </label>
                   <label className="flex cursor-pointer items-center space-x-2">
                     <input
@@ -836,7 +966,7 @@ export default function VendorProfilePage() {
                       onChange={(e) => setLocalFormData(prev => ({...prev, bondingStatus: e.target.checked}))}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <span className="text-sm font-medium text-gray-700">Bonded</span>
+                    <span className="text-sm font-medium text-gray-700">Business reports bonded</span>
                   </label>
                 </div>
 
@@ -885,7 +1015,7 @@ export default function VendorProfilePage() {
                       readOnly
                       className="border-gray-300 bg-gray-50 cursor-not-allowed"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Calculated from your employee list</p>
+                    <p className="text-xs text-gray-500 mt-1">Active Employees only; Managers are not counted.</p>
                   </div>
                 </div>
 
@@ -895,16 +1025,22 @@ export default function VendorProfilePage() {
                   </div>
                 )}
 
-                {profileSaveError && String(localFormData.businessName || '').trim() ? (
+                {profileSaveError || Object.keys(profileFieldErrors).length > 0 ? (
                   <div role="alert" className="rounded-lg border border-red-400/40 bg-red-950/50 p-3 text-sm font-medium text-red-100">
-                    {profileSaveError}
+                    <p>{profileSaveError || 'Review the remaining highlighted profile fields before saving.'}</p>
+                    {Object.keys(profileFieldErrors).length > 0 ? (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 font-normal">
+                        {(Object.keys(profileFieldErrors) as VendorProfileField[]).map((field) => (
+                          <li key={field}>{profileFieldErrors[field]}</li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 ) : null}
 
                 <Button 
-                  type="button"
+                  type="submit"
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-200" 
-                  onClick={handleSave} 
                   disabled={saving}
                 >
                   {saving ? (
@@ -1068,7 +1204,11 @@ export default function VendorProfilePage() {
                   variant="outline" 
                   size="sm" 
                   className="w-full border-white/15 bg-slate-900 text-white hover:bg-slate-800"
-                  onClick={() => setShowSecurityModal(true)}
+                  onClick={() => {
+                    setSecuritySettingsError('');
+                    setSecuritySettingsMessage('');
+                    setShowSecurityModal(true);
+                  }}
                 >
                   <Shield className="w-4 h-4 mr-2" />
                   Security Settings
@@ -1084,10 +1224,10 @@ export default function VendorProfilePage() {
       </div>
       {/* Security Settings Modal */}
       <Dialog open={showSecurityModal} onOpenChange={setShowSecurityModal}>
-        <DialogContent className="max-w-lg bg-white">
+        <DialogContent className="max-w-lg border border-blue-300/20 bg-slate-950 text-white">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-red-600" />
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Shield className="w-5 h-5 text-blue-300" />
               Security Settings
             </DialogTitle>
           </DialogHeader>
@@ -1095,18 +1235,18 @@ export default function VendorProfilePage() {
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm font-medium">Vendor Sign-In Protection</span>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-300">
                   Email-code verification is active for vendor sign-ins. Add or manage passkeys from Secure Account.
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
+              <span className="rounded-full border border-emerald-300/25 bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-100">
                 Active
               </span>
             </div>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className="text-sm font-medium">Email login alerts</span>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-300">
                   Send an email alert when this account signs in to vendor tools.
                 </p>
               </div>
@@ -1127,18 +1267,29 @@ export default function VendorProfilePage() {
                 max={1440}
                 value={securitySettings.sessionTimeout}
                 onChange={(e) => setSecuritySettings(s => ({ ...s, sessionTimeout: Number(e.target.value) }))}
-                className="w-24"
+                className="w-28 border-slate-700 bg-slate-900 text-white"
               />
-              <p className="mt-1 text-xs text-slate-500">
-                Vendor access expires after this many minutes from sign-in. Minimum 5 minutes.
+              <p className="mt-1 text-xs text-slate-300">
+                Vendor access expires after this many minutes from sign-in. Allowed range: 5 to 1,440 minutes.
               </p>
             </div>
+            {securitySettingsMessage ? (
+              <div role="status" aria-live="polite" className="rounded-lg border border-emerald-300/25 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                {securitySettingsMessage}
+              </div>
+            ) : null}
+            {securitySettingsError ? (
+              <div role="alert" className="rounded-lg border border-red-300/30 bg-red-500/10 p-3 text-sm text-red-100">
+                {securitySettingsError}
+              </div>
+            ) : null}
             <Button 
               type="button"
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               onClick={handleSaveSecuritySettings}
+              disabled={saving}
             >
-              Save Security Settings
+              {saving ? 'Saving...' : 'Save Security Settings'}
             </Button>
           </div>
         </DialogContent>

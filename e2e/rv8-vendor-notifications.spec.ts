@@ -160,14 +160,14 @@ test("Vendor notification history persists recipient read state after View detai
   await installVendorNotificationFixture(page);
   await page.goto("/test-fixtures/rv8-vendor-notifications");
 
-  await page.getByRole("button", { name: "Unread" }).click();
+  await page.getByRole("tab", { name: "Unread (1)", exact: true }).click();
   await expect(page.getByText("Reliance Audit Passed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "View details" }).click();
   await expect(page).toHaveURL(/\/test-fixtures\/rv8-vendor-notifications\?opened=1$/);
 
-  await page.getByRole("button", { name: "Unread" }).click();
+  await page.getByRole("tab", { name: "Unread (0)", exact: true }).click();
   await expect(page.getByText("No unread notifications.", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Read", exact: true }).click();
+  await page.getByRole("tab", { name: "Read (2)", exact: true }).click();
   await expect(page.getByText("Reliance Audit Passed", { exact: true })).toBeVisible();
   await expect(page.getByText("Historical Reliance Audit notice", { exact: true })).toBeVisible();
   await expect(page.getByText(/· Historical notice$/)).toBeVisible();

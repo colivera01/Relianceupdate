@@ -179,6 +179,8 @@ describe("vendor profile onboarding access", () => {
     expect(response.status).toBe(200);
     const json = await readJson(response);
     expect(json.approvalPending).toBe(true);
+    expect(json.profile.ratingAverage).toBe(4.9);
+    expect(json.profile.ratingCount).toBe(7);
     expect(json.profile.membershipStatus).toBe("PENDING");
     expect(json.profile.totalEmployees).toBe(2);
     expect(hoisted.vendorMembershipCount).toHaveBeenCalledWith({
@@ -186,6 +188,21 @@ describe("vendor profile onboarding access", () => {
     });
     expect(json.profile.onboarding.readyForAdminReview).toBe(true);
     expect(json.profile.onboarding.nextStep).toContain("Wait for admin approval");
+  });
+
+  it("rejects a future founded year before changing the profile", async () => {
+    const currentYear = new Date().getFullYear();
+    const response = await PUT(
+      new Request("http://localhost/api/vendor/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-user-id": "user-1" },
+        body: JSON.stringify({ foundedYear: currentYear + 1 }),
+      })
+    );
+
+    expect(response.status).toBe(422);
+    expect(await readJson(response)).toMatchObject({ fields: ["foundedYear"] });
+    expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
   });
 
   it("lets pending vendors continue updating profile details", async () => {
@@ -202,6 +219,8 @@ describe("vendor profile onboarding access", () => {
     expect(response.status).toBe(200);
     const json = await readJson(response);
     expect(json.approvalPending).toBe(true);
+    expect(json.profile.ratingAverage).toBe(4.9);
+    expect(json.profile.ratingCount).toBe(7);
     expect(hoisted.vendorUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "vendor-1" },
@@ -210,6 +229,20 @@ describe("vendor profile onboarding access", () => {
         }),
       })
     );
+  });
+
+  it("keeps an established service category locked at the API boundary", async () => {
+    const response = await PUT(
+      new Request("http://localhost/api/vendor/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-user-id": "user-1" },
+        body: JSON.stringify({ category: "Roofing" }),
+      })
+    );
+
+    expect(response.status).toBe(422);
+    expect(await readJson(response)).toMatchObject({ fields: ["category"] });
+    expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
   });
 
   it("does not let a platform admin open a vendor profile", async () => {

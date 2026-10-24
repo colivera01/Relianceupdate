@@ -350,7 +350,24 @@ export async function PUT(request: Request) {
     }
     if (body.businessType !== undefined) updateData.businessType = body.businessType || null;
     if (body.category !== undefined) updateData.category = body.category || null;
-    if (body.foundedYear !== undefined) updateData.foundedYear = body.foundedYear || null;
+    if (body.foundedYear !== undefined) {
+      if (body.foundedYear === null || body.foundedYear === 0) {
+        updateData.foundedYear = null;
+      } else {
+        const foundedYear = Number(body.foundedYear);
+        const currentYear = new Date().getFullYear();
+        if (!Number.isInteger(foundedYear) || foundedYear < 1000 || foundedYear > currentYear) {
+          return NextResponse.json(
+            {
+              error: `Founded Year must be a four-digit year no later than ${currentYear}.`,
+              fields: ["foundedYear"],
+            },
+            { status: 422 }
+          );
+        }
+        updateData.foundedYear = foundedYear;
+      }
+    }
     if (body.email !== undefined) updateData.email = body.email || null;
     if (body.phone !== undefined) updateData.phone = body.phone || null;
     if (body.city !== undefined) updateData.city = body.city || null;
@@ -462,6 +479,21 @@ export async function PUT(request: Request) {
       );
     }
 
+    if (
+      body.category !== undefined &&
+      normalizeRequiredText(currentVendor.category) &&
+      normalizeRequiredText(body.category) !== normalizeRequiredText(currentVendor.category)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Service category is locked after approval. Register a new business profile if the primary service category changes.",
+          fields: ["category"],
+        },
+        { status: 422 }
+      );
+    }
+
     const nextAddress = {
       address: body.address !== undefined ? body.address : currentVendor?.address,
       city: body.city !== undefined ? body.city : currentVendor?.city,
@@ -507,6 +539,7 @@ export async function PUT(request: Request) {
     const yearsInBusiness = updatedVendor.foundedYear
       ? new Date().getFullYear() - updatedVendor.foundedYear
       : null;
+    const vendorRatingStats = await getVendorRatingStats(vendorId);
     const onboarding = buildVendorOnboardingState({
       membershipStatus,
       isPubliclyListed: Boolean((updatedVendor as any).isPubliclyListed),
@@ -565,6 +598,8 @@ export async function PUT(request: Request) {
       serviceDraftCount,
       publishedServiceCount,
       onboarding,
+      ratingAverage: vendorRatingStats.averageRating,
+      ratingCount: vendorRatingStats.reviewCount,
       // Payments (use optional chaining in case Prisma client hasn't been regenerated)
       paymentsEnabled: (updatedVendor as any).paymentsEnabled ?? false,
       // Reminders

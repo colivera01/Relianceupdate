@@ -13,6 +13,14 @@ describe("Vendor operations UI contract", () => {
 
     expect(page).toContain("Invite team member");
     expect(page).toContain("Public Service Video participation");
+    expect(page).toContain("Pending team invites");
+    expect(page).toContain('if (r === "EMPLOYEE") return "Employee"');
+    expect(page).toContain("Verified customer rating:");
+    expect(page).not.toContain("Top rated");
+    expect(page).not.toContain("Needs attention");
+    expect(page).toContain('aria-labelledby="edit-team-member-title"');
+    expect(page).toContain('aria-controls={`pending-invite-${invite.id}`}');
+    expect(page).toContain("A sign-in email can be changed only by the account owner");
     expect(page).toContain('aria-labelledby="remove-team-member-title"');
     expect(page).toContain("Existing Work Records, assignments, consent evidence");
     expect(page).toContain("setMemberPendingRemoval(emp)");
@@ -24,6 +32,9 @@ describe("Vendor operations UI contract", () => {
 
     expect(page).toContain('role="tablist"');
     expect(page).toContain("aria-selected={filter === value}");
+    expect(page).toContain('aria-controls="notification-list"');
+    expect(page).not.toContain('tabIndex={filter === value ? 0 : -1}');
+    expect(page).toContain("pendingNotificationId");
     expect(page).toContain("View details for ${notification.title}");
     expect(page).toContain("Mark ${notification.title} as read");
     expect(page).toContain("formatRelianceDateTime(notification.time)");
@@ -39,6 +50,8 @@ describe("Vendor operations UI contract", () => {
     expect(page).toContain("block sm:hidden");
     expect(page).toContain("Edit ${service.name}");
     expect(page).toContain('aria-labelledby="service-editor-title"');
+    expect(page).toContain("Service created and queued for admin approval.");
+    expect(page).toContain('type="submit"');
     expect(page).toContain("formatRelianceDate(service.updatedAt)");
   });
 
@@ -49,6 +62,10 @@ describe("Vendor operations UI contract", () => {
     expect(page).toContain("const businessHoursDirty = serializeBusinessHours(businessHours) !== savedBusinessHoursJson");
     expect(page).toContain("Customers still see the saved hours above");
     expect(page).toContain("Suggested weekday hours are shown as a draft");
+    expect(page).toContain("Your saved profile is still shown, but the last request failed");
+    expect(page).toContain("Business-reported coverage status");
+    expect(page).toContain("profileFieldErrors");
+    expect(page).toContain("securitySettingsError");
     expect(page).toContain('aria-label={`${businessHourDayLabels[day.day]} hours enabled`}');
     expect(page).toContain('type="button"');
   });

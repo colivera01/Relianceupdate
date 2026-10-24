@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  avatarUrlForName,
   filterAssignableEmployeeMemberships,
   type VendorTeamMember,
 } from "@/lib/vendor-team-members";
@@ -26,5 +27,16 @@ describe("filterAssignableEmployeeMemberships", () => {
     ]);
 
     expect(result.map((row) => row.membershipId)).toEqual(["employee"]);
+  });
+});
+
+describe("avatarUrlForName", () => {
+  it("builds a local initials avatar without sending a team member name to a third party", () => {
+    const avatar = avatarUrlForName("Bradley Coopers");
+
+    expect(avatar).toMatch(/^data:image\/svg\+xml/);
+    expect(decodeURIComponent(avatar)).toContain(">BC<");
+    expect(decodeURIComponent(avatar)).not.toContain("ui-avatars.com");
+    expect(avatar).not.toContain("Bradley");
   });
 });

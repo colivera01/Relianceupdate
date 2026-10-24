@@ -6,11 +6,11 @@ import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { formatRelianceDate, formatRelianceDateTime } from "@/lib/reliance-date-time";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import {
   fetchVendorTeamMembers,
   avatarUrlForName,
-type VendorTeamMember,
+  type VendorTeamMember,
 } from "@/lib/vendor-team-members";
 
 type PendingInvite = {
@@ -32,46 +32,21 @@ type PendingInvite = {
 function roleLabel(role: string) {
   const r = String(role || "").toUpperCase();
   if (r === "MANAGER") return "Manager";
-  if (r === "EMPLOYEE") return "Team member";
+  if (r === "EMPLOYEE") return "Employee";
   return role || "Member";
 }
 
 const employeeAccessSteps = [
   "Send an invite with the team member's contact details.",
-  "They accept the invite and become an active team member. A password is not required.",
-  "A manager assigns scheduled work from Manage Jobs.",
-  "The employee opens the secure Service Order link to complete assigned work.",
+  "They accept the invite and receive the selected Employee or Manager role. A password is not required.",
+  "Managers manage the workspace; Employees can be assigned scheduled work from Manage Jobs.",
+  "An assigned Employee opens the secure Service Order link to complete the work.",
 ];
-
-function getPerformanceBadge(rating: number, reviewCount: number): { label: string; className: string } {
-  if (reviewCount <= 0) {
-    return {
-      label: "New / no rating",
-      className: "bg-gray-100 text-gray-700 border-gray-200",
-    };
-  }
-  if (rating >= 4.7) {
-    return {
-      label: "Top rated",
-      className: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    };
-  }
-  if (rating >= 4.0) {
-    return {
-      label: "Strong",
-      className: "bg-blue-100 text-blue-800 border-blue-200",
-    };
-  }
-  return {
-    label: "Needs attention",
-    className: "bg-amber-100 text-amber-900 border-amber-200",
-  };
-}
 
 export default function EmployeesPage() {
   const { user } = useAuth();
   const authUserId = user?.id || null;
-  const { data: vendorProfile, loading: profileLoading, error: profileError } = useVendorProfile();
+  const { data: vendorProfile, loading: profileLoading, error: profileError, refetch: refetchProfile } = useVendorProfile();
   const vendorId = vendorProfile?.id || "";
 
   const [teamMembers, setTeamMembers] = useState<VendorTeamMember[]>([]);
@@ -88,6 +63,7 @@ export default function EmployeesPage() {
   const [inviteCancellingId, setInviteCancellingId] = useState<string | null>(null);
   const [removingMembershipId, setRemovingMembershipId] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteMessageTone, setInviteMessageTone] = useState<"success" | "error" | null>(null);
   const [expandedInviteIds, setExpandedInviteIds] = useState<Record<string, boolean>>({});
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [editingMember, setEditingMember] = useState<VendorTeamMember | null>(null);
@@ -128,6 +104,12 @@ export default function EmployeesPage() {
         cache: "no-store",
       });
       const dashboardJson = await dashboardRes.json().catch(() => ({}));
+      if (!invitesRes.ok) {
+        throw new Error(String(invitesJson?.error || `Could not load pending team invites (${invitesRes.status}).`));
+      }
+      if (!dashboardRes.ok) {
+        throw new Error(String(dashboardJson?.error || `Could not load verified customer ratings (${dashboardRes.status}).`));
+      }
       setTeamMembers(members);
       setInvites(Array.isArray(invitesJson?.invites) ? invitesJson.invites : []);
       const employeePerformance = Array.isArray(dashboardJson?.employeePerformance)
@@ -145,6 +127,7 @@ export default function EmployeesPage() {
       setEmployeeRatingsByMembershipId(ratingsMap);
     } catch (e) {
       setTeamMembers([]);
+      setInvites([]);
       setEmployeeRatingsByMembershipId({});
       setLoadError(e instanceof Error ? e.message : "Could not load team.");
     } finally {
@@ -166,10 +149,12 @@ export default function EmployeesPage() {
     const trimmedPhone = invitePhone.trim();
     if (!trimmedName || (!trimmedEmail && !trimmedPhone)) {
       setInviteMessage("Enter the team member's name and at least one contact method.");
+      setInviteMessageTone("error");
       return;
     }
     setInviteSubmitting(true);
     setInviteMessage("");
+    setInviteMessageTone(null);
     try {
       const res = await fetch(`/api/vendors/${vendorId}/employee-invites`, {
         method: "POST",
@@ -213,12 +198,14 @@ export default function EmployeesPage() {
       } else {
         setInviteMessage(json?.delivery ? `${json.delivery} Open the pending invite below if you need the link.` : fallbackMessage);
       }
+      setInviteMessageTone("success");
       setInviteName("");
       setInviteEmail("");
       setInvitePhone("");
       await loadRosterAndInvites();
     } catch (e) {
       setInviteMessage(e instanceof Error ? e.message : "Failed to create invite");
+      setInviteMessageTone("error");
     } finally {
       setInviteSubmitting(false);
     }
@@ -228,6 +215,7 @@ export default function EmployeesPage() {
     if (!vendorId || !authUserId || !inviteId) return;
     setInviteCancellingId(inviteId);
     setInviteMessage("");
+    setInviteMessageTone(null);
     try {
       const res = await fetch(`/api/vendors/${vendorId}/employee-invites/${inviteId}`, {
         method: "DELETE",
@@ -242,8 +230,10 @@ export default function EmployeesPage() {
       }
       setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
       setInviteMessage("Invite cancelled.");
+      setInviteMessageTone("success");
     } catch (e) {
       setInviteMessage(e instanceof Error ? e.message : "Failed to cancel invite");
+      setInviteMessageTone("error");
     } finally {
       setInviteCancellingId(null);
     }
@@ -253,6 +243,7 @@ export default function EmployeesPage() {
     if (!vendorId || !authUserId || !membershipId) return;
     setRemovingMembershipId(membershipId);
     setInviteMessage("");
+    setInviteMessageTone(null);
     setRemoveError("");
     try {
       const res = await fetch(`/api/vendors/${vendorId}/memberships/${membershipId}`, {
@@ -269,10 +260,12 @@ export default function EmployeesPage() {
       }
       await loadRosterAndInvites();
       setInviteMessage("Team member removed.");
+      setInviteMessageTone("success");
       setMemberPendingRemoval(null);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to remove team member";
       setInviteMessage(message);
+      setInviteMessageTone("error");
       setRemoveError(message);
     } finally {
       setRemovingMembershipId(null);
@@ -330,6 +323,7 @@ export default function EmployeesPage() {
       }
       await loadRosterAndInvites();
       setInviteMessage("Team member contact details updated.");
+      setInviteMessageTone("success");
       setSavingMembershipId(null);
       closeEditMember();
     } catch (e) {
@@ -349,6 +343,7 @@ export default function EmployeesPage() {
     if (!vendorId || !authUserId || !membershipId) return;
     setSendingParticipationMembershipId(membershipId);
     setInviteMessage("");
+    setInviteMessageTone(null);
     try {
       const response = await fetch(
         `/api/vendors/${vendorId}/memberships/${membershipId}/public-media-consent-link`,
@@ -365,8 +360,10 @@ export default function EmployeesPage() {
         throw new Error(String(body?.error || "The participation link could not be sent."));
       }
       setInviteMessage("Secure participation link sent. The Employee must make their own choice within one hour.");
+      setInviteMessageTone("success");
     } catch (error) {
       setInviteMessage(error instanceof Error ? error.message : "The participation link could not be sent.");
+      setInviteMessageTone("error");
     } finally {
       setSendingParticipationMembershipId(null);
     }
@@ -390,7 +387,13 @@ export default function EmployeesPage() {
           <button
             type="button"
             className="rounded-lg border border-red-200/40 px-3 py-2 font-semibold text-white hover:bg-red-500/10"
-            onClick={() => void loadRosterAndInvites()}
+            onClick={() => {
+              if (profileError) {
+                void refetchProfile();
+                return;
+              }
+              void loadRosterAndInvites();
+            }}
           >
             Retry
           </button>
@@ -436,7 +439,13 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-950/75 p-4 shadow-sm">
+      <form
+        className="mb-6 rounded-2xl border border-slate-700 bg-slate-950/75 p-4 shadow-sm"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleCreateInvite();
+        }}
+      >
         <h3 className="text-lg font-semibold text-white">Invite team member</h3>
         <p className="mt-1 text-sm leading-6 text-slate-300">
           Add the person who will help with scheduled work. The invite does not create a job by itself.
@@ -482,23 +491,36 @@ export default function EmployeesPage() {
               <option value="EMPLOYEE">Employee</option>
               <option value="MANAGER">Manager</option>
             </select>
+            {inviteRole === "MANAGER" ? (
+              <span className="mt-2 block text-xs leading-5 text-amber-100">
+                Managers can manage the business profile, team, and Work Records. They must complete any
+                applicable current Vendor assent before using locked vendor operations.
+              </span>
+            ) : null}
           </label>
         </div>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
-            type="button"
-            onClick={() => void handleCreateInvite()}
+            type="submit"
             disabled={inviteSubmitting}
             className="w-full rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
           >
             {inviteSubmitting ? "Creating..." : "Create Invite"}
           </button>
-          {inviteMessage ? <p className="text-xs text-slate-300" role="status" aria-live="polite">{inviteMessage}</p> : null}
+          {inviteMessage ? (
+            <p
+              className={`text-xs ${inviteMessageTone === "error" ? "text-red-200" : "text-emerald-200"}`}
+              role={inviteMessageTone === "error" ? "alert" : "status"}
+              aria-live="polite"
+            >
+              {inviteMessage}
+            </p>
+          ) : null}
         </div>
-      </div>
+      </form>
 
       <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-950/75 p-4 shadow-sm">
-        <h3 className="text-lg font-semibold text-white">Pending employee invites</h3>
+        <h3 className="text-lg font-semibold text-white">Pending team invites</h3>
         <p className="mt-1 text-sm text-slate-300">
           Click an invite to view contact details and copy the invite link.
         </p>
@@ -523,6 +545,7 @@ export default function EmployeesPage() {
                     onClick={() => toggleInviteDetails(invite.id)}
                     className="flex w-full flex-col gap-3 text-left md:flex-row md:items-center md:justify-between"
                     aria-expanded={isExpanded}
+                    aria-controls={`pending-invite-${invite.id}`}
                   >
                     <div>
                       <p className="font-semibold text-white">{recipientName}</p>
@@ -546,7 +569,7 @@ export default function EmployeesPage() {
                   </button>
 
                   {isExpanded ? (
-                    <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-slate-300">
+                    <div id={`pending-invite-${invite.id}`} className="mt-3 rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-slate-300">
                       <div className="grid gap-2 md:grid-cols-2">
                         <p>
                           <span className="font-semibold text-white">Email:</span>{" "}
@@ -574,7 +597,7 @@ export default function EmployeesPage() {
                           type="button"
                           onClick={() => void handleCancelInvite(invite.id)}
                           disabled={inviteCancellingId === invite.id}
-                          className="mt-3 rounded border border-red-300 px-3 py-1.5 text-[11px] font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                          className="mt-3 rounded border border-red-300/60 px-3 py-1.5 text-[11px] font-medium text-red-100 hover:bg-red-500/10 disabled:opacity-60"
                         >
                           {inviteCancellingId === invite.id ? "Cancelling..." : "Cancel Invite"}
                         </button>
@@ -593,7 +616,7 @@ export default function EmployeesPage() {
         <div className="border-b border-slate-800 p-4">
           <h3 className="text-lg font-semibold text-white">Team roster</h3>
           <p className="mt-1 text-sm text-slate-400">
-            Active team members who can be assigned to scheduled work.
+            Active Employees and Managers. Only Employees can be assigned to scheduled work.
           </p>
         </div>
         <div className="divide-y divide-slate-800">
@@ -635,30 +658,24 @@ export default function EmployeesPage() {
                       {emp.publicMediaConsentDecidedAt ? ` · ${formatRelianceDate(emp.publicMediaConsentDecidedAt)}` : ""}
                     </div>
                   ) : null}
-                  {(() => {
+                  {String(emp.role).toUpperCase() === "EMPLOYEE" ? (() => {
                     const row = employeeRatingsByMembershipId[String(emp.membershipId)] || {
                       averageRating: 0,
                       reviewCount: 0,
                     };
-                    const badge = getPerformanceBadge(row.averageRating, row.reviewCount);
                     return (
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <div className="mt-1 text-xs text-slate-300">
                         {row.reviewCount > 0 ? (
-                          <>
-                            <span className="text-xs font-medium text-slate-200">⭐ {row.averageRating.toFixed(1)}</span>
-                            <span className="text-xs text-slate-400">
-                              {row.reviewCount} review{row.reviewCount === 1 ? "" : "s"}
-                            </span>
-                          </>
+                          <span>
+                            Verified customer rating: <span className="font-semibold text-white">{row.averageRating.toFixed(1)}</span>
+                            {" "}from {row.reviewCount} review{row.reviewCount === 1 ? "" : "s"}
+                          </span>
                         ) : (
-                          <span className="text-xs text-slate-400">No reviews yet</span>
+                          <span className="text-slate-400">No verified customer ratings yet.</span>
                         )}
-                        <Badge variant="outline" className={badge.className}>
-                          {badge.label}
-                        </Badge>
                       </div>
                     );
-                  })()}
+                  })() : null}
                 </div>
                 <Badge variant={String(emp.role).toUpperCase() === "MANAGER" ? "default" : "secondary"}>
                   {roleLabel(emp.role)}
@@ -705,10 +722,15 @@ export default function EmployeesPage() {
       </div>
       {editingMember ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 py-6 sm:items-center sm:p-4">
-          <div className="max-h-[calc(100dvh-3rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-team-member-title"
+            className="max-h-[calc(100dvh-3rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-white">Edit team member contact</h3>
+                <h3 id="edit-team-member-title" className="text-lg font-semibold text-white">Edit team member contact</h3>
                 <p className="mt-1 text-sm leading-6 text-slate-300">
                   Update the active roster details used for job assignments and team communication.
                 </p>
@@ -719,11 +741,18 @@ export default function EmployeesPage() {
                 className="rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300 hover:bg-slate-900"
                 aria-label="Close edit member"
               >
-                x
+                <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
+            <form
+              className="mt-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSaveMember();
+              }}
+            >
+            <div className="space-y-3">
               <label className="block text-sm font-medium text-slate-200">
                 Name
                 <input
@@ -738,6 +767,8 @@ export default function EmployeesPage() {
                 <input
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
+                  type="email"
+                  autoComplete="email"
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
                   placeholder="email@example.com"
                 />
@@ -747,6 +778,8 @@ export default function EmployeesPage() {
                 <input
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
+                  type="tel"
+                  autoComplete="tel"
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
                   placeholder="(407) 555-1234"
                 />
@@ -754,10 +787,11 @@ export default function EmployeesPage() {
             </div>
 
             <div className="mt-4 rounded-xl border border-blue-400/20 bg-blue-950/30 p-3 text-xs leading-5 text-blue-100">
-              If this team member signs in with email, changing the email here also updates their Reliance sign-in email.
+              This updates the team contact email only when it is not also the person's Reliance sign-in email.
+              A sign-in email can be changed only by the account owner through a verified email-change flow.
             </div>
 
-            {editMessage ? <p className="mt-3 text-sm text-amber-200">{editMessage}</p> : null}
+            {editMessage ? <p className="mt-3 text-sm text-red-200" role="alert">{editMessage}</p> : null}
 
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
@@ -769,14 +803,14 @@ export default function EmployeesPage() {
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={() => void handleSaveMember()}
+                type="submit"
                 disabled={savingMembershipId === editingMember.membershipId}
                 className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60 sm:w-auto"
               >
                 {savingMembershipId === editingMember.membershipId ? "Saving..." : "Save changes"}
               </button>
             </div>
+            </form>
           </div>
         </div>
       ) : null}

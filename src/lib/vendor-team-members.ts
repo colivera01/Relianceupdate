@@ -93,5 +93,19 @@ export async function fetchVendorTeamMembers(
 }
 
 export function avatarUrlForName(name: string): string {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=e5e7eb&color=374151`;
+  const initials = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("")
+    .replace(/[^A-Z0-9]/g, "") || "TM";
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">',
+    '<rect width="96" height="96" rx="48" fill="#16325c"/>',
+    `<text x="48" y="51" dominant-baseline="middle" text-anchor="middle" fill="#f8fbff" font-family="Arial, sans-serif" font-size="30" font-weight="700">${initials}</text>`,
+    '</svg>',
+  ].join("");
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }

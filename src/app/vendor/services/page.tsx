@@ -253,7 +253,9 @@ export default function VendorServicesPage() {
 
     setFormSaving(true);
     setFormError('');
+    setServiceActionMessage('');
     try {
+      const editedService = editingService;
       if (editingService) {
         const updateRes = await fetch(`/api/services/${encodeURIComponent(editingService.id)}`, {
           method: 'PUT',
@@ -288,6 +290,15 @@ export default function VendorServicesPage() {
       setShowFormModal(false);
       setEditingService(null);
       await reloadServices();
+      setServiceActionMessage(
+        editedService
+          ? editedService.lifecycleStatus === 'archived'
+            ? 'Service changes saved. This service remains archived and hidden from customer browsing.'
+            : editedService.isPublished
+              ? 'Service changes saved. The service remains published for customers.'
+              : 'Service changes saved. This service remains pending admin approval.'
+          : 'Service created and queued for admin approval.'
+      );
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Failed to save service');
     } finally {
@@ -699,6 +710,13 @@ export default function VendorServicesPage() {
                 </button>
               </div>
 
+              <form
+                className="flex min-h-0 flex-1 flex-col"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSaveService();
+                }}
+              >
               <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
                 <div>
@@ -707,7 +725,12 @@ export default function VendorServicesPage() {
                     id="service-name"
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => {
+                      setFormData((prev) => ({ ...prev, name: e.target.value }));
+                      if (formError) setFormError('');
+                    }}
+                    required
+                    aria-invalid={Boolean(formError && !formData.name.trim())}
                     className="w-full rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                     placeholder="Example: Outlet installation"
                   />
@@ -723,9 +746,10 @@ export default function VendorServicesPage() {
                     min="1"
                     step="1"
                     value={formData.estimatedDuration}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, estimatedDuration: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setFormData((prev) => ({ ...prev, estimatedDuration: e.target.value }));
+                      if (formError) setFormError('');
+                    }}
                     className="w-full rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                     placeholder="Minutes"
                   />
@@ -740,7 +764,12 @@ export default function VendorServicesPage() {
                   <textarea
                     id="service-description"
                     value={formData.description}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) => {
+                      setFormData((prev) => ({ ...prev, description: e.target.value }));
+                      if (formError) setFormError('');
+                    }}
+                    required
+                    aria-invalid={Boolean(formError && !formData.description.trim())}
                     rows={3}
                     className="min-h-[104px] w-full resize-y rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                     placeholder="Tell customers what is included and what they can expect."
@@ -758,7 +787,12 @@ export default function VendorServicesPage() {
                       min="0"
                       step="0.01"
                       value={formData.price}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
+                      onChange={(e) => {
+                        setFormData((prev) => ({ ...prev, price: e.target.value }));
+                        if (formError) setFormError('');
+                      }}
+                      required
+                      aria-invalid={Boolean(formError && (!formData.price.trim() || Number(formData.price) < 0))}
                       className="w-full rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                       placeholder="0.00"
                     />
@@ -879,10 +913,7 @@ export default function VendorServicesPage() {
                   Cancel
                 </button>
                 <button
-                  type="button"
-                  onClick={() => {
-                    handleSaveService().catch(() => undefined);
-                  }}
+                  type="submit"
                   disabled={formSaving || !vendorId}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 px-5 py-2.5 font-semibold text-white hover:from-blue-700 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
@@ -890,6 +921,7 @@ export default function VendorServicesPage() {
                   Save Service
                 </button>
               </div>
+              </form>
             </div>
           </div>
         )}
