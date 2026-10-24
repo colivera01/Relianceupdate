@@ -8134,7 +8134,7 @@ export default function VendorJobs() {
                       <>
                         <p className="text-gray-600">
                           Current package: {Number(job.serviceVideoPackage.stageCount || 0)} of 3 stage videos
-                          {' '}(version {Number(job.serviceVideoPackage.packageVersion || 1)})
+                          {' '}(version {Number(job.serviceVideoPackage.version || 1)})
                         </p>
                         <p className="text-xs text-gray-500">
                           Media history: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
@@ -8279,7 +8279,7 @@ export default function VendorJobs() {
                       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                         <p className="text-sm font-semibold text-amber-900">Manager Review Ready</p>
                         <p className="mt-1 text-xs text-amber-800">
-                          Current package version {Number(job.serviceVideoPackage?.packageVersion || 1)} contains{' '}
+                          Current package version {Number(job.serviceVideoPackage?.version || 1)} contains{' '}
                           {Number(job.serviceVideoPackage?.stageCount || 0)} of 3 stage videos. Open the exact package to
                           review every stage before submitting it to Reliance Audit or requesting a stage correction.
                         </p>

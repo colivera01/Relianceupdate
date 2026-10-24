@@ -51,6 +51,14 @@ describe("Vendor Manager review UI contract", () => {
     expect(page).toContain('aria-label={`${correctionRequestedForStage ? "Watch prior" : "Watch"} ${stage.label} video`}');
   });
 
+  it("renders the dashboard API's exact current package version", () => {
+    const page = source("src/app/vendor/jobs/page.tsx");
+
+    expect(page).toContain("job.serviceVideoPackage.version || 1");
+    expect(page).not.toContain("job.serviceVideoPackage.packageVersion || 1");
+    expect(page).not.toContain("job.serviceVideoPackage?.packageVersion || 1");
+  });
+
   it("uses compact, fully readable mobile navigation labels", () => {
     const layout = source("src/app/vendor/layout.tsx");
 
