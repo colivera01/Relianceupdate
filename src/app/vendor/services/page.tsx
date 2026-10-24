@@ -518,6 +518,7 @@ export default function VendorServicesPage() {
                     key={tab.value}
                     type="button"
                     role="tab"
+                     aria-label={`${tab.label} (${workflowTabCounts[tab.value]})`}
                     aria-selected={active}
                     aria-controls="service-workflow-panel"
                     onClick={() => setWorkflowFilter(tab.value)}

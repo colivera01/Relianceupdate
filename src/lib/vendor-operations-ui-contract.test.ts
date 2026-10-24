@@ -35,6 +35,7 @@ describe("Vendor operations UI contract", () => {
 
     expect(workflow).toContain("{ value: 'all', label: 'All active' }");
     expect(page).toContain('aria-label="Filter services by workflow stage"');
+    expect(page).toContain('aria-label={`${tab.label} (${workflowTabCounts[tab.value]})`}');
     expect(page).toContain("block sm:hidden");
     expect(page).toContain("Edit ${service.name}");
     expect(page).toContain('aria-labelledby="service-editor-title"');
