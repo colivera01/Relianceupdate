@@ -24,6 +24,7 @@ const hoisted = vi.hoisted(() => {
   const bookingNotificationCount = vi.fn();
   const serviceVideoPackageFindFirst = vi.fn();
   const serviceVideoAdminDecisionFindFirst = vi.fn();
+  const tryReconcileBookingCancellationAndScore = vi.fn();
   const txEmployeeCertificationUpdateMany = vi.fn();
   const txConsentRequestLinkUpdateMany = vi.fn();
   const txBookingNotificationUpdateMany = vi.fn();
@@ -86,6 +87,7 @@ const hoisted = vi.hoisted(() => {
     bookingNotificationCount,
     serviceVideoPackageFindFirst,
     serviceVideoAdminDecisionFindFirst,
+    tryReconcileBookingCancellationAndScore,
     txEmployeeCertificationUpdateMany,
     txConsentRequestLinkUpdateMany,
     txBookingNotificationUpdateMany,
@@ -123,6 +125,10 @@ vi.mock("@/lib/lifecycle-audit", () => ({
 
 vi.mock("@/lib/service-video-publication", () => ({
   loadPackageVisibilityView: vi.fn(),
+}));
+
+vi.mock("@/lib/trust-score-reconciliation", () => ({
+  tryReconcileBookingCancellationAndScore: hoisted.tryReconcileBookingCancellationAndScore,
 }));
 
 function patchReq(vendorId: string, jobId: string, action: string) {
@@ -221,6 +227,7 @@ describe("vendor job actions integration", () => {
     hoisted.serviceVideoPackageFindFirst.mockReset();
     hoisted.serviceVideoPackageFindFirst.mockResolvedValue(null);
     hoisted.serviceVideoAdminDecisionFindFirst.mockReset();
+    hoisted.tryReconcileBookingCancellationAndScore.mockReset();
     hoisted.txEmployeeCertificationUpdateMany.mockReset();
     hoisted.txConsentRequestLinkUpdateMany.mockReset();
     hoisted.txBookingNotificationUpdateMany.mockReset();
@@ -367,15 +374,16 @@ describe("vendor job actions integration", () => {
     hoisted.vendorMembershipFindMany.mockResolvedValue([
       { user: { name: "Bradley Coopers", email: "employee@example.com", phone: null } },
     ]);
-    hoisted.bookingUpdate.mockResolvedValue({
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
       id: "job1",
       status: "CANCELED",
-      customerMetadata: JSON.stringify({ vendor_job_cancellation: { status: "CANCELED" } }),
+      customerMetadata: args.data.customerMetadata,
       updatedAt: new Date(),
-    });
+    }));
 
     const { req, ctx } = patchReqBody("v1", "job1", {
       action: "CANCEL_SERVICE_ORDER",
+      attribution: "CUSTOMER",
       reason: "Customer canceled the scheduled service.",
     });
     const res = await PATCH(req, ctx as any);
@@ -397,6 +405,39 @@ describe("vendor job actions integration", () => {
     expect(recordLifecycleAudit).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: "service_order_canceled", entityId: "job1" }),
     );
+    expect(hoisted.tryReconcileBookingCancellationAndScore).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: "job1",
+        vendorId: "v1",
+        status: "CANCELED",
+        customerMetadata: expect.stringContaining('"attribution":"CUSTOMER"'),
+      }),
+      "manager_cancellation_recorded",
+      "vendor_job_action",
+    );
+  });
+
+  it("PATCH CANCEL_SERVICE_ORDER requires explicit attribution before mutation", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "CONFIRMED",
+      customerMetadata: JSON.stringify({}),
+    });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "CANCEL_SERVICE_ORDER",
+      reason: "Unable to complete the service.",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(422);
+    expect(body.code).toBe("CANCELLATION_ATTRIBUTION_REQUIRED");
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.tryReconcileBookingCancellationAndScore).not.toHaveBeenCalled();
   });
 
   it("PATCH MOVE_CONTENT_TO_ARCHIVE denies an employee for an awaiting-review work record", async () => {

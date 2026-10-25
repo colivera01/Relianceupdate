@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  reconcileBookingCancellationForTrustScore,
   reconcileCoreAuditDecisionForTrustScore,
   reconcileVendorTrustScore,
+  resolveBookingCancellationAttribution,
 } from "@/lib/trust-score-reconciliation";
 
-function dbWith(decisions: any[] = []) {
+function dbWith(decisions: any[] = [], cancellations: any[] = []) {
   const outcomes: any[] = [];
   const db = {
     serviceVideoAdminAuditDecisionEvidence: {
@@ -35,6 +37,7 @@ function dbWith(decisions: any[] = []) {
       }),
     },
     bookingServiceIssue: { findMany: vi.fn(async () => []) },
+    booking: { findMany: vi.fn(async () => cancellations) },
     vendorTrustScoreSnapshot: {
       findFirst: vi.fn(async () => null),
       updateMany: vi.fn(async () => ({ count: 0 })),
@@ -80,7 +83,57 @@ describe("trust score reconciliation", () => {
     expect(outcomes.map((row) => row.outcomeType)).toEqual(["VIDEO_PACKAGE_REJECTED"]);
   });
 
-  it("is idempotent and rebuilds a current Version 2 snapshot", async () => {
+  it("classifies only explicit vendor responsibility as score-affecting", () => {
+    const base = { id: "booking-1", vendorId: "vendor-1", status: "CANCELED", updatedAt: new Date() };
+    expect(resolveBookingCancellationAttribution({
+      ...base,
+      customerMetadata: JSON.stringify({ vendor_job_cancellation: { attribution: "VENDOR" } }),
+    })).toBe("VENDOR");
+    expect(resolveBookingCancellationAttribution({
+      ...base,
+      customerMetadata: JSON.stringify({ vendor_job_cancellation: { source: "CUSTOMER_CANCELLATION" } }),
+    })).toBe("CUSTOMER");
+    expect(resolveBookingCancellationAttribution({
+      ...base,
+      customerMetadata: JSON.stringify({
+        vendor_job_cancellation: { canceled_by_membership_id: "manager-1", reason: "Legacy record" },
+      }),
+    })).toBe("UNKNOWN");
+  });
+
+  it("projects explicit cancellation attribution idempotently", async () => {
+    const { db, outcomes } = dbWith();
+    const row = {
+      id: "booking-cancel-1",
+      vendorId: "vendor-1",
+      status: "CANCELED",
+      customerMetadata: JSON.stringify({
+        vendor_job_cancellation: {
+          attribution: "VENDOR",
+          source: "VENDOR_ATTRIBUTED_CANCELLATION",
+          canceled_at: "2026-10-24T16:00:00.000Z",
+          canceled_by_user_id: "manager-1",
+          reason: "Business unavailable",
+        },
+      }),
+      updatedAt: new Date("2026-10-24T16:00:01.000Z"),
+    };
+
+    await reconcileBookingCancellationForTrustScore(db as any, row);
+    await reconcileBookingCancellationForTrustScore(db as any, row);
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]).toMatchObject({
+      bookingId: "booking-cancel-1",
+      outcomeType: "WORKFLOW_CANCELED_VENDOR",
+      sourceEntityType: "booking_cancellation_attribution",
+      sourceEntityId: "booking-cancel-1",
+      finalizedByUserId: "manager-1",
+    });
+    expect(outcomes[0].finalizedAt.toISOString()).toBe("2026-10-24T16:00:00.000Z");
+  });
+
+  it("is idempotent and rebuilds a current Version 3 snapshot", async () => {
     const { db, outcomes } = dbWith([passDecision]);
 
     const first = await reconcileVendorTrustScore(db as any, "vendor-1");
@@ -93,5 +146,49 @@ describe("trust score reconciliation", () => {
       operationalReliability: { pct: null, numerator: 0, denominator: 0 },
     });
     expect(second.reconciledDecisions).toBe(1);
+  });
+
+  it("self-heals explicit cancellation outcomes and keeps neutral cancellations out of the denominator", async () => {
+    const cancellations = [
+      {
+        id: "vendor-cancel",
+        vendorId: "vendor-1",
+        status: "CANCELED",
+        customerMetadata: JSON.stringify({
+          vendor_job_cancellation: {
+            attribution: "VENDOR",
+            source: "VENDOR_ATTRIBUTED_CANCELLATION",
+            canceled_at: "2026-10-24T16:00:00.000Z",
+          },
+        }),
+        updatedAt: new Date("2026-10-24T16:00:00.000Z"),
+      },
+      {
+        id: "customer-cancel",
+        vendorId: "vendor-1",
+        status: "CANCELED",
+        customerMetadata: JSON.stringify({
+          vendor_job_cancellation: {
+            attribution: "CUSTOMER",
+            source: "CUSTOMER_CANCELLATION",
+            canceled_at: "2026-10-24T17:00:00.000Z",
+          },
+        }),
+        updatedAt: new Date("2026-10-24T17:00:00.000Z"),
+      },
+    ];
+    const { db, outcomes } = dbWith([passDecision], cancellations);
+
+    const result = await reconcileVendorTrustScore(db as any, "vendor-1");
+
+    expect(result.reconciledCancellations).toBe(2);
+    expect(result.reconciledVendorCancellations).toBe(1);
+    expect(result.breakdown).toMatchObject({
+      workflowCompletion: { numerator: 1, denominator: 2, pct: 50 },
+      videoVerification: { numerator: 1, denominator: 1, pct: 100 },
+      disputeFree: { numerator: 1, denominator: 1, pct: 100 },
+      totalScorePct: 83,
+    });
+    expect(outcomes.map((row) => row.outcomeType)).toContain("WORKFLOW_CANCELED_CUSTOMER");
   });
 });

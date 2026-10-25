@@ -50,7 +50,7 @@ describe("GET /api/vendors/[vendorId]/trust-score (public-safe)", () => {
     hoisted.snapshotFindFirst.mockResolvedValue({
       id: "snap-1",
       vendorId: "v1",
-      scoreVersion: 2,
+      scoreVersion: 3,
       totalScorePct: 95,
       workflowCompletionPct: 100,
       videoVerificationPct: 90,
@@ -65,7 +65,7 @@ describe("GET /api/vendors/[vendorId]/trust-score (public-safe)", () => {
       operationalReliabilityNumerator: 0,
       operationalReliabilityDenominator: 0,
       computedAt: new Date("2026-05-28T10:00:00.000Z"),
-      inputHash: "v2_secret",
+      inputHash: "v3_secret",
       recalcReason: "job_approved",
       recalcSource: "job_approve",
       detailJson: JSON.stringify({ internal: true }),
@@ -83,7 +83,7 @@ describe("GET /api/vendors/[vendorId]/trust-score (public-safe)", () => {
     expect(body.trustScore.components.videoVerification).toMatchObject({ pct: 90, numerator: 9, denominator: 10 });
 
     // Internal-only fields must not leak to the public payload.
-    expect(raw).not.toContain("v2_secret");
+    expect(raw).not.toContain("v3_secret");
     expect(raw).not.toContain("recalcReason");
     expect(raw).not.toContain("detailJson");
     expect(raw).not.toContain("visibilityStatus");

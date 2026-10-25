@@ -5,11 +5,9 @@ import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } f
 import { mapBookingToContract } from '@/lib/booking-shape';
 import {
   BOOKING_SERVICE_ISSUE_TYPES,
-  TRUST_OUTCOME_TYPES,
   tryRecordBookingServiceIssue,
-  tryRecordFinalizedOperationalOutcome,
 } from '@/lib/trust-score-outcome-foundation';
-import { tryRecalculateVendorTrustScore } from '@/lib/trust-score-calculator';
+import { tryReconcileBookingCancellationAndScore } from '@/lib/trust-score-reconciliation';
 import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
 import { recordLifecycleAudit } from '@/lib/lifecycle-audit';
 
@@ -99,6 +97,7 @@ export async function POST(
         canceled_at: canceledAt.toISOString(),
         canceled_by_user_id: userId,
         canceled_by_membership_id: null,
+        attribution: 'CUSTOMER',
         reason: cancellationReason,
         source: 'CUSTOMER_CANCELLATION',
       };
@@ -110,20 +109,13 @@ export async function POST(
     }, { isolationLevel: 'Serializable' });
 
     if (existing.vendorId && !cancellation.idempotent) {
-      await tryRecordFinalizedOperationalOutcome(prisma as any, {
+      await tryReconcileBookingCancellationAndScore(prisma as any, {
+        id: bookingId,
         vendorId: existing.vendorId,
-        bookingId,
-        outcomeType: TRUST_OUTCOME_TYPES.BOOKING_CANCELED,
-        sourceEntityType: 'booking',
-        sourceEntityId: bookingId,
-        finalizedAt: canceledAt,
-        finalizedByUserId: userId,
-        metadata: {
-          previousStatus: cancellation.previousStatus,
-          cancellationReason,
-          refundRequested: Boolean(refund_requested),
-        },
-      });
+        status: String(cancellation.booking.status || 'CANCELED'),
+        customerMetadata: cancellation.booking.customerMetadata,
+        updatedAt: (cancellation.booking as any).updatedAt || canceledAt,
+      }, 'customer_cancellation_recorded', 'booking_cancel');
 
       if (refund_requested === true) {
         await tryRecordBookingServiceIssue(prisma as any, {
@@ -141,13 +133,6 @@ export async function POST(
         });
       }
 
-      // Internal-only, non-blocking Trust Score recalculation.
-      await tryRecalculateVendorTrustScore(
-        prisma as any,
-        existing.vendorId,
-        'booking_canceled',
-        'booking_cancel'
-      );
       await recordLifecycleAudit({
         actionType: 'customer_service_canceled',
         entityType: 'booking',

@@ -57,6 +57,7 @@ export async function cancelSimplifiedV1WorkRecordAfterDecline(input: {
     canceled_at: input.decidedAt.toISOString(),
     canceled_by_user_id: input.actorUserId || "verified-permission-recipient",
     canceled_by_membership_id: null,
+    attribution: "CUSTOMER",
     reason: RECORDING_DECLINE_CANCELLATION_REASON,
     source: "CUSTOMER_RECORDING_PERMISSION_DECLINE",
     underlying_service_canceled: false,

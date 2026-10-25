@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import {
+  Archive,
   CalendarDays,
   HardDrive,
+  LockKeyhole,
   Medal,
   MessageSquareText,
   ShieldCheck,
@@ -17,7 +19,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VendorTrustScoreCard } from "@/components/vendor/VendorTrustScoreCard";
 import { useVendorDashboard } from "@/hooks/useVendorDashboard";
-import { deriveVendorAnalyticsMetrics } from "@/lib/vendor-analytics";
+import {
+  deriveVendorAnalyticsMetrics,
+  selectMostRecentPublicReview,
+  selectTopRatedTeamMember,
+} from "@/lib/vendor-analytics";
 
 function formatPercent(value: number) {
   return `${Math.max(0, Math.round(value))}%`;
@@ -38,10 +44,18 @@ function formatDate(value: string | null | undefined) {
   }).format(date);
 }
 
-function formatStorageSize(bytesString: string | undefined) {
-  const bytes = Number(bytesString || 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 GB";
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+function formatStorageSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
+  const gigabyte = 1024 * 1024 * 1024;
+  if (bytes >= gigabyte) {
+    return `${(bytes / gigabyte).toFixed(2)} GB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatStoragePercent(value: number) {
+  if (value > 0 && value < 0.1) return "<0.1%";
+  return `${value.toFixed(1)}%`;
 }
 
 export default function VendorAnalyticsPage() {
@@ -52,14 +66,10 @@ export default function VendorAnalyticsPage() {
 
     const metrics = deriveVendorAnalyticsMetrics(data);
 
-    const topPerformer =
-      [...(data.employeePerformance || [])]
-        .filter((row) => Number(row.reviewCount || 0) > 0)
-        .sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0))[0] || null;
-
     return {
       ...metrics,
-      topPerformer,
+      topPerformer: selectTopRatedTeamMember(data.employeePerformance),
+      mostRecentPublicReview: selectMostRecentPublicReview(data.recentReviews),
     };
   }, [data]);
 
@@ -203,61 +213,103 @@ export default function VendorAnalyticsPage() {
       <VendorTrustScoreCard dashboardData={data} onRefreshDashboard={refetch} />
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
-          <Card>
-          <CardHeader>
-            <CardTitle>What customers can feel from your recent activity</CardTitle>
+        <Card>
+          <CardHeader className="space-y-2">
+            <CardTitle>Recent activity and capacity</CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Customer-facing signals and private operational measures are labeled separately so
+              you can see exactly what each number represents.
+            </p>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border bg-slate-50/90 p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <MessageSquareText className="h-4 w-4 text-primary" />
-                Verified rating coverage
+            <div className="rounded-lg border bg-slate-50/90 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                  <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
+                  Verified rating participation
+                </div>
+                <Badge variant="outline">Customer signal</Badge>
               </div>
-              <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.verifiedRatingCoverage)}</div>
+              <div className="mt-3 text-2xl font-semibold">
+                {derived.ratingCoverageDenominator > 0
+                  ? formatPercent(derived.verifiedRatingCoverage)
+                  : "Not yet measurable"}
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Share of completed Work Records with a verified customer star rating. Written-comment
-                publication is tracked separately.
+                {derived.ratingCoverageDenominator > 0
+                  ? `${derived.ratingCoverageNumerator} of ${derived.ratingCoverageDenominator} completed, approved Service Orders received a verified customer star rating.`
+                  : "No completed, approved Service Order is currently eligible for this calculation."}
+                {" "}Reviews are optional; this measures participation, not service quality. Written
+                comment publication is tracked separately.
               </p>
             </div>
-            <div className="rounded-2xl border bg-slate-50/90 p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <HardDrive className="h-4 w-4 text-primary" />
-                Storage usage
+            <div className="rounded-lg border bg-slate-50/90 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                  <HardDrive className="h-4 w-4 text-primary" aria-hidden="true" />
+                  Storage usage
+                </div>
+                <Badge variant="outline">
+                  <LockKeyhole className="mr-1 h-3 w-3" aria-hidden="true" />
+                  Private
+                </Badge>
               </div>
-              <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.storagePercent)}</div>
+              <div className="mt-3 text-2xl font-semibold">
+                {formatStoragePercent(derived.storagePercent)}
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {formatStorageSize(data.storageUsedBytes)} used of {formatStorageSize(data.storageLimitBytes)}.
+                {formatStorageSize(derived.storageUsedBytes)} used of{" "}
+                {formatStorageSize(derived.storageLimitBytes)}. This operational capacity is not
+                shown to customers.
               </p>
             </div>
-            <div className="rounded-2xl border bg-slate-50/90 p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <Video className="h-4 w-4 text-primary" />
-                Service video pipeline
+            <div className="rounded-lg border bg-slate-50/90 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                  <Video className="h-4 w-4 text-primary" aria-hidden="true" />
+                  Service Video pipeline
+                </div>
+                <Badge variant="outline">Customer signal</Badge>
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Badge variant={derived.pendingServiceOrders > 0 ? "warning" : "secondary"}>
                   {derived.pendingServiceOrders} pending Reliance Audit
                 </Badge>
-                <Badge variant="success">{derived.approvedServiceOrders} approved</Badge>
-                <Badge variant="outline">{derived.archivedServiceOrders} archived</Badge>
+                <Badge variant="success">{derived.approvedServiceOrders} approved Private Proof</Badge>
+                <Badge variant="outline">{derived.publicServiceOrders} shared publicly</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Approved service orders help first-time customers trust what your business actually delivers.
+                Counts complete three-stage Service Orders, not individual video files. Public
+                sharing remains separate from Private Proof approval.
               </p>
             </div>
-            <div className="rounded-2xl border bg-slate-50/90 p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                Job status mix
+            <div className="rounded-lg border bg-slate-50/90 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                  <Archive className="h-4 w-4 text-primary" aria-hidden="true" />
+                  Work Record status
+                </div>
+                <Badge variant="outline">
+                  <LockKeyhole className="mr-1 h-3 w-3" aria-hidden="true" />
+                  Private
+                </Badge>
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Badge variant="outline">{derived.scheduledJobs} scheduled</Badge>
                 <Badge variant="secondary">{derived.inProgressJobs} in progress</Badge>
                 <Badge variant="warning">{derived.awaitingReviewJobs} awaiting review</Badge>
                 <Badge variant="success">{derived.completedJobs} completed</Badge>
+                <Badge variant="outline">{derived.canceledJobs} canceled</Badge>
+                <Badge variant="outline">{derived.rejectedJobs} rejected</Badge>
+                <Badge variant="outline">{derived.archivedJobs} archived</Badge>
+                {derived.unclassifiedJobs > 0 ? (
+                  <Badge variant="destructive">{derived.unclassifiedJobs} needs classification</Badge>
+                ) : null}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Consistent completion keeps future reviews, service videos, and trust signals moving.
+                {derived.statusCountMatchesTotal
+                  ? `${derived.statusTotal} of ${derived.totalBookings} Work Records are represented by mutually exclusive current statuses.`
+                  : `Status totals currently account for ${derived.statusTotal} of ${derived.totalBookings} Work Records. Refresh analytics; if the mismatch remains, the lifecycle data needs review.`}
               </p>
             </div>
           </CardContent>
@@ -269,38 +321,55 @@ export default function VendorAnalyticsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {derived.topPerformer ? (
-              <div className="rounded-2xl border bg-blue-50/90 p-4">
+              <div className="rounded-lg border bg-blue-50/90 p-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
-                  <Medal className="h-4 w-4" />
-                  Strongest rated team member
+                  <Medal className="h-4 w-4" aria-hidden="true" />
+                  Highest current employee rating
                 </div>
                 <div className="mt-2 text-lg font-semibold text-slate-900">
                   {derived.topPerformer.displayName}
                 </div>
                 <p className="mt-1 text-sm text-slate-700">
                   {formatDecimal(Number(derived.topPerformer.averageRating || 0))}★ average across{" "}
-                  {Number(derived.topPerformer.reviewCount || 0)} attributed reviews.
+                  {Number(derived.topPerformer.reviewCount || 0)} verified employee rating
+                  {Number(derived.topPerformer.reviewCount || 0) === 1 ? "" : "s"}.
+                </p>
+                <p className="mt-2 text-xs text-blue-900/80">
+                  The sample size is shown so a single rating is not presented as a long-term trend.
                 </p>
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                No employee attribution trend is measurable yet. Team highlights will appear after more
-                approved customer reviews are tied to completed jobs.
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                No verified customer star rating has been attributed to a team member yet. This
+                highlight will appear after a customer rates the assigned employee on a completed
+                Service Order.
               </div>
             )}
 
-            <div className="rounded-2xl border p-4">
+            <div className="rounded-lg border p-4">
               <p className="text-sm font-medium text-slate-900">Most recent public review</p>
-              {data.recentReviews.length > 0 ? (
+              {derived.mostRecentPublicReview ? (
                 <>
-                  <p className="mt-2 text-sm text-slate-700">
-                    "{data.recentReviews[0]?.comment || "No comment provided."}"
+                  <p
+                    className="mt-2 text-sm font-medium text-amber-700"
+                    aria-label={`${formatDecimal(derived.mostRecentPublicReview.rating)} out of 5 stars`}
+                  >
+                    {formatDecimal(derived.mostRecentPublicReview.rating)}★
                   </p>
+                  <blockquote className="mt-2 text-sm text-slate-700">
+                    “{derived.mostRecentPublicReview.comment}”
+                  </blockquote>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {data.recentReviews[0]?.client || "Customer"} •{" "}
-                    {formatDate(data.recentReviews[0]?.date)}
+                    {derived.mostRecentPublicReview.client || "Customer"} ·{" "}
+                    {derived.mostRecentPublicReview.jobType || "Service"} ·{" "}
+                    {formatDate(derived.mostRecentPublicReview.date)}
                   </p>
                 </>
+              ) : Number(data.stats.publicWrittenReviewCount || 0) > 0 ? (
+                <p className="mt-2 text-sm text-amber-800">
+                  Public review details are temporarily unavailable. Refresh analytics or open the
+                  Reviews page to try again.
+                </p>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground">
                   No public reviews are available yet for this vendor.

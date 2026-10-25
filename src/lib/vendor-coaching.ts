@@ -120,7 +120,7 @@ export function buildVendorCoachingPlan(
           label: "Workflow completion",
           pct: workflowCompletion.pct,
           weightPct: workflowCompletion.weightPct,
-          action: `Workflow completion is ${workflowCompletion.pct}%. Reduce cancellations and make sure scheduled work reaches finalized completion whenever service actually happens.`,
+          action: `Workflow completion is ${workflowCompletion.pct}%. Review vendor-attributed cancellations and make sure accepted work reaches finalized completion whenever service actually happens. Customer and administrative cancellations are neutral.`,
         }
       : null,
     videoVerification?.pct !== null && videoVerification

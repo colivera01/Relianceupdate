@@ -1093,6 +1093,7 @@ export default function VendorJobs() {
   >({});
   const [jobActionLoading, setJobActionLoading] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
+  const [cancellationAttribution, setCancellationAttribution] = useState('');
   const [permissionEvidence, setPermissionEvidence] = useState<any>(null);
   const [permissionEvidenceLoading, setPermissionEvidenceLoading] = useState(false);
   const [permissionEvidenceError, setPermissionEvidenceError] = useState('');
@@ -4930,6 +4931,7 @@ export default function VendorJobs() {
     setPendingJobAction(action);
     setShowJobActionConfirmModal(true);
     setCancellationReason('');
+    setCancellationAttribution('');
     setActiveJobActionMenuId(null);
     if (action === "DELETE_PERMANENTLY" && vendorId) {
       setDeleteImpactPreview({
@@ -5016,6 +5018,7 @@ export default function VendorJobs() {
       } else if (pendingJobAction === "CANCEL_SERVICE_ORDER") {
         const payload = await runPersistedJobAction(jobActionTarget, "CANCEL_SERVICE_ORDER", {
           reason: cancellationReason.trim(),
+          attribution: cancellationAttribution,
         });
         await reloadJobsFromBackend();
         setJobActionFeedback({ type: "success", message: payload?.message || "Service Order canceled." });
@@ -8644,18 +8647,36 @@ export default function VendorJobs() {
             </div>
           )}
           {pendingJobAction === "CANCEL_SERVICE_ORDER" ? (
-            <label className="space-y-2 text-sm font-medium text-slate-800">
-              Cancellation reason
-              <textarea
-                value={cancellationReason}
-                onChange={(event) => setCancellationReason(event.target.value)}
-                maxLength={500}
-                rows={4}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-900"
-                placeholder="Explain why this Service Order is being canceled."
-              />
-              <span className="block text-xs font-normal text-slate-500">This reason becomes part of the preserved Service Order history.</span>
-            </label>
+            <div className="space-y-4">
+              <label className="space-y-2 text-sm font-medium text-slate-800">
+                Who initiated the cancellation?
+                <select
+                  value={cancellationAttribution}
+                  onChange={(event) => setCancellationAttribution(event.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-900"
+                >
+                  <option value="">Choose one</option>
+                  <option value="CUSTOMER">Customer requested cancellation</option>
+                  <option value="VENDOR">Business could not complete the service</option>
+                  <option value="ADMINISTRATIVE">Administrative or duplicate record</option>
+                </select>
+                <span className="block text-xs font-normal text-slate-500">
+                  Only a vendor-attributed cancellation affects verified workflow completion. Customer and administrative cancellations remain neutral.
+                </span>
+              </label>
+              <label className="space-y-2 text-sm font-medium text-slate-800">
+                Cancellation reason
+                <textarea
+                  value={cancellationReason}
+                  onChange={(event) => setCancellationReason(event.target.value)}
+                  maxLength={500}
+                  rows={4}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-900"
+                  placeholder="Explain why this Service Order is being canceled."
+                />
+                <span className="block text-xs font-normal text-slate-500">This reason becomes part of the preserved Service Order history.</span>
+              </label>
+            </div>
           ) : null}
           <DialogFooter>
             <Button
@@ -8675,7 +8696,8 @@ export default function VendorJobs() {
                 Boolean(jobMutationLoadingId) ||
                 (pendingJobAction === "DELETE_PERMANENTLY" &&
                   (deleteImpactPreview?.loading || deleteImpactPreview?.canVendorDelete === false)) ||
-                (pendingJobAction === "CANCEL_SERVICE_ORDER" && cancellationReason.trim().length < 5)
+                (pendingJobAction === "CANCEL_SERVICE_ORDER" &&
+                  (!cancellationAttribution || cancellationReason.trim().length < 5))
               }
               className={pendingJobAction === "DELETE_PERMANENTLY" || pendingJobAction === "CANCEL_SERVICE_ORDER" ? "bg-red-600 hover:bg-red-700" : ""}
             >

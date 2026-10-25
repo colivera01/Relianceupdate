@@ -44,7 +44,7 @@ function ctx(vendorId: string) {
 const ADMIN_SNAPSHOT = {
   id: "snap-1",
   vendorId: "v1",
-  scoreVersion: 2,
+  scoreVersion: 3,
   totalScorePct: 88,
   workflowCompletionPct: 100,
   videoVerificationPct: 80,
@@ -59,10 +59,10 @@ const ADMIN_SNAPSHOT = {
   operationalReliabilityNumerator: 0,
   operationalReliabilityDenominator: 0,
   computedAt: new Date("2026-05-28T10:00:00.000Z"),
-  inputHash: "v2_hash",
+  inputHash: "v3_hash",
   recalcReason: "job_approved",
   recalcSource: "job_approve",
-  detailJson: JSON.stringify({ scoreVersion: 2, reason: "job_approved" }),
+  detailJson: JSON.stringify({ scoreVersion: 3, reason: "job_approved" }),
   visibilityStatus: "internal",
   isCurrent: true,
 };
@@ -90,7 +90,7 @@ describe("admin trust-score routes", () => {
 
     expect(res.status).toBe(200);
     expect(body.snapshotReadCapability).toBe("ok");
-    expect(body.trustScore.snapshot.inputHash).toBe("v2_hash");
+    expect(body.trustScore.snapshot.inputHash).toBe("v3_hash");
     expect(body.trustScore.snapshot.lastRecalcReason).toBe("job_approved");
     expect(body.trustScore.snapshot.lastRecalcSource).toBe("job_approve");
     expect(body.trustScore.snapshot.detail).toMatchObject({ reason: "job_approved" });

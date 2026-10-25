@@ -125,6 +125,9 @@ type ComponentKey = (typeof ACTIVE_COMPONENT_ORDER)[number];
 
 const TRUST_SCORE_METHODOLOGY = [
   "Only finalized Reliance workflow, video-verification, and validated service-issue outcomes are counted.",
+  "Verified workflow completion is weighted 35%, video verification 30%, and dispute-free completion 35%.",
+  "Only an explicitly vendor-attributed cancellation counts as an incomplete workflow. Customer, recording-decline, administrative, and unattributed legacy cancellations are neutral.",
+  "Each Service Order contributes at most once to each component; the latest finalized terminal and video-verification outcomes control its current result.",
   "All three active components must be measurable before a score is shown.",
   "Customer Ratings and review sentiment do not change the Reliance Trust Score.",
   "The current score covers all finalized Reliance activity on record; no rolling time window is implied.",

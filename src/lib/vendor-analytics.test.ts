@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { deriveVendorAnalyticsMetrics } from "@/lib/vendor-analytics";
+import {
+  deriveVendorAnalyticsMetrics,
+  selectMostRecentPublicReview,
+  selectTopRatedTeamMember,
+} from "@/lib/vendor-analytics";
 import type { VendorDashboardResponse } from "@/types/vendor";
 
 function dashboard(overrides: Partial<VendorDashboardResponse> = {}): VendorDashboardResponse {
@@ -47,8 +51,8 @@ describe("deriveVendorAnalyticsMetrics", () => {
   it("reports archived service orders instead of archived media asset versions", () => {
     const metrics = deriveVendorAnalyticsMetrics(dashboard());
 
-    expect(metrics.archivedServiceOrders).toBe(5);
-    expect(metrics.archivedServiceOrders).not.toBe(16);
+    expect(metrics.archivedJobs).toBe(5);
+    expect(metrics.archivedJobs).not.toBe(16);
   });
 
   it("uses the verified rating count instead of the truncated public-review list", () => {
@@ -88,5 +92,64 @@ describe("deriveVendorAnalyticsMetrics", () => {
     expect(metrics.completionRate).toBe(100);
     expect(metrics.verifiedRatingCoverage).toBe(100);
     expect(metrics.storagePercent).toBe(100);
+  });
+
+  it("uses unique eligible Service Order counts supplied by the dashboard for rating participation", () => {
+    const metrics = deriveVendorAnalyticsMetrics(
+      dashboard({
+        stats: {
+          ...dashboard().stats,
+          ratingCount: 9,
+          ratingEligibleServiceOrderCount: 4,
+          verifiedRatedServiceOrderCount: 2,
+        },
+      })
+    );
+
+    expect(metrics.ratingCoverageNumerator).toBe(2);
+    expect(metrics.ratingCoverageDenominator).toBe(4);
+    expect(metrics.verifiedRatingCoverage).toBe(50);
+  });
+
+  it("calculates storage percentage from exact bytes instead of a separately rounded value", () => {
+    const metrics = deriveVendorAnalyticsMetrics(
+      dashboard({
+        storageUsedBytes: String(50 * 1024 * 1024),
+        storageLimitBytes: String(1024 * 1024 * 1024),
+        storagePercentUsed: 4,
+      })
+    );
+
+    expect(metrics.storagePercent).toBe(4.88);
+    expect(metrics.storageUsedBytes).toBe(50 * 1024 * 1024);
+    expect(metrics.storageLimitBytes).toBe(1024 * 1024 * 1024);
+  });
+
+  it("reconciles every current Work Record status to the headline total", () => {
+    const metrics = deriveVendorAnalyticsMetrics(dashboard());
+
+    expect(metrics.statusTotal).toBe(9);
+    expect(metrics.unclassifiedJobs).toBe(0);
+    expect(metrics.statusCountMatchesTotal).toBe(true);
+  });
+
+  it("selects team highlights deterministically and rejects invalid rating rows", () => {
+    const selected = selectTopRatedTeamMember([
+      { membershipId: "z", displayName: "Zoe", averageRating: 5, reviewCount: 1 },
+      { membershipId: "b", displayName: "Bradley", averageRating: 5, reviewCount: 3 },
+      { membershipId: "bad", displayName: "Invalid", averageRating: 0, reviewCount: 8 },
+    ]);
+
+    expect(selected?.displayName).toBe("Bradley");
+  });
+
+  it("selects the newest usable public review even when the input is unsorted", () => {
+    const selected = selectMostRecentPublicReview([
+      { id: "old", client: "A", rating: 4, comment: "Older", date: "2026-01-01T00:00:00.000Z", jobType: "A" },
+      { id: "blank", client: "B", rating: 5, comment: " ", date: "2026-04-01T00:00:00.000Z", jobType: "B" },
+      { id: "new", client: "C", rating: 5, comment: "Newest", date: "2026-03-01T00:00:00.000Z", jobType: "C" },
+    ]);
+
+    expect(selected?.id).toBe("new");
   });
 });

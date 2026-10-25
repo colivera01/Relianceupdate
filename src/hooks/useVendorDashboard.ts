@@ -25,7 +25,7 @@ export function useVendorDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDashboard = useCallback(async () => {
+  const fetchDashboard = useCallback(async (forceRefresh = false) => {
     if (profileLoading && !vendorId && !hasResolvedVendorContext) {
       setLoading(true);
       return;
@@ -54,7 +54,8 @@ export function useVendorDashboard() {
       const headers = getClientSessionHeaders(userId);
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), VENDOR_DASHBOARD_TIMEOUT_MS);
-      const res = await fetch(`/api/vendors/${vendorId}/dashboard`, {
+      const query = forceRefresh ? "?refresh=1" : "";
+      const res = await fetch(`/api/vendors/${vendorId}/dashboard${query}`, {
         method: "GET",
         cache: "no-store",
         headers,
@@ -81,8 +82,12 @@ export function useVendorDashboard() {
   }, [approvalPending, hasResolvedVendorContext, profileError, profileLoading, userId, vendorId]);
 
   useEffect(() => {
-    fetchDashboard();
+    // Vendor pages are operational views. Load a fresh snapshot on entry so a newly
+    // completed job, review, audit decision, or storage change is never hidden by the API TTL.
+    void fetchDashboard(true);
   }, [fetchDashboard]);
 
-  return { data, loading, error, refetch: fetchDashboard, approvalPending };
+  const refetch = useCallback(() => fetchDashboard(true), [fetchDashboard]);
+
+  return { data, loading, error, refetch, approvalPending };
 }

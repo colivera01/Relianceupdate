@@ -32,6 +32,8 @@ const releasedJob = {
     consentRequestId: "rv8-permission-1",
     recordingUnlocked: false,
     serviceOrderReleasedAt: "2026-08-13T15:00:00.000Z",
+    serviceOrderCurrent: true,
+    serviceOrderAnyReleased: true,
     releasedMembershipIds: ["rv8-employee-membership"],
     canonicalBlock: {
       code: "LOCATION_VERIFICATION_REQUIRED",
@@ -382,6 +384,16 @@ async function openVendorJobs(page: Page) {
   }
 }
 
+async function selectWorkflowFilter(page: Page, value: string, label: RegExp) {
+  const mobileFilter = page.getByRole("combobox", { name: "Filter work records" });
+  if ((page.viewportSize()?.width || 1280) < 640) {
+    await expect(mobileFilter).toBeVisible();
+    await mobileFilter.selectOption(value);
+    return;
+  }
+  await page.getByRole("button", { name: label }).click();
+}
+
 test.describe("RV-8 Product Owner replay corrections", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -535,7 +547,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
 
     await page.getByRole("button", { name: "Actions" }).click();
     await expect(page.getByRole("button", { name: "View Recording Permission" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Resend Service Order Link" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Resend current Service Order link" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel Service Order" })).toBeVisible();
 
     await page.getByRole("button", { name: "View Recording Permission" }).click();
@@ -549,7 +561,14 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Cancel Service Order" }).click();
     const cancelDialog = page.getByRole("dialog", { name: "Cancel Service Order" });
     await expect(cancelDialog).toContainText("Existing permission, location, assignment, delivery, and audit evidence will remain");
+    await expect(cancelDialog.getByLabel("Who initiated the cancellation?")).toBeVisible();
+    await expect(cancelDialog).toContainText("Only a vendor-attributed cancellation affects verified workflow completion");
     await expect(cancelDialog.getByLabel("Cancellation reason")).toBeVisible();
+    const confirmCancellation = cancelDialog.getByRole("button", { name: "Cancel Service Order" });
+    await expect(confirmCancellation).toBeDisabled();
+    await cancelDialog.getByLabel("Who initiated the cancellation?").selectOption("CUSTOMER");
+    await cancelDialog.getByLabel("Cancellation reason").fill("Customer requested a schedule change.");
+    await expect(confirmCancellation).toBeEnabled();
   });
 
   test("funnels Manager Review through the exact current package and keeps Actions separate", async ({ page }) => {
@@ -583,11 +602,11 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(page.getByRole("menu").getByRole("button", { name: "View Details" })).toBeVisible();
     await expect(page.getByRole("menu").getByRole("button", { name: "Archive Job" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: /Private Proof/ }).click();
+    await selectWorkflowFilter(page, "private_complete", /Private Proof/);
     await expect(page.getByText(passedAuditJob.title, { exact: true })).toBeVisible();
     await expect(page.getByText(genericCompletedJob.title, { exact: true })).toHaveCount(0);
 
-    await page.getByRole("button", { name: /Active Work/ }).click();
+    await selectWorkflowFilter(page, "active", /Active Work/);
     await expect(page.getByText(genericCompletedJob.title, { exact: true })).toBeVisible();
     await expect(page.getByText(passedAuditJob.title, { exact: true })).toHaveCount(0);
   });
@@ -608,7 +627,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await installVendorFixture(page, [pendingAdminAuditJob, passedAuditJob, rejectedAuditJob]);
     await openVendorJobs(page);
 
-    await page.getByRole("button", { name: /Reliance Audit/ }).click();
+    await selectWorkflowFilter(page, "moderator_review", /Reliance Audit/);
     await expect(page.getByText(pendingAdminAuditJob.title, { exact: true })).toBeVisible();
     await expect(page.getByText(passedAuditJob.title, { exact: true })).toHaveCount(0);
     await expect(page.getByText(rejectedAuditJob.title, { exact: true })).toHaveCount(0);
@@ -682,9 +701,9 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(page.getByText(canceledJob.title, { exact: true })).toBeVisible();
     await expect(page.getByLabel("Work record progress")).toContainText("Service Order canceled");
     await expect(page.getByLabel("Work record progress")).toContainText("permanently closed");
-    await page.getByRole("button", { name: /Active Work/ }).click();
+    await selectWorkflowFilter(page, "active", /Active Work/);
     await expect(page.getByText(canceledJob.title, { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: /Canceled/ }).click();
+    await selectWorkflowFilter(page, "canceled", /Canceled/);
     await expect(page.getByText(canceledJob.title, { exact: true })).toBeVisible();
   });
 

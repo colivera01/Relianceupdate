@@ -14,7 +14,7 @@ import {
 const FULL_SNAPSHOT: SnapshotRow = {
   id: "snap-1",
   vendorId: "v1",
-  scoreVersion: 2,
+  scoreVersion: 3,
   totalScorePct: 88,
   workflowCompletionPct: 100,
   videoVerificationPct: 80,
@@ -31,12 +31,12 @@ const FULL_SNAPSHOT: SnapshotRow = {
   computedAt: new Date("2026-05-28T10:00:00.000Z"),
   periodStart: null,
   periodEnd: null,
-  inputHash: "v2_abc123",
+  inputHash: "v3_abc123",
   isCurrent: true,
   visibilityStatus: "internal",
   recalcReason: "job_approved",
   recalcSource: "job_approve",
-  detailJson: JSON.stringify({ scoreVersion: 2, reason: "job_approved", source: "job_approve" }),
+  detailJson: JSON.stringify({ scoreVersion: 3, reason: "job_approved", source: "job_approve" }),
   createdAt: new Date("2026-05-28T10:00:00.000Z"),
   updatedAt: new Date("2026-05-28T10:00:00.000Z"),
 };
@@ -66,7 +66,7 @@ function deepKeys(value: unknown, acc: Set<string> = new Set()): Set<string> {
 }
 
 describe("trust-score-read shaping (public vs vendor vs admin separation)", () => {
-  it("public payload includes the Version 2 components and explanation, excluding internals", () => {
+  it("public payload includes the Version 3 components and explanation, excluding internals", () => {
     const out = toPublicTrustScore(FULL_SNAPSHOT);
     expect(out.scored).toBe(true);
     expect(out.totalScorePct).toBe(88);
@@ -123,7 +123,7 @@ describe("trust-score-read shaping (public vs vendor vs admin separation)", () =
   it("admin payload exposes internal inputs and recalc trigger/source", () => {
     const out = toAdminTrustScore(FULL_SNAPSHOT);
     expect(out.scored).toBe(true);
-    expect(out.snapshot!.inputHash).toBe("v2_abc123");
+    expect(out.snapshot!.inputHash).toBe("v3_abc123");
     expect(out.snapshot!.lastRecalcReason).toBe("job_approved");
     expect(out.snapshot!.lastRecalcSource).toBe("job_approve");
     expect(out.snapshot!.visibilityStatus).toBe("internal");
@@ -145,12 +145,13 @@ describe("trust-score-read shaping (public vs vendor vs admin separation)", () =
     expect(details.coverageSummary).toContain("100%");
     expect(details.strongestSignals[0]).toContain("Verified workflow completion");
     expect(details.watchItems[0]).toContain("Video verification");
-    expect(details.methodology[2]).toContain("Customer Ratings");
+    expect(details.methodology.some((item) => item.includes("Customer Ratings"))).toBe(true);
+    expect(details.methodology.some((item) => item.includes("vendor-attributed cancellation"))).toBe(true);
   });
 
   it("buildTrustScoreExplanationDetails handles an unmeasurable snapshot honestly", () => {
     const details = buildTrustScoreExplanationDetails({
-      scoreVersion: 2,
+      scoreVersion: 3,
       totalScorePct: null,
       workflowCompletionPct: null,
       videoVerificationPct: null,

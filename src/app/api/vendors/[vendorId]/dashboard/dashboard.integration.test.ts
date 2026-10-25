@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => {
   const vendorMembershipFindMany = vi.fn();
   const serviceVideoPackageEvidenceFindMany = vi.fn();
   const serviceVideoAdminAuditDecisionEvidenceFindMany = vi.fn();
+  const privateProofAccessGrantFindMany = vi.fn();
   const listUnreadVendorManagerNotifications = vi.fn();
 
   const prisma = {
@@ -69,6 +70,9 @@ const hoisted = vi.hoisted(() => {
     serviceVideoAdminAuditDecisionEvidence: {
       findMany: serviceVideoAdminAuditDecisionEvidenceFindMany,
     },
+    privateProofAccessGrant: {
+      findMany: privateProofAccessGrantFindMany,
+    },
   };
 
   return {
@@ -90,6 +94,7 @@ const hoisted = vi.hoisted(() => {
     vendorMembershipFindMany,
     serviceVideoPackageEvidenceFindMany,
     serviceVideoAdminAuditDecisionEvidenceFindMany,
+    privateProofAccessGrantFindMany,
     listUnreadVendorManagerNotifications,
   };
 });
@@ -193,6 +198,7 @@ function mockHappyPathData() {
   hoisted.mediaAssetGroupBy.mockResolvedValue([]);
   hoisted.mediaAssetCount.mockResolvedValue(0);
   hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+  hoisted.privateProofAccessGrantFindMany.mockResolvedValue([]);
   hoisted.listUnreadVendorManagerNotifications.mockResolvedValue([]);
   vi.mocked(calculateStorageUsage).mockResolvedValue({
     usedBytes: BigInt(0),
@@ -222,6 +228,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.serviceVideoPackageEvidenceFindMany.mockResolvedValue([]);
     hoisted.serviceVideoAdminAuditDecisionEvidenceFindMany.mockReset();
     hoisted.serviceVideoAdminAuditDecisionEvidenceFindMany.mockResolvedValue([]);
+    hoisted.privateProofAccessGrantFindMany.mockReset();
+    hoisted.privateProofAccessGrantFindMany.mockResolvedValue([]);
     hoisted.mediaAssetGroupBy.mockReset();
     hoisted.mediaAssetCount.mockReset();
     hoisted.mediaAssetFindMany.mockReset();
@@ -375,6 +383,72 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
         moderationStatus: "approved",
         visibilityStatus: "public",
       }),
+    });
+  });
+
+  it("calculates rating coverage from unique currently review-eligible Service Orders", async () => {
+    mockHappyPathData();
+    const completedBooking = (id: string) => ({
+      id,
+      vendorId: "v1",
+      serviceId: "service-1",
+      title: `Completed ${id}`,
+      clientName: "Pat",
+      amount: 120,
+      status: "COMPLETED",
+      date: new Date("2026-04-15T12:00:00.000Z"),
+      scheduledFor: new Date("2026-04-15T12:00:00.000Z"),
+      createdAt: new Date("2026-04-15T10:00:00.000Z"),
+      updatedAt: new Date("2026-04-15T11:00:00.000Z"),
+      customerMetadata: "{}",
+      user: { id: `customer-${id}`, name: "Pat", email: "pat@example.com", phone: "555-0101" },
+      service: { id: "service-1", name: "Deep Cleaning", isPublished: true },
+    });
+    hoisted.bookingGroupBy.mockResolvedValue([{ _count: { _all: 2 }, _sum: { amount: 240 } }]);
+    hoisted.bookingFindMany
+      .mockReset()
+      .mockResolvedValueOnce([completedBooking("job-1"), completedBooking("job-2")])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ amount: 120 }, { amount: 120 }]);
+    hoisted.reviewFindMany
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { bookingId: "job-1" },
+        { bookingId: "job-1" },
+        { bookingId: "outside-current-eligibility" },
+      ]);
+    hoisted.privateProofAccessGrantFindMany.mockResolvedValue([
+      { bookingId: "job-1" },
+      { bookingId: "job-2" },
+    ]);
+    vi.mocked(getVendorRatingStats).mockResolvedValue({
+      averageRating: 5,
+      reviewCount: 2,
+      ratingSum: 10,
+      distribution: [
+        { rating: 5, count: 2, percentage: 100 },
+        { rating: 4, count: 0, percentage: 0 },
+        { rating: 3, count: 0, percentage: 0 },
+        { rating: 2, count: 0, percentage: 0 },
+        { rating: 1, count: 0, percentage: 0 },
+      ],
+    });
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard?refresh=1", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res) as any;
+
+    expect(res.status).toBe(200);
+    expect(body.stats.ratingEligibleServiceOrderCount).toBe(2);
+    expect(body.stats.verifiedRatedServiceOrderCount).toBe(1);
+    expect(hoisted.privateProofAccessGrantFindMany).toHaveBeenCalledWith({
+      where: { vendorId: "v1", status: "ACTIVE" },
+      select: { bookingId: true },
     });
   });
 

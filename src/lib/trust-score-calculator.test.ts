@@ -14,6 +14,9 @@ import {
 const {
   WORKFLOW_COMPLETED,
   BOOKING_CANCELED,
+  WORKFLOW_CANCELED_CUSTOMER,
+  WORKFLOW_CANCELED_VENDOR,
+  WORKFLOW_CANCELED_ADMINISTRATIVE,
   VIDEO_PACKAGE_APPROVED,
   VIDEO_PACKAGE_REJECTED,
   LATE_COMPLETION,
@@ -70,11 +73,11 @@ const MIXED_OUTCOMES: OutcomeRow[] = [
   { bookingId: "b2", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
   { bookingId: "b2", outcomeType: VIDEO_PACKAGE_REJECTED, finalizedAt: new Date("2026-05-02") },
   { bookingId: "b3", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
-  { bookingId: "b4", outcomeType: BOOKING_CANCELED, finalizedAt: new Date("2026-05-01") },
+  { bookingId: "b4", outcomeType: WORKFLOW_CANCELED_VENDOR, finalizedAt: new Date("2026-05-01") },
 ];
 const MIXED_ISSUES: IssueRow[] = [{ bookingId: "b3", status: "VALIDATED" }];
 
-describe("computeTrustScoreBreakdown — Version 2 independent metrics", () => {
+describe("computeTrustScoreBreakdown — Version 3 independent metrics", () => {
   it("computes each metric and the weighted total from finalized data", () => {
     const b = computeTrustScoreBreakdown(MIXED_OUTCOMES, MIXED_ISSUES);
     // Workflow completion: 3 completed / 4 terminal
@@ -151,13 +154,39 @@ describe("computeTrustScoreBreakdown — Version 2 independent metrics", () => {
 
   it("uses the latest finalized terminal outcome for a booking", () => {
     const outcomes: OutcomeRow[] = [
-      { bookingId: "b1", outcomeType: BOOKING_CANCELED, finalizedAt: new Date("2026-05-01") },
+      { bookingId: "b1", outcomeType: WORKFLOW_CANCELED_VENDOR, finalizedAt: new Date("2026-05-01") },
       { bookingId: "b1", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-03") },
       { bookingId: "b1", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-04") },
     ];
     const b = computeTrustScoreBreakdown(outcomes, []);
     expect(b.workflowCompletion).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
     expect(b.totalScorePct).toBe(100);
+  });
+
+  it("keeps customer, administrative, and unattributed legacy cancellations neutral", () => {
+    const outcomes: OutcomeRow[] = [
+      { bookingId: "completed", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
+      { bookingId: "completed", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-02") },
+      { bookingId: "customer", outcomeType: WORKFLOW_CANCELED_CUSTOMER, finalizedAt: new Date("2026-05-03") },
+      { bookingId: "admin", outcomeType: WORKFLOW_CANCELED_ADMINISTRATIVE, finalizedAt: new Date("2026-05-04") },
+      { bookingId: "legacy", outcomeType: BOOKING_CANCELED, finalizedAt: new Date("2026-05-05") },
+    ];
+    const b = computeTrustScoreBreakdown(outcomes, []);
+    expect(b.workflowCompletion).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
+    expect(b.totalScorePct).toBe(100);
+  });
+
+  it("counts only an explicit vendor-attributed cancellation as incomplete", () => {
+    const outcomes: OutcomeRow[] = [
+      { bookingId: "completed", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
+      { bookingId: "completed", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-02") },
+      { bookingId: "vendor-cancel", outcomeType: WORKFLOW_CANCELED_VENDOR, finalizedAt: new Date("2026-05-03") },
+    ];
+    const b = computeTrustScoreBreakdown(outcomes, []);
+    expect(b.workflowCompletion).toMatchObject({ numerator: 1, denominator: 2, pct: 50 });
+    expect(b.videoVerification).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
+    expect(b.disputeFree).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
+    expect(b.totalScorePct).toBe(83);
   });
 
   it("ignores the legacy late-completion signal", () => {
@@ -205,7 +234,7 @@ describe("recalculateVendorTrustScore — snapshot supersede semantics", () => {
     const data = db.vendorTrustScoreSnapshot.create.mock.calls[0][0].data;
     expect(data).toMatchObject({
       vendorId: "v1",
-      scoreVersion: 2,
+      scoreVersion: 3,
       totalScorePct: 65,
       workflowCompletionPct: 75,
       videoVerificationPct: 50,

@@ -29,7 +29,10 @@ import {
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { listUnreadVendorManagerNotifications } from "@/lib/vendor-manager-notifications";
-import { canonicalPublicWrittenReviewWhere } from "@/lib/review-rating-validity";
+import {
+  canonicalPublicWrittenReviewWhere,
+  canonicalVerifiedCustomerRatingWhere,
+} from "@/lib/review-rating-validity";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -299,6 +302,7 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const jobsOnly = searchParams.get("jobsOnly") === "1";
+    const forceRefresh = searchParams.get("refresh") === "1";
     // Manage Jobs is an operational surface. Its list must reflect mutations
     // immediately, so jobs-only responses must never come from the dashboard TTL.
     const useResponseCache = USE_DASHBOARD_CACHE && !jobsOnly;
@@ -311,6 +315,9 @@ export async function GET(
       String(membership.role || "UNKNOWN").toUpperCase(),
       jobsOnly ? "jobsOnly" : "full",
     ].join(":");
+    if (forceRefresh) {
+      cache.delete(cacheKey);
+    }
     const cached = useResponseCache ? cache.get(cacheKey) : null;
     if (useResponseCache && cached && cached.expiresAt > Date.now()) {
       return NextResponse.json(cached.data);
@@ -324,6 +331,8 @@ export async function GET(
       archivedBookings,
       recentReviews,
       publicWrittenReviewCount,
+      verifiedRatingReviews,
+      activePrivateProofGrants,
       confirmedOrCompletedBookings, // For client count (CONFIRMED + COMPLETED only)
       completedBookings,
       proofModerationGroups,
@@ -411,7 +420,7 @@ export async function GET(
             },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
         take: 5,
       }),
 
@@ -419,6 +428,25 @@ export async function GET(
         ? Promise.resolve(0)
         : prisma.review.count({
             where: approvedCustomerReviewWhereForVendor(vendorId),
+          }),
+
+      // Rating coverage is based on unique, currently review-eligible Service Orders,
+      // not raw review rows divided by whichever completed rows happen to be visible.
+      jobsOnly
+        ? Promise.resolve([])
+        : prisma.review.findMany({
+            where: countableReviewWhere({
+              vendorId,
+              ...canonicalVerifiedCustomerRatingWhere(),
+            }),
+            select: { bookingId: true },
+          }),
+
+      jobsOnly
+        ? Promise.resolve([])
+        : (prisma as any).privateProofAccessGrant.findMany({
+            where: { vendorId, status: "ACTIVE" },
+            select: { bookingId: true },
           }),
 
       // Confirmed or Completed bookings for client count (exclude CANCELED and PENDING)
@@ -1203,6 +1231,32 @@ export async function GET(
         !["REJECTED", "CANCELED", "ARCHIVED"].includes(normalizeKey(pack.bookingStatus)) &&
         pack.visibilityStatuses.some((status) => normalizeKey(status) === PUBLIC_VISIBILITY_STATUS)
     ).length;
+    const reviewEligibleStatuses = new Set([
+      "COMPLETED",
+      "ARCHIVED",
+      "AWAITING_REVIEW",
+      "AWAITING_MANAGER_REVIEW",
+    ]);
+    const bookingStatusById = new Map(
+      (recentBookings as any[]).map((booking) => [
+        String(booking.id),
+        normalizeKey(booking.status),
+      ]),
+    );
+    const ratingEligibleBookingIds = new Set(
+      (activePrivateProofGrants as any[])
+        .map((grant) => String(grant?.bookingId || "").trim())
+        .filter(
+          (bookingId) =>
+            Boolean(bookingId) &&
+            reviewEligibleStatuses.has(bookingStatusById.get(bookingId) || ""),
+        ),
+    );
+    const verifiedRatedBookingIds = new Set(
+      (verifiedRatingReviews as any[])
+        .map((review) => String(review?.bookingId || "").trim())
+        .filter((bookingId) => ratingEligibleBookingIds.has(bookingId)),
+    );
     const trustScore = toVendorTrustScore(currentTrustScoreSnapshot as any);
 
     let storageUsedBytes = "0";
@@ -1257,6 +1311,8 @@ export async function GET(
         rating: vendorRatingStats.averageRating,
         ratingCount: vendorRatingStats.reviewCount,
         publicWrittenReviewCount: Number(publicWrittenReviewCount || 0),
+        ratingEligibleServiceOrderCount: ratingEligibleBookingIds.size,
+        verifiedRatedServiceOrderCount: verifiedRatedBookingIds.size,
         ratingDistribution: vendorRatingStats.distribution,
       },
       recentJobs,

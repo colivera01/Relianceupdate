@@ -6,13 +6,18 @@
  * It NEVER reads from or writes to `Review`: Customer Rating and Reliance Trust Score
  * remain fully separate. Pending / unreviewed items never reduce the score.
  *
- * Version 2 uses three independent weighted metrics:
+ * Version 3 uses three independent weighted metrics:
  *   - Verified Workflow Completion Rate   35%
  *   - Video Verification Success Rate      30%
  *   - Dispute-Free Completion Rate         35%
  *
+ * Workflow completion counts only explicitly vendor-attributed cancellations as incomplete.
+ * Customer, recording-decline, administrative, and unattributed legacy cancellations are
+ * neutral. This prevents the identity of the person entering a cancellation from being
+ * mistaken for responsibility for it.
+ *
  * Operational reliability is retained in the snapshot schema for Version 1 compatibility,
- * but it is not scored in Version 2. Version 1 duplicated the same cancellation, package
+ * but it is not scored in Version 3. Version 1 duplicated the same cancellation, package
  * rejection, and validated-issue penalties already represented by the three metrics above.
  * Its legacy LATE_COMPLETION signal also compared completion with a scheduled start time,
  * which is not a defensible completion deadline.
@@ -24,7 +29,7 @@
 import { countableVendorWhere } from "@/lib/metrics-exclusion";
 import { TRUST_OUTCOME_TYPES, isServiceIssueScoreAffecting } from "@/lib/trust-score-outcome-foundation";
 
-export const TRUST_SCORE_VERSION = 2;
+export const TRUST_SCORE_VERSION = 3;
 
 export const TRUST_SCORE_WEIGHTS = {
   workflowCompletion: 0.35,
@@ -78,7 +83,7 @@ function toTime(value: Date | string | null | undefined): number {
 
 interface PerBookingState {
   completed: boolean;
-  canceled: boolean;
+  vendorCanceled: boolean;
   terminalLatestAt: number;
   packageLatestType: string | null;
   packageLatestAt: number;
@@ -101,7 +106,7 @@ export function aggregateBookingStates(
     if (!state) {
       state = {
         completed: false,
-        canceled: false,
+        vendorCanceled: false,
         terminalLatestAt: -1,
         packageLatestType: null,
         packageLatestAt: -1,
@@ -119,13 +124,13 @@ export function aggregateBookingStates(
     const state = ensure(bookingId);
     if (
       type === TRUST_OUTCOME_TYPES.WORKFLOW_COMPLETED ||
-      type === TRUST_OUTCOME_TYPES.BOOKING_CANCELED
+      type === TRUST_OUTCOME_TYPES.WORKFLOW_CANCELED_VENDOR
     ) {
       const at = toTime(row.finalizedAt);
       if (at >= state.terminalLatestAt) {
         state.terminalLatestAt = at;
         state.completed = type === TRUST_OUTCOME_TYPES.WORKFLOW_COMPLETED;
-        state.canceled = type === TRUST_OUTCOME_TYPES.BOOKING_CANCELED;
+        state.vendorCanceled = type === TRUST_OUTCOME_TYPES.WORKFLOW_CANCELED_VENDOR;
       }
     } else if (
       type === TRUST_OUTCOME_TYPES.VIDEO_PACKAGE_APPROVED ||
@@ -167,7 +172,7 @@ export function computeTrustScoreBreakdown(
   let disputeFreeNumerator = 0;
 
   for (const s of states) {
-    const terminal = s.completed || s.canceled;
+    const terminal = s.completed || s.vendorCanceled;
     if (terminal) terminalCount += 1;
     if (s.completed) completedCount += 1;
 

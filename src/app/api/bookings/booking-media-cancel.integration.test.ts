@@ -17,9 +17,8 @@ const hoisted = vi.hoisted(() => {
   const loadAuthorizedPrivateProof = vi.fn();
   const recordPrivateProofAccessBestEffort = vi.fn();
   const serviceVideoPackageEvidenceFindFirst = vi.fn();
-  const tryRecordFinalizedOperationalOutcome = vi.fn();
   const tryRecordBookingServiceIssue = vi.fn();
-  const tryRecalculateVendorTrustScore = vi.fn();
+  const tryReconcileBookingCancellationAndScore = vi.fn();
   const recordLifecycleAudit = vi.fn();
   const prisma = {
     booking: {
@@ -40,9 +39,8 @@ const hoisted = vi.hoisted(() => {
     loadAuthorizedPrivateProof,
     recordPrivateProofAccessBestEffort,
     serviceVideoPackageEvidenceFindFirst,
-    tryRecordFinalizedOperationalOutcome,
     tryRecordBookingServiceIssue,
-    tryRecalculateVendorTrustScore,
+    tryReconcileBookingCancellationAndScore,
     recordLifecycleAudit,
   };
 });
@@ -62,13 +60,11 @@ vi.mock('@/lib/service-video-evidence', () => ({
 
 vi.mock('@/lib/trust-score-outcome-foundation', () => ({
   BOOKING_SERVICE_ISSUE_TYPES: { REFUND_REQUEST: 'REFUND_REQUEST' },
-  TRUST_OUTCOME_TYPES: { BOOKING_CANCELED: 'BOOKING_CANCELED' },
-  tryRecordFinalizedOperationalOutcome: hoisted.tryRecordFinalizedOperationalOutcome,
   tryRecordBookingServiceIssue: hoisted.tryRecordBookingServiceIssue,
 }));
 
-vi.mock('@/lib/trust-score-calculator', () => ({
-  tryRecalculateVendorTrustScore: hoisted.tryRecalculateVendorTrustScore,
+vi.mock('@/lib/trust-score-reconciliation', () => ({
+  tryReconcileBookingCancellationAndScore: hoisted.tryReconcileBookingCancellationAndScore,
 }));
 
 vi.mock('@/lib/lifecycle-audit', () => ({
@@ -254,9 +250,8 @@ describe('POST /api/bookings/[id]/cancel', () => {
     hoisted.bookingUpdate.mockReset();
     hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
     hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
-    hoisted.tryRecordFinalizedOperationalOutcome.mockReset();
     hoisted.tryRecordBookingServiceIssue.mockReset();
-    hoisted.tryRecalculateVendorTrustScore.mockReset();
+    hoisted.tryReconcileBookingCancellationAndScore.mockReset();
     hoisted.recordLifecycleAudit.mockReset();
   });
 
@@ -328,7 +323,10 @@ describe('POST /api/bookings/[id]/cancel', () => {
       .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', vendorId: 'v1', status: 'PENDING' })
       .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', vendorId: 'v1', status: 'PENDING', customerMetadata: null })
       .mockResolvedValueOnce(hydrated);
-    hoisted.bookingUpdate.mockResolvedValue(hydrated);
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      ...hydrated,
+      customerMetadata: args.data.customerMetadata,
+    }));
 
     const res = await bookingCancelPOST(
       cancelPostRequest('book-1', {
@@ -351,6 +349,17 @@ describe('POST /api/bookings/[id]/cancel', () => {
       actionType: 'customer_service_canceled',
       actorUserId: 'u1',
     }));
+    expect(hoisted.tryReconcileBookingCancellationAndScore).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'book-1',
+        vendorId: 'v1',
+        status: 'CANCELED',
+        customerMetadata: expect.stringContaining('"attribution":"CUSTOMER"'),
+      }),
+      'customer_cancellation_recorded',
+      'booking_cancel',
+    );
     const booking = j.booking as Record<string, unknown>;
     expect(booking.id).toBe('book-1');
     expect(booking.status).toBe('canceled');
@@ -395,8 +404,7 @@ describe('POST /api/bookings/[id]/cancel', () => {
 
     expect(res.status).toBe(409);
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
-    expect(hoisted.tryRecordFinalizedOperationalOutcome).not.toHaveBeenCalled();
     expect(hoisted.tryRecordBookingServiceIssue).not.toHaveBeenCalled();
-    expect(hoisted.tryRecalculateVendorTrustScore).not.toHaveBeenCalled();
+    expect(hoisted.tryReconcileBookingCancellationAndScore).not.toHaveBeenCalled();
   });
 });

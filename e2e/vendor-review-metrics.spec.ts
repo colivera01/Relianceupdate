@@ -11,8 +11,10 @@ async function installVendorReviewMetricsFixture(
     ratingCount?: number;
     employeeRating?: number;
     employeeReviewCount?: number;
+    populatedAnalytics?: boolean;
   } = {}
 ) {
+  const populatedAnalytics = options.populatedAnalytics ?? false;
   const rating = options.rating ?? 5;
   const ratingCount = options.ratingCount ?? 1;
   const employeeRating = options.employeeRating ?? 3;
@@ -113,44 +115,93 @@ async function installVendorReviewMetricsFixture(
         body: JSON.stringify({
           profile: { id: VENDOR_ID, name: "Electro LLC", businessName: "Electro LLC" },
           stats: {
-            totalBookings: 1,
+            totalBookings: populatedAnalytics ? 8 : 1,
             totalEarnings: 0,
             totalClients: 1,
-            rating,
-            ratingCount,
-            publicWrittenReviewCount: 0,
-            ratingDistribution: [
-              { rating: 5, count: ratingCount > 0 && rating === 5 ? ratingCount : 0, percentage: ratingCount > 0 && rating === 5 ? 100 : 0 },
-              { rating: 4, count: 0, percentage: 0 },
-              { rating: 3, count: 0, percentage: 0 },
-              { rating: 2, count: 0, percentage: 0 },
-              { rating: 1, count: 0, percentage: 0 },
-            ],
+            rating: populatedAnalytics ? 4.5 : rating,
+            ratingCount: populatedAnalytics ? 2 : ratingCount,
+            publicWrittenReviewCount: populatedAnalytics ? 2 : 0,
+            completionEligibleBookingCount: populatedAnalytics ? 5 : 1,
+            ratingEligibleServiceOrderCount: populatedAnalytics ? 4 : 1,
+            verifiedRatedServiceOrderCount: populatedAnalytics ? 2 : ratingCount > 0 ? 1 : 0,
+            ratingDistribution: populatedAnalytics
+              ? [
+                  { rating: 5, count: 1, percentage: 50 },
+                  { rating: 4, count: 1, percentage: 50 },
+                  { rating: 3, count: 0, percentage: 0 },
+                  { rating: 2, count: 0, percentage: 0 },
+                  { rating: 1, count: 0, percentage: 0 },
+                ]
+              : [
+                  { rating: 5, count: ratingCount > 0 && rating === 5 ? ratingCount : 0, percentage: ratingCount > 0 && rating === 5 ? 100 : 0 },
+                  { rating: 4, count: 0, percentage: 0 },
+                  { rating: 3, count: 0, percentage: 0 },
+                  { rating: 2, count: 0, percentage: 0 },
+                  { rating: 1, count: 0, percentage: 0 },
+                ],
           },
           recentJobs: [],
           archivedJobs: [],
-          recentReviews: [],
-          employeePerformance: [
-            {
-              membershipId: "bradley-membership",
-              displayName: "Bradley Coopers",
-              averageRating: employeeRating,
-              reviewCount: employeeReviewCount,
-            },
-          ],
+          recentReviews: populatedAnalytics
+            ? [
+                {
+                  id: "review-new",
+                  client: "Riley Customer",
+                  rating: 5,
+                  comment: "Clear work and an excellent final result.",
+                  date: "2026-10-23T18:30:00.000Z",
+                  jobType: "Outlet Installation",
+                },
+                {
+                  id: "review-old",
+                  client: "Pat Customer",
+                  rating: 4,
+                  comment: "Older review.",
+                  date: "2026-09-10T18:30:00.000Z",
+                  jobType: "Breaker Replacement",
+                },
+              ]
+            : [],
+          employeePerformance: populatedAnalytics
+            ? [
+                {
+                  membershipId: "zoe-membership",
+                  displayName: "Zoe Rivera",
+                  averageRating: 5,
+                  reviewCount: 1,
+                },
+                {
+                  membershipId: "bradley-membership",
+                  displayName: "Bradley Coopers",
+                  averageRating: 5,
+                  reviewCount: 3,
+                },
+              ]
+            : [
+                {
+                  membershipId: "bradley-membership",
+                  displayName: "Bradley Coopers",
+                  averageRating: employeeRating,
+                  reviewCount: employeeReviewCount,
+                },
+              ],
           insights: [],
           lifecycleCounts: {
-            scheduled: 0,
-            inProgress: 0,
-            awaitingReview: 0,
-            completed: 1,
-            canceled: 0,
-            archived: 0,
+            scheduled: populatedAnalytics ? 1 : 0,
+            inProgress: populatedAnalytics ? 1 : 0,
+            awaitingReview: populatedAnalytics ? 1 : 0,
+            completed: populatedAnalytics ? 2 : 1,
+            canceled: populatedAnalytics ? 1 : 0,
+            rejected: populatedAnalytics ? 1 : 0,
+            archived: populatedAnalytics ? 1 : 0,
           },
           notifications: [],
-          storageUsedBytes: "0",
-          storageLimitBytes: "1",
-          storagePercentUsed: 0,
+          pendingModerationServiceOrderCount: populatedAnalytics ? 1 : 0,
+          approvedServiceOrderCount: populatedAnalytics ? 3 : 0,
+          publicServiceOrderCount: populatedAnalytics ? 1 : 0,
+          storageUsedBytes: populatedAnalytics ? String(50 * 1024 * 1024) : "0",
+          storageLimitBytes: populatedAnalytics ? String(1024 * 1024 * 1024) : "1",
+          storagePercentUsed: populatedAnalytics ? 4 : 0,
         }),
       });
       return;
@@ -161,11 +212,11 @@ async function installVendorReviewMetricsFixture(
         contentType: "application/json",
         body: JSON.stringify({
           success: true,
-          scoreVersion: 2,
+          scoreVersion: 3,
           verifiedAt: "2026-10-24T12:00:00.000Z",
           trustScore: {
             scored: true,
-            scoreVersion: 2,
+            scoreVersion: 3,
             totalScorePct: 88,
             computedAt: "2026-09-07T12:00:00.000Z",
             presentation: {
@@ -284,5 +335,34 @@ test.describe("Vendor review metrics", () => {
     );
     expect(hasHorizontalOverflow).toBe(false);
     await page.screenshot({ path: testInfo.outputPath("vendor-analytics-mobile.png"), fullPage: true });
+  });
+
+  test("populates trust highlights and reconciles recent activity from canonical counts", async ({ page }, testInfo) => {
+    await installVendorReviewMetricsFixture(page, { populatedAnalytics: true });
+    await page.goto("/test-fixtures/vendor-analytics");
+
+    await expect(page.getByText("Verified rating participation", { exact: true })).toBeVisible();
+    await expect(page.getByText("2 of 4 completed, approved Service Orders received a verified customer star rating.", { exact: false })).toBeVisible();
+    await expect(page.getByText("50.0 MB used of 1.00 GB.", { exact: false })).toBeVisible();
+    await expect(page.getByText("4.9%", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 pending Reliance Audit", { exact: true }).last()).toBeVisible();
+    await expect(page.getByText("3 approved Private Proof", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 shared publicly", { exact: true })).toBeVisible();
+    await expect(page.getByText("8 of 8 Work Records are represented", { exact: false })).toBeVisible();
+
+    await expect(page.getByText("Highest current employee rating", { exact: true })).toBeVisible();
+    await expect(page.getByText("Bradley Coopers", { exact: true })).toBeVisible();
+    await expect(page.getByText("5.0★ average across 3 verified employee ratings.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Clear work and an excellent final result.", { exact: false })).toBeVisible();
+    await expect(page.getByLabel("5.0 out of 5 stars")).toBeVisible();
+    await expect(page.getByText("Older review.", { exact: true })).toHaveCount(0);
+
+    const dashboardRefresh = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname === `/api/vendors/${VENDOR_ID}/dashboard` && url.searchParams.get("refresh") === "1";
+    });
+    await page.getByRole("button", { name: "Refresh analytics" }).click();
+    await dashboardRefresh;
+    await page.screenshot({ path: testInfo.outputPath("populated-vendor-analytics.png"), fullPage: true });
   });
 });

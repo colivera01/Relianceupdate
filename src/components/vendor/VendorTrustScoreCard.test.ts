@@ -43,11 +43,13 @@ describe('buildDashboardSnapshot', () => {
       ratingCount: 2,
       approvedVideos: 3,
       pendingVideos: 1,
-      archivedVideos: 4,
+      archivedWorkRecords: 4,
       totalVideoAssets: 32,
       completedJobs: 4,
       scheduledJobs: 3,
-      reviewCoverage: 50,
+      verifiedRatedServiceOrders: 2,
+      ratingEligibleServiceOrders: 4,
+      ratingParticipationPct: 50,
     });
   });
 });

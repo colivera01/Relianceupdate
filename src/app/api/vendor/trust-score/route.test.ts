@@ -10,14 +10,14 @@ vi.mock("@/lib/trust-score-read", () => ({
   getCurrentVendorTrustScoreSnapshot: vi.fn(),
   toVendorTrustScore: vi.fn((snapshot) => ({
     scored: Boolean(snapshot?.totalScorePct !== null && snapshot?.totalScorePct !== undefined),
-    scoreVersion: snapshot?.scoreVersion || 2,
+    scoreVersion: snapshot?.scoreVersion || 3,
     totalScorePct: snapshot?.totalScorePct ?? null,
   })),
 }));
 vi.mock("@/lib/trust-score-reconciliation", () => ({ reconcileVendorTrustScore: vi.fn() }));
 vi.mock("@/server/db", () => ({ prisma: {} }));
 
-const currentSnapshot = { id: "snapshot-v2", scoreVersion: 2, totalScorePct: 96 };
+const currentSnapshot = { id: "snapshot-v3", scoreVersion: 3, totalScorePct: 96 };
 
 describe("vendor reliability score route", () => {
   beforeEach(() => {
@@ -35,14 +35,14 @@ describe("vendor reliability score route", () => {
     } as any);
   });
 
-  it("reads a current Version 2 snapshot without rebuilding it", async () => {
+  it("reads a current Version 3 snapshot without rebuilding it", async () => {
     const response = await GET(new Request("http://localhost/api/vendor/trust-score"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
       success: true,
-      scoreVersion: 2,
+      scoreVersion: 3,
       refreshed: false,
       verifiedAt: null,
       trustScore: { totalScorePct: 96 },
@@ -52,8 +52,8 @@ describe("vendor reliability score route", () => {
 
   it("upgrades an obsolete snapshot before returning analytics", async () => {
     vi.mocked(getCurrentVendorTrustScoreSnapshot).mockResolvedValueOnce({
-      id: "snapshot-v1",
-      scoreVersion: 1,
+      id: "snapshot-v2",
+      scoreVersion: 2,
       totalScorePct: 85,
     });
 
@@ -70,7 +70,7 @@ describe("vendor reliability score route", () => {
     expect(body).toMatchObject({
       refreshed: true,
       verifiedAt: "2026-10-24T20:00:00.000Z",
-      trustScore: { scoreVersion: 2, totalScorePct: 96 },
+      trustScore: { scoreVersion: 3, totalScorePct: 96 },
     });
   });
 

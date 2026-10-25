@@ -102,13 +102,16 @@ export function buildDashboardSnapshot(dashboardData: VendorDashboardResponse) {
     ratingCount: derived.ratingCount,
     approvedVideos: derived.approvedServiceOrders,
     pendingVideos: derived.pendingServiceOrders,
-    archivedVideos: derived.archivedServiceOrders,
+    archivedWorkRecords: derived.archivedJobs,
     totalVideoAssets: derived.totalProofAssets,
     storagePercentUsed: derived.storagePercent,
     completedJobs: derived.completedJobs,
     inProgressJobs: derived.inProgressJobs,
     scheduledJobs: derived.scheduledJobs,
-    reviewCoverage: derived.verifiedRatingCoverage,
+    verifiedRatedServiceOrders: derived.ratingCoverageNumerator,
+    ratingEligibleServiceOrders: derived.ratingCoverageDenominator,
+    ratingParticipationPct:
+      derived.ratingCoverageDenominator > 0 ? derived.verifiedRatingCoverage : null,
   };
 }
 
@@ -268,7 +271,7 @@ export function VendorTrustScoreCard({
             <div className="flex flex-wrap items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-blue-500" aria-hidden="true" />
               <CardTitle>Reliance Trust Score</CardTitle>
-              <Badge variant="outline">Version {trustScore?.scoreVersion || 2}</Badge>
+              <Badge variant="outline">Version {trustScore?.scoreVersion || 3}</Badge>
               <Badge variant="outline">Vendor view</Badge>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground">

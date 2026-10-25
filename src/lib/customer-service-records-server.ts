@@ -7,6 +7,7 @@ import {
   type CustomerRecordTab,
   type CustomerServiceRecordState,
 } from '@/lib/customer-service-record-state';
+import { TRUST_OUTCOME_TYPES } from '@/lib/trust-score-outcome-foundation';
 
 const CUSTOMER_RECORD_TABS = new Set<CustomerRecordTab>([
   'upcoming',
@@ -268,7 +269,17 @@ export async function loadCustomerServiceRecords(input: {
       select: { id: true, bookingId: true, decision: true, publicationProposalId: true },
     }),
     db.vendorOperationalOutcome.findMany({
-      where: { bookingId: { in: bookingIds }, outcomeType: 'BOOKING_CANCELED' },
+      where: {
+        bookingId: { in: bookingIds },
+        outcomeType: {
+          in: [
+            TRUST_OUTCOME_TYPES.BOOKING_CANCELED,
+            TRUST_OUTCOME_TYPES.WORKFLOW_CANCELED_CUSTOMER,
+            TRUST_OUTCOME_TYPES.WORKFLOW_CANCELED_VENDOR,
+            TRUST_OUTCOME_TYPES.WORKFLOW_CANCELED_ADMINISTRATIVE,
+          ],
+        },
+      },
       orderBy: [{ finalizedAt: 'desc' }],
       select: { bookingId: true, finalizedAt: true, finalizedByUserId: true, metadata: true },
     }),

@@ -39,21 +39,36 @@ export const vendorCoachingAssistantRequestSchema = z.object({
     strengths: z.array(z.string().min(1).max(240)).max(8).default([]),
     operationalNotes: z.array(z.string().min(1).max(240)).max(8).default([]),
   }),
-  dashboardSnapshot: z.object({
-    totalBookings: z.number().int().nonnegative(),
-    totalClients: z.number().int().nonnegative(),
-    rating: z.number().min(0).max(5),
-    ratingCount: z.number().int().nonnegative(),
-    approvedVideos: z.number().int().nonnegative(),
-    pendingVideos: z.number().int().nonnegative(),
-    archivedVideos: z.number().int().nonnegative(),
-    totalVideoAssets: z.number().int().nonnegative(),
-    storagePercentUsed: z.number().min(0).max(100),
-    completedJobs: z.number().int().nonnegative(),
-    inProgressJobs: z.number().int().nonnegative(),
-    scheduledJobs: z.number().int().nonnegative(),
-    reviewCoverage: z.number().int().min(0).max(100),
-  }),
+  dashboardSnapshot: z
+    .object({
+      totalBookings: z.number().int().nonnegative(),
+      totalClients: z.number().int().nonnegative(),
+      rating: z.number().min(0).max(5),
+      ratingCount: z.number().int().nonnegative(),
+      approvedVideos: z.number().int().nonnegative(),
+      pendingVideos: z.number().int().nonnegative(),
+      archivedWorkRecords: z.number().int().nonnegative(),
+      totalVideoAssets: z.number().int().nonnegative(),
+      storagePercentUsed: z.number().min(0).max(100),
+      completedJobs: z.number().int().nonnegative(),
+      inProgressJobs: z.number().int().nonnegative(),
+      scheduledJobs: z.number().int().nonnegative(),
+      verifiedRatedServiceOrders: z.number().int().nonnegative(),
+      ratingEligibleServiceOrders: z.number().int().nonnegative(),
+      ratingParticipationPct: z.number().int().min(0).max(100).nullable(),
+    })
+    .superRefine((snapshot, context) => {
+      const denominator = snapshot.ratingEligibleServiceOrders;
+      const numerator = snapshot.verifiedRatedServiceOrders;
+      const expectedPct = denominator > 0 ? Math.round((numerator / denominator) * 100) : null;
+      if (numerator > denominator || snapshot.ratingParticipationPct !== expectedPct) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ratingParticipationPct"],
+          message: "Rating participation must match its eligible Service Order counts.",
+        });
+      }
+    }),
 });
 
 export type VendorCoachingAssistantRequest = z.infer<
@@ -128,13 +143,17 @@ export function buildVendorCoachingSummaryAssistantInput(
     `Rating count: ${context.dashboardSnapshot.ratingCount}`,
     `Approved videos: ${context.dashboardSnapshot.approvedVideos}`,
     `Pending videos: ${context.dashboardSnapshot.pendingVideos}`,
-    `Archived videos: ${context.dashboardSnapshot.archivedVideos}`,
+    `Archived Work Records: ${context.dashboardSnapshot.archivedWorkRecords}`,
     `Total video assets: ${context.dashboardSnapshot.totalVideoAssets}`,
     `Storage percent used: ${context.dashboardSnapshot.storagePercentUsed}%`,
     `Completed jobs in current slice: ${context.dashboardSnapshot.completedJobs}`,
     `In-progress jobs in current slice: ${context.dashboardSnapshot.inProgressJobs}`,
     `Scheduled jobs in current slice: ${context.dashboardSnapshot.scheduledJobs}`,
-    `Review coverage in current slice: ${context.dashboardSnapshot.reviewCoverage}%`,
+    `Verified rating participation: ${
+      context.dashboardSnapshot.ratingParticipationPct === null
+        ? "Not yet measurable"
+        : `${context.dashboardSnapshot.ratingParticipationPct}% (${context.dashboardSnapshot.verifiedRatedServiceOrders}/${context.dashboardSnapshot.ratingEligibleServiceOrders} eligible Service Orders)`
+    }`,
   ].join("\n");
 }
 

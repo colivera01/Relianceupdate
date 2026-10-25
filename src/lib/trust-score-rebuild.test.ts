@@ -55,7 +55,7 @@ describe("legacy LATE_COMPLETION outcome", () => {
 
     // Both bookings completed -> workflow completion 100%.
     expect(breakdown.workflowCompletion).toMatchObject({ numerator: 2, denominator: 2, pct: 100 });
-    // Version 2 ignores the legacy signal and leaves the compatibility metric unavailable.
+    // Version 3 ignores the legacy signal and leaves the compatibility metric unavailable.
     expect(breakdown.operationalReliability).toMatchObject({ numerator: 0, denominator: 0, pct: null });
     // Late completion is not a dispute -> dispute-free stays 100%.
     expect(breakdown.disputeFree).toMatchObject({ numerator: 2, denominator: 2, pct: 100 });

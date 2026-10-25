@@ -86,6 +86,8 @@ export interface VendorDashboardResponse {
       percentage: number;
     }>;
     completionEligibleBookingCount?: number;
+    ratingEligibleServiceOrderCount?: number;
+    verifiedRatedServiceOrderCount?: number;
   };
   employeePerformance?: Array<{
     membershipId: string;

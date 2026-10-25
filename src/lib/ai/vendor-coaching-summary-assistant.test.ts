@@ -37,13 +37,15 @@ describe("vendor coaching summary assistant", () => {
         ratingCount: 5,
         approvedVideos: 7,
         pendingVideos: 2,
-        archivedVideos: 1,
+        archivedWorkRecords: 1,
         totalVideoAssets: 10,
         storagePercentUsed: 82,
         completedJobs: 1,
         inProgressJobs: 1,
         scheduledJobs: 0,
-        reviewCoverage: 100,
+        verifiedRatedServiceOrders: 5,
+        ratingEligibleServiceOrders: 5,
+        ratingParticipationPct: 100,
       },
     });
 

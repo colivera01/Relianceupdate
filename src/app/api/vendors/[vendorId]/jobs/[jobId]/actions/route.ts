@@ -44,6 +44,7 @@ import {
   assertCoreAdminAuditMutationAllowed,
 } from "@/lib/service-video-admin-audit";
 import { loadPackageVisibilityView } from "@/lib/service-video-publication";
+import { tryReconcileBookingCancellationAndScore } from "@/lib/trust-score-reconciliation";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -1117,9 +1118,20 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     if (action === "CANCEL_SERVICE_ORDER") {
       const reason = String(body?.reason || "").trim();
+      const attribution = String(body?.attribution || "").trim().toUpperCase();
       if (reason.length < 5 || reason.length > 500) {
         return NextResponse.json(
           apiResponse(false, "CANCELLATION_REASON_REQUIRED", "Enter a brief reason for canceling this Service Order."),
+          { status: 422 },
+        );
+      }
+      if (!new Set(["CUSTOMER", "VENDOR", "ADMINISTRATIVE"]).has(attribution)) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "CANCELLATION_ATTRIBUTION_REQUIRED",
+            "Choose who initiated this cancellation so Reliance can keep workflow metrics accurate.",
+          ),
           { status: 422 },
         );
       }
@@ -1161,7 +1173,13 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           canceled_at: now.toISOString(),
           canceled_by_user_id: member.userId,
           canceled_by_membership_id: member.membershipId,
+          attribution,
           reason,
+          source: attribution === "VENDOR"
+            ? "VENDOR_ATTRIBUTED_CANCELLATION"
+            : attribution === "CUSTOMER"
+              ? "VENDOR_RECORDED_CUSTOMER_CANCELLATION"
+              : "ADMINISTRATIVE_CANCELLATION",
         };
         metadata.vendor_job_employee_access_revoked_at = now.toISOString();
         metadata.vendor_job_employee_access_revocation_reason = "SERVICE_ORDER_CANCELED";
@@ -1202,9 +1220,17 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         entityId: booking.id,
         actorUserId: member.userId,
         previousValue: { status: currentStatus },
-        newValue: { status: "CANCELED", reason, canceledAt: now.toISOString() },
+        newValue: { status: "CANCELED", attribution, reason, canceledAt: now.toISOString() },
         metadata: { vendorId, preservedEvidence: true, archivedUnusedSessionCount: unusedSessionIds.length },
       });
+
+      await tryReconcileBookingCancellationAndScore(prisma as any, {
+        id: booking.id,
+        vendorId,
+        status: canceled.status,
+        customerMetadata: canceled.customerMetadata,
+        updatedAt: canceled.updatedAt || now,
+      }, "manager_cancellation_recorded", "vendor_job_action");
 
       const employeeRecipients = assignedMembershipIds.length
         ? await prisma.vendorMembership.findMany({
