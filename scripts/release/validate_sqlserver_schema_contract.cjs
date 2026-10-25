@@ -27,6 +27,7 @@ const column = (table, name, type, maxLength, nullable, defaultValue = null) => 
 const CONTRACT = Object.freeze({
   columns: [
     column("bookings", "creationRequestKey", "nvarchar", 255, true),
+    column("reviews", "ratingInvalidationReason", "nvarchar", -1, true),
     column("vendor_invites", "inviteeName", "nvarchar", 1000, true),
     column("vendor_invites", "inviteeEmail", "nvarchar", 1000, true),
     column("vendor_invites", "inviteePhone", "nvarchar", 1000, true),
@@ -66,6 +67,22 @@ const CONTRACT = Object.freeze({
   filteredUniqueIndexes: [
     { table: "bookings", columns: ["creationRequestKey"] },
     { table: "consent_records", columns: ["token"] },
+    {
+      table: "content_reports",
+      columns: ["caseReference"],
+      name: "content_reports_caseReference_key",
+    },
+    {
+      table: "employee_recording_safety_evidence",
+      columns: ["locationAttemptId"],
+      name: "employee_recording_safety_evidence_locationAttemptId_key",
+    },
+    {
+      table: "employee_recording_safety_evidence",
+      columns: ["chainKey", "submissionRequestHash"],
+      filterColumns: ["submissionRequestHash"],
+      name: "employee_recording_safety_evidence_chainKey_submissionRequestHash_key",
+    },
     { table: "users", columns: ["phone"] },
     { table: "review_windows", columns: ["reviewId"], name: "review_windows_reviewId_key" },
     { table: "reviews", columns: ["bookingId"], name: "reviews_bookingId_unique_not_null" },
@@ -173,13 +190,17 @@ function validateRawPrismaDiff(rawDiff, snapshot) {
   const blocks = [...rawDiff.matchAll(/-- (\w+)\s*\r?\n([\s\S]*?)(?=\r?\n-- \w+\s*\r?\n|\r?\nCOMMIT TRAN;)/g)].map(
     (match) => ({ kind: match[1], sql: match[2].trim() }),
   );
-  const allowedUniqueAdds = new Set([
+  const prismaFilteredUniqueLimitations = new Set([
     "consent_records.token",
+    "content_reports.caseReference",
+    "employee_recording_safety_evidence.locationAttemptId",
+    "employee_recording_safety_evidence.chainKey,submissionRequestHash",
     "users.phone",
     "review_windows.reviewId",
   ]);
   let equivalentDefaults = 0;
   let nameOnlyIndexes = 0;
+  let nameOnlyForeignKeys = 0;
   let filteredUniqueLimitations = 0;
 
   for (const block of blocks) {
@@ -209,13 +230,51 @@ function validateRawPrismaDiff(rawDiff, snapshot) {
     }
     if (block.kind === "CreateIndex") {
       const match = block.sql.match(
-        /ALTER TABLE \[dbo\]\.\[([^\]]+)\] ADD CONSTRAINT \[[^\]]+\] UNIQUE NONCLUSTERED \(\[([^\]]+)\]\);/,
+        /ALTER TABLE \[dbo\]\.\[([^\]]+)\] ADD CONSTRAINT \[[^\]]+\] UNIQUE NONCLUSTERED \(([^)]+)\);/,
       );
-      const key = match ? `${match[1]}.${match[2]}` : "";
-      if (!allowedUniqueAdds.has(key)) {
+      const columns = match
+        ? [...match[2].matchAll(/\[([^\]]+)\]/g)].map((columnMatch) => columnMatch[1])
+        : [];
+      const key = match ? `${match[1]}.${columns.join(",")}` : "";
+      if (!prismaFilteredUniqueLimitations.has(key)) {
         errors.push(`Raw Prisma diff contains an unexpected index creation: ${key || "unparsed"}`);
       } else {
-        filteredUniqueLimitations += 1;
+        const expected = CONTRACT.filteredUniqueIndexes.find(
+          (candidate) =>
+            candidate.table === match[1] &&
+            JSON.stringify(candidate.columns) === JSON.stringify(columns),
+        );
+        const live = snapshot.indexes.find(
+          (candidate) =>
+            candidate.table === match[1] &&
+            candidate.unique &&
+            JSON.stringify(indexColumns(candidate)) === JSON.stringify(columns),
+        );
+        const predicate = normalizeFilter(live?.filterDefinition);
+        const filterColumns = expected?.filterColumns ?? expected?.columns ?? [];
+        if (
+          !expected ||
+          !live ||
+          !filterColumns.every((name) => predicate.includes(`${name.toLowerCase()} is not null`))
+        ) {
+          errors.push(`Raw Prisma diff lacks an equivalent live filtered unique index for ${key}`);
+        } else {
+          filteredUniqueLimitations += 1;
+        }
+      }
+      continue;
+    }
+    if (block.kind === "RenameForeignKey") {
+      const match = block.sql.match(/EXEC sp_rename 'dbo\.([^']+)', '([^']+)', 'OBJECT';/i);
+      if (!match) {
+        errors.push("Raw Prisma diff contains an unparsed foreign-key rename");
+        continue;
+      }
+      const live = snapshot.foreignKeys.find((foreignKey) => foreignKey.name === match[1]);
+      if (!live) {
+        errors.push(`Raw Prisma diff names a missing live foreign key ${match[1]}`);
+      } else {
+        nameOnlyForeignKeys += 1;
       }
       continue;
     }
@@ -240,13 +299,20 @@ function validateRawPrismaDiff(rawDiff, snapshot) {
   if (blocks.length !== commentCount) {
     errors.push("Raw Prisma diff contains an unclassified operation block");
   }
-  if (filteredUniqueLimitations !== 3) {
-    errors.push(`Expected exactly three filtered-unique Prisma limitations, found ${filteredUniqueLimitations}`);
+  if (filteredUniqueLimitations !== prismaFilteredUniqueLimitations.size) {
+    errors.push(
+      `Expected exactly ${prismaFilteredUniqueLimitations.size} filtered-unique Prisma limitations, found ${filteredUniqueLimitations}`,
+    );
   }
   return {
     ok: errors.length === 0,
     errors,
-    summary: { equivalentDefaults, nameOnlyIndexes, filteredUniqueLimitations },
+    summary: {
+      equivalentDefaults,
+      nameOnlyIndexes,
+      nameOnlyForeignKeys,
+      filteredUniqueLimitations,
+    },
   };
 }
 
@@ -292,7 +358,8 @@ function validateSnapshot(snapshot, repositoryMigrations, options = {}) {
       continue;
     }
     const predicate = normalizeFilter(index.filterDefinition);
-    if (!expected.columns.every((name) => predicate.includes(`${name.toLowerCase()} is not null`))) {
+    const filterColumns = expected.filterColumns ?? expected.columns;
+    if (!filterColumns.every((name) => predicate.includes(`${name.toLowerCase()} is not null`))) {
       errors.push(`Unsafe filtered unique predicate on ${expected.table}(${expected.columns.join(", ")})`);
     }
     const valueCheck = snapshot.uniqueValueChecks?.find(
@@ -472,6 +539,15 @@ async function readSnapshot(connectionString) {
       UNION ALL
       SELECT 'users', 'phone',
         (SELECT COUNT(*) FROM (SELECT [phone] FROM dbo.[users] WHERE [phone] IS NOT NULL GROUP BY [phone] HAVING COUNT(*) > 1) d)
+      UNION ALL
+      SELECT 'content_reports', 'caseReference',
+        (SELECT COUNT(*) FROM (SELECT [caseReference] FROM dbo.[content_reports] WHERE [caseReference] IS NOT NULL GROUP BY [caseReference] HAVING COUNT(*) > 1) d)
+      UNION ALL
+      SELECT 'employee_recording_safety_evidence', 'locationAttemptId',
+        (SELECT COUNT(*) FROM (SELECT [locationAttemptId] FROM dbo.[employee_recording_safety_evidence] WHERE [locationAttemptId] IS NOT NULL GROUP BY [locationAttemptId] HAVING COUNT(*) > 1) d)
+      UNION ALL
+      SELECT 'employee_recording_safety_evidence', 'chainKey',
+        (SELECT COUNT(*) FROM (SELECT [chainKey], [submissionRequestHash] FROM dbo.[employee_recording_safety_evidence] WHERE [submissionRequestHash] IS NOT NULL GROUP BY [chainKey], [submissionRequestHash] HAVING COUNT(*) > 1) d)
       UNION ALL
       SELECT 'review_windows', 'reviewId',
         (SELECT COUNT(*) FROM (SELECT [reviewId] FROM dbo.[review_windows] WHERE [reviewId] IS NOT NULL GROUP BY [reviewId] HAVING COUNT(*) > 1) d)

@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 const validator = require("../../../scripts/release/validate_sqlserver_schema_contract.cjs") as {
   CONTRACT: {
     columns: Array<Record<string, unknown>>;
-    filteredUniqueIndexes: Array<{ table: string; columns: string[]; name?: string }>;
+    filteredUniqueIndexes: Array<{
+      table: string;
+      columns: string[];
+      filterColumns?: string[];
+      name?: string;
+    }>;
     indexes: Array<{ table: string; columns: string[]; unique: boolean; included: string[] }>;
     foreignKeys: Array<Record<string, unknown>>;
   };
@@ -53,7 +58,9 @@ function validFixture() {
         table: entry.table,
         name: entry.name ?? `live_filtered_${index}`,
         unique: true,
-        filterDefinition: `([${entry.columns[0]}] IS NOT NULL)`,
+        filterDefinition: (entry.filterColumns ?? entry.columns)
+          .map((name) => `([${name}] IS NOT NULL)`)
+          .join(" AND "),
         columns: entry.columns.map((name, ordinal) => ({ name, ordinal: ordinal + 1, included: false })),
       })),
       ...validator.CONTRACT.indexes.map((entry, index): MutableFixtureEntry => ({
@@ -118,7 +125,7 @@ describe("SQL Server semantic schema contract", () => {
     expect(validator.normalizeDefault("((1))")).toBe(1);
   });
 
-  it("accepts only equivalent defaults, name-only indexes, and the three filtered-unique Prisma limitations", () => {
+  it("accepts only equivalent defaults, verified name-only renames, and the six filtered-unique Prisma limitations", () => {
     const fixture = validFixture();
     fixture.snapshot.columns.push({
       table: "example",
@@ -147,6 +154,15 @@ ALTER TABLE [dbo].[example] ADD CONSTRAINT [example_status_df] DEFAULT 'ACTIVE' 
 ALTER TABLE [dbo].[consent_records] ADD CONSTRAINT [consent_records_token_key] UNIQUE NONCLUSTERED ([token]);
 
 -- CreateIndex
+ALTER TABLE [dbo].[content_reports] ADD CONSTRAINT [content_reports_caseReference_key] UNIQUE NONCLUSTERED ([caseReference]);
+
+-- CreateIndex
+ALTER TABLE [dbo].[employee_recording_safety_evidence] ADD CONSTRAINT [employee_recording_safety_evidence_locationAttemptId_key] UNIQUE NONCLUSTERED ([locationAttemptId]);
+
+-- CreateIndex
+ALTER TABLE [dbo].[employee_recording_safety_evidence] ADD CONSTRAINT [employee_recording_safety_evidence_chainKey_submissionRequestHash_key] UNIQUE NONCLUSTERED ([chainKey], [submissionRequestHash]);
+
+-- CreateIndex
 ALTER TABLE [dbo].[users] ADD CONSTRAINT [users_phone_key] UNIQUE NONCLUSTERED ([phone]);
 
 -- CreateIndex
@@ -155,6 +171,9 @@ ALTER TABLE [dbo].[review_windows] ADD CONSTRAINT [review_windows_reviewId_key] 
 -- RenameIndex
 EXEC SP_RENAME N'dbo.example.live_short_name', N'generated_long_name', N'INDEX';
 
+-- RenameForeignKey
+EXEC sp_rename 'dbo.generated_name_is_not_semantic', 'generated_long_fk_name', 'OBJECT';
+
 COMMIT TRAN;
 END TRY`;
     const result = validator.validateRawPrismaDiff(rawDiff, fixture.snapshot);
@@ -162,7 +181,8 @@ END TRY`;
     expect(result.summary).toEqual({
       equivalentDefaults: 1,
       nameOnlyIndexes: 1,
-      filteredUniqueLimitations: 3,
+      nameOnlyForeignKeys: 1,
+      filteredUniqueLimitations: 6,
     });
   });
 
