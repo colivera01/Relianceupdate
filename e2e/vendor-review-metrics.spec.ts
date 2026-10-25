@@ -161,7 +161,25 @@ async function installVendorReviewMetricsFixture(
         contentType: "application/json",
         body: JSON.stringify({
           success: true,
-          trustScore: { scored: true, totalScorePct: 88, computedAt: "2026-09-07T12:00:00.000Z" },
+          trustScore: {
+            scored: true,
+            totalScorePct: 88,
+            computedAt: "2026-09-07T12:00:00.000Z",
+            components: {
+              workflowCompletion: { pct: 100, numerator: 1, denominator: 1, weightPct: 30 },
+              videoVerification: { pct: 100, numerator: 1, denominator: 1, weightPct: 25 },
+              disputeFree: { pct: 100, numerator: 1, denominator: 1, weightPct: 30 },
+              operationalReliability: { pct: 20, numerator: 1, denominator: 5, weightPct: 15 },
+            },
+            explanationDetails: {
+              overview: "The current score is based on finalized Reliance activity.",
+              coverageSummary: "All configured Trust Score components are measurable.",
+              strongestSignals: ["Workflow completion is fully verified."],
+              watchItems: ["Operational reliability has room to improve."],
+              methodology: ["Customer ratings do not change the Trust Score."],
+            },
+            improvementHints: ["Review operational outcomes that are not clean."],
+          },
         }),
       });
       return;
@@ -201,5 +219,15 @@ test.describe("Vendor review metrics", () => {
     await expect(page.getByText("0.0", { exact: true })).toHaveCount(0);
     await expect(page.getByText(/first verified customer star rating will establish this average/i)).toBeVisible();
     await expect(page.getByText("88%", { exact: true })).toBeVisible();
+
+    await page.goto("/test-fixtures/rv8-vendor-dashboard");
+    await expect(page.getByRole("heading", { name: "Customer confidence snapshot" })).toBeVisible();
+    await expect(page.getByText("Not yet rated", { exact: true })).toBeVisible();
+    await expect(page.getByText("0.0", { exact: true })).toHaveCount(0);
+
+    await page.goto("/test-fixtures/vendor-analytics");
+    await expect(page.getByText("Customer rating", { exact: true })).toBeVisible();
+    await expect(page.getByText("Not yet rated", { exact: true })).toBeVisible();
+    await expect(page.getByText("0.0★", { exact: true })).toHaveCount(0);
   });
 });

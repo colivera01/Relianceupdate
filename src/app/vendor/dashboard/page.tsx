@@ -881,8 +881,14 @@ export default function VendorDashboard() {
               </p>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-gray-900">{Number(dashboardStats.rating || 0).toFixed(1)}</p>
-              <p className="text-sm text-gray-600">{ratingCount} verified customer rating{ratingCount === 1 ? '' : 's'}</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {ratingCount > 0 ? Number(dashboardStats.rating || 0).toFixed(1) : 'Not yet rated'}
+              </p>
+              <p className="text-sm text-gray-600">
+                {ratingCount > 0
+                  ? `${ratingCount} verified customer rating${ratingCount === 1 ? '' : 's'}`
+                  : 'The first verified customer star rating will establish this average.'}
+              </p>
             </CardContent>
           </Card>
           <Card className="bg-white">

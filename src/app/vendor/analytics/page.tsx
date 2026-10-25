@@ -152,8 +152,11 @@ export default function VendorAnalyticsPage() {
     },
     {
       label: "Customer rating",
-      value: `${formatDecimal(derived.rating)}★`,
-      helper: `${derived.ratingCount} verified customer ratings`,
+      value: derived.ratingCount > 0 ? `${formatDecimal(derived.rating)}★` : "Not yet rated",
+      helper:
+        derived.ratingCount > 0
+          ? `${derived.ratingCount} verified customer rating${derived.ratingCount === 1 ? "" : "s"}`
+          : "The first verified customer star rating will establish this average.",
       icon: Star,
     },
     {
