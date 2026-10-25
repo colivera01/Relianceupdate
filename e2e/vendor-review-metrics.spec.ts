@@ -4,7 +4,19 @@ import { createAuthSessionCookie } from "../src/lib/auth-session";
 const VENDOR_ID = "review-metrics-vendor";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3102";
 
-async function installVendorReviewMetricsFixture(page: Page) {
+async function installVendorReviewMetricsFixture(
+  page: Page,
+  options: {
+    rating?: number;
+    ratingCount?: number;
+    employeeRating?: number;
+    employeeReviewCount?: number;
+  } = {}
+) {
+  const rating = options.rating ?? 5;
+  const ratingCount = options.ratingCount ?? 1;
+  const employeeRating = options.employeeRating ?? 3;
+  const employeeReviewCount = options.employeeReviewCount ?? 1;
   const session = createAuthSessionCookie({
     userId: "review-metrics-manager",
     email: "manager@example.test",
@@ -104,11 +116,11 @@ async function installVendorReviewMetricsFixture(page: Page) {
             totalBookings: 1,
             totalEarnings: 0,
             totalClients: 1,
-            rating: 5,
-            ratingCount: 1,
+            rating,
+            ratingCount,
             publicWrittenReviewCount: 0,
             ratingDistribution: [
-              { rating: 5, count: 1, percentage: 100 },
+              { rating: 5, count: ratingCount > 0 && rating === 5 ? ratingCount : 0, percentage: ratingCount > 0 && rating === 5 ? 100 : 0 },
               { rating: 4, count: 0, percentage: 0 },
               { rating: 3, count: 0, percentage: 0 },
               { rating: 2, count: 0, percentage: 0 },
@@ -122,8 +134,8 @@ async function installVendorReviewMetricsFixture(page: Page) {
             {
               membershipId: "bradley-membership",
               displayName: "Bradley Coopers",
-              averageRating: 3,
-              reviewCount: 1,
+              averageRating: employeeRating,
+              reviewCount: employeeReviewCount,
             },
           ],
           insights: [],
@@ -159,7 +171,7 @@ async function installVendorReviewMetricsFixture(page: Page) {
 }
 
 test.describe("Vendor review metrics", () => {
-  test("keeps verified ratings, public comments, employee ratings, and Trust Score distinct", async ({ page }) => {
+  test("projects a newly verified rating without publishing its unmoderated written comment or changing Trust Score", async ({ page }) => {
     await installVendorReviewMetricsFixture(page);
     await page.goto("/test-fixtures/vendor-reviews");
 
@@ -174,5 +186,20 @@ test.describe("Vendor review metrics", () => {
     await expect(page.getByText("88%", { exact: true })).toBeVisible();
     await expect(page.getByText("Published Public Reviews", { exact: true })).toHaveCount(0);
     await expect(page.getByText(/Based on verified operational activity, not customer star ratings/)).toBeVisible();
+  });
+
+  test("does not present zero ratings as a poor 0.0 score", async ({ page }) => {
+    await installVendorReviewMetricsFixture(page, {
+      rating: 0,
+      ratingCount: 0,
+      employeeRating: 0,
+      employeeReviewCount: 0,
+    });
+    await page.goto("/test-fixtures/vendor-reviews");
+
+    await expect(page.getByText("Not yet rated", { exact: true })).toHaveCount(2);
+    await expect(page.getByText("0.0", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/first verified customer star rating will establish this average/i)).toBeVisible();
+    await expect(page.getByText("88%", { exact: true })).toBeVisible();
   });
 });

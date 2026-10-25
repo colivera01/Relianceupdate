@@ -462,7 +462,7 @@ export default function VendorDashboard() {
     {
       label: 'Trust Score',
       value: trustScoreValue.toString(),
-      detail: 'Reliance trust signal from completed proof, reviews, and reliability.',
+      detail: 'Reliance trust signal from finalized workflow, video verification, dispute-free completion, and operational reliability. Customer ratings are separate.',
       icon: ShieldCheck,
       color: 'blue' as keyof typeof colorMap,
     },
@@ -892,7 +892,7 @@ export default function VendorDashboard() {
             <CardContent>
               <p className="text-3xl font-bold text-gray-900">{completionRate}%</p>
                 <p className="text-sm text-gray-600">
-                  {jobsCompleted} completed jobs from your current scheduled and completed work
+                  {jobsCompleted} completed of {completionEligibleBookings} eligible Work Records. Canceled and archived records are excluded.
                 </p>
             </CardContent>
           </Card>

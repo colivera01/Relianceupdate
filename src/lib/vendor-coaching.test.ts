@@ -36,6 +36,8 @@ const dashboard: VendorDashboardResponse = {
   notifications: [],
   pendingModerationProofs: 2,
   approvedProofs: 7,
+  pendingModerationServiceOrderCount: 1,
+  approvedServiceOrderCount: 3,
   archivedProofs: 1,
   totalProofAssets: 10,
   storageUsedBytes: "1000",
@@ -63,6 +65,8 @@ describe("buildVendorCoachingPlan", () => {
     expect(plan.priorityActions[0]).toContain("Operational reliability");
     expect(plan.strengths.some((item) => item.includes("Workflow completion is perfect"))).toBe(true);
     expect(plan.operationalNotes.some((item) => item.includes("Storage is 82% full"))).toBe(true);
+    expect(plan.priorityActions.some((item) => item.includes("1 Service Order video package still awaits Reliance Audit"))).toBe(true);
+    expect(plan.priorityActions.some((item) => item.includes("2 service video packages"))).toBe(false);
   });
 
   it("falls back to coverage-building guidance when trust score is not yet meaningful", () => {
@@ -77,7 +81,7 @@ describe("buildVendorCoachingPlan", () => {
 
     expect(plan.summary).toContain("does not have enough finalized Reliance activity");
     expect(plan.priorityActions[0]).toContain("Finish more jobs");
-    expect(plan.strengths[0]).toContain("approved");
+    expect(plan.strengths[0]).toBe("3 Service Order video packages are already approved.");
   });
 
   it("returns a maintenance-style plan when no major weakness stands out", () => {
@@ -95,6 +99,7 @@ describe("buildVendorCoachingPlan", () => {
       {
         ...dashboard,
         pendingModerationProofs: 0,
+        pendingModerationServiceOrderCount: 0,
         storagePercentUsed: 45,
       }
     );

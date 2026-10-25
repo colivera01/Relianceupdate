@@ -159,7 +159,7 @@ export default function VendorAnalyticsPage() {
     {
       label: "Service order approvals",
       value: String(derived.approvedServiceOrders),
-      helper: `${derived.pendingServiceOrders} pending moderation`,
+      helper: `${derived.pendingServiceOrders} pending Reliance Audit`,
       icon: Video,
     },
   ];
@@ -225,11 +225,12 @@ export default function VendorAnalyticsPage() {
             <div className="rounded-2xl border bg-slate-50/90 p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 <MessageSquareText className="h-4 w-4 text-primary" />
-                Review coverage
+                Verified rating coverage
               </div>
-              <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.reviewCoverage)}</div>
+              <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.verifiedRatingCoverage)}</div>
               <p className="mt-1 text-xs text-muted-foreground">
-                This shows how much completed work is already turning into public customer proof.
+                Share of completed Work Records with a verified customer star rating. Written-comment
+                publication is tracked separately.
               </p>
             </div>
             <div className="rounded-2xl border bg-slate-50/90 p-4">
@@ -249,7 +250,7 @@ export default function VendorAnalyticsPage() {
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Badge variant={derived.pendingServiceOrders > 0 ? "warning" : "secondary"}>
-                  {derived.pendingServiceOrders} pending
+                  {derived.pendingServiceOrders} pending Reliance Audit
                 </Badge>
                 <Badge variant="success">{derived.approvedServiceOrders} approved</Badge>
                 <Badge variant="outline">{derived.archivedServiceOrders} archived</Badge>

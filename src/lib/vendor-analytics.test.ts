@@ -51,7 +51,7 @@ describe("deriveVendorAnalyticsMetrics", () => {
     expect(metrics.archivedServiceOrders).not.toBe(16);
   });
 
-  it("uses the approved review count instead of the truncated recent-review list", () => {
+  it("uses the verified rating count instead of the truncated public-review list", () => {
     const metrics = deriveVendorAnalyticsMetrics(
       dashboard({
         stats: {
@@ -62,6 +62,6 @@ describe("deriveVendorAnalyticsMetrics", () => {
       })
     );
 
-    expect(metrics.reviewCoverage).toBe(100);
+    expect(metrics.verifiedRatingCoverage).toBe(100);
   });
 });

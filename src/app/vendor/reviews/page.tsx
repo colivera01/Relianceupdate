@@ -22,6 +22,7 @@ function renderStars(rating: number) {
   return [...Array(5)].map((_, index) => (
     <Star
       key={`${rating}-${index}`}
+      aria-hidden="true"
       className={`h-4 w-4 ${index < rating ? "fill-current text-amber-500" : "text-gray-300"}`}
     />
   ));
@@ -43,12 +44,24 @@ export default function VendorReviewsPage() {
     computedAt: string | null;
   } | null>(null);
   const [trustScoreError, setTrustScoreError] = useState("");
+  const [trustScoreLoading, setTrustScoreLoading] = useState(true);
+  const [trustScoreRequestVersion, setTrustScoreRequestVersion] = useState(0);
 
   useEffect(() => {
+    if (approvalPending) {
+      setTrustScoreLoading(false);
+      return;
+    }
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
     async function loadTrustScore() {
+      setTrustScoreLoading(true);
       try {
-        const res = await fetch("/api/vendor/trust-score", { cache: "no-store" });
+        const res = await fetch("/api/vendor/trust-score", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(String(payload?.error || payload?.message || "Trust Score unavailable"));
@@ -60,17 +73,28 @@ export default function VendorReviewsPage() {
       } catch (fetchError) {
         if (!cancelled) {
           setTrustScore(null);
-          setTrustScoreError(fetchError instanceof Error ? fetchError.message : "Trust Score unavailable");
+          setTrustScoreError(
+            fetchError instanceof DOMException && fetchError.name === "AbortError"
+              ? "The Trust Score request timed out."
+              : fetchError instanceof Error
+                ? fetchError.message
+                : "Trust Score unavailable"
+          );
+        }
+      } finally {
+        window.clearTimeout(timeout);
+        if (!cancelled) {
+          setTrustScoreLoading(false);
         }
       }
     }
-    if (!approvalPending) {
-      void loadTrustScore();
-    }
+    void loadTrustScore();
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
-  }, [approvalPending]);
+  }, [approvalPending, trustScoreRequestVersion]);
 
   if (approvalPending) {
     return (
@@ -167,10 +191,20 @@ export default function VendorReviewsPage() {
               <CardTitle className="text-base">Verified Customer Rating</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-white">{formatRating(rating)}</p>
-              <div className="mt-2 flex items-center gap-1">{renderStars(Math.round(rating))}</div>
+              {reviewCount > 0 ? (
+                <>
+                  <p className="text-3xl font-bold text-white">{formatRating(rating)}</p>
+                  <div className="mt-2 flex items-center gap-1" aria-label={`${formatRating(rating)} out of 5 stars`}>
+                    {renderStars(Math.round(rating))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-lg font-semibold text-blue-100">Not yet rated</p>
+              )}
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Average from verified customer star ratings.
+                {reviewCount > 0
+                  ? "Average from verified customer star ratings."
+                  : "The first verified customer star rating will establish this average."}
               </p>
             </CardContent>
           </Card>
@@ -222,18 +256,40 @@ export default function VendorReviewsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {trustScore?.scored && typeof trustScore.totalScorePct === "number" ? (
+              {trustScoreLoading ? (
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200" aria-live="polite">
+                  Loading Trust Score
+                </p>
+              ) : trustScore?.scored && typeof trustScore.totalScorePct === "number" ? (
                 <p className="text-3xl font-bold text-white">{trustScore.totalScorePct}%</p>
+              ) : trustScoreError ? (
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-rose-200">
+                  Temporarily unavailable
+                </p>
               ) : (
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                  Trust Score building
+                  Not yet measurable
                 </p>
               )}
-              <p className="mt-3 text-sm leading-6 text-slate-300">
-                {trustScoreError
-                  ? trustScoreError
-                  : "Based on verified operational activity, not customer star ratings."}
-              </p>
+              {trustScoreError && !trustScoreLoading ? (
+                <div className="mt-3 space-y-3" role="alert">
+                  <p className="text-sm leading-6 text-rose-100">{trustScoreError}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTrustScoreRequestVersion((value) => value + 1)}
+                    className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                  >
+                    <RefreshCcw className="mr-2 h-4 w-4" />
+                    Try again
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Based on verified operational activity, not customer star ratings.
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -308,8 +364,16 @@ export default function VendorReviewsPage() {
                         <p className="mt-1 text-xs text-slate-400">Private manager-facing view</p>
                       </div>
                       <div>
-                        <p className="font-semibold text-white">{formatRating(rowRating)}</p>
-                        <div className="mt-1 flex items-center gap-1">{renderStars(Math.round(rowRating))}</div>
+                        {rowCount > 0 ? (
+                          <>
+                            <p className="font-semibold text-white">{formatRating(rowRating)}</p>
+                            <div className="mt-1 flex items-center gap-1" aria-label={`${formatRating(rowRating)} out of 5 stars`}>
+                              {renderStars(Math.round(rowRating))}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="font-medium text-slate-300">Not yet rated</p>
+                        )}
                       </div>
                       <p className="text-slate-300">{pluralize(rowCount, "review")}</p>
                     </div>

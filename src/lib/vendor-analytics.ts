@@ -15,7 +15,7 @@ export type VendorAnalyticsMetrics = {
   scheduledJobs: number;
   awaitingReviewJobs: number;
   completionRate: number;
-  reviewCoverage: number;
+  verifiedRatingCoverage: number;
 };
 
 export function deriveVendorAnalyticsMetrics(
@@ -65,7 +65,7 @@ export function deriveVendorAnalyticsMetrics(
       completionEligibleBookings > 0
         ? Math.round((completedJobs / completionEligibleBookings) * 100)
         : 0,
-    reviewCoverage:
+    verifiedRatingCoverage:
       completedJobs > 0 ? Math.min(100, Math.round((ratingCount / completedJobs) * 100)) : 0,
   };
 }

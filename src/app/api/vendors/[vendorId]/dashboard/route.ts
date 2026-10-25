@@ -346,7 +346,9 @@ export async function GET(
         _sum: { amount: true },
       }),
 
-      // Recent bookings (vendor portal — include test-client jobs; stats stay countable)
+      // Operational bookings. Existing Work Records stay visible even if their
+      // service offering is later unpublished, and lifecycle totals must cover
+      // the same complete set as the headline service-record count.
       prisma.booking.findMany({
         where: vendorOperationalBookingWhere({ vendorId }),
         include: {
@@ -361,7 +363,6 @@ export async function GET(
           service: true,
         },
         orderBy: { updatedAt: "desc" },
-        take: 100,
       }),
       // Archived bookings for archived-jobs view
       prisma.booking.findMany({
@@ -387,7 +388,6 @@ export async function GET(
           },
         },
         orderBy: { updatedAt: "desc" },
-        take: 100,
       }),
 
       // Recent reviews (last 5)
@@ -724,11 +724,7 @@ export async function GET(
     }
 
     const recentJobs = await Promise.all(recentBookings
-      .filter((booking: any) => {
-        if (booking.status === "ARCHIVED") return false;
-        if (!booking.serviceId || !booking.service) return true;
-        return Boolean(booking.service.isPublished);
-      })
+      .filter((booking: any) => booking.status !== "ARCHIVED")
       .map(async (booking: any) => {
       // Explicit mapping for all Booking.status values: PENDING, CONFIRMED, COMPLETED, CANCELED
       const statusMap: Record<
@@ -891,12 +887,7 @@ export async function GET(
       };
     }));
 
-    const archivedJobs = archivedBookings
-      .filter((booking: any) => {
-        if (!booking.serviceId || !booking.service) return true;
-        return Boolean(booking.service.isPublished);
-      })
-      .map((booking: any) => {
+    const archivedJobs = archivedBookings.map((booking: any) => {
       const archMedia = mediaSummaryByBookingId.get(String(booking.id)) || {
         linkedSessionCount: 0,
         linkedMediaCount: 0,

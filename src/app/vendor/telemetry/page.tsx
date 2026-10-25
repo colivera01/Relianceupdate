@@ -71,6 +71,13 @@ type ServiceVideoActivityRow = {
 
 type ServiceVideoActivityFilter = "all" | "current" | "history";
 
+type ServiceVideoActivitySummary = {
+  totalCount: number;
+  returnedCount: number;
+  recentLimit: number;
+  truncated: boolean;
+};
+
 const SUPPORTED_EVENT_TYPES = [
   "device_boot",
   "device_paired",
@@ -130,6 +137,8 @@ export default function VendorTelemetryPage() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoaded, setActivityLoaded] = useState(false);
+  const [activitySummary, setActivitySummary] = useState<ServiceVideoActivitySummary | null>(null);
   const [activityFilter, setActivityFilter] = useState<ServiceVideoActivityFilter>("all");
 
   const [eventType, setEventType] = useState<string>("all");
@@ -289,8 +298,7 @@ export default function VendorTelemetryPage() {
         throw new Error(String(json?.error || json?.message || "Failed to fetch service video activity"));
       }
       const incoming = Array.isArray(json?.assets) ? json.assets : [];
-      setServiceVideoActivity(
-        incoming
+      const mappedActivity = incoming
           .filter((asset: any) => String(asset?.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO")
           .map((asset: any) => ({
             id: String(asset.id || asset.assetId),
@@ -311,13 +319,26 @@ export default function VendorTelemetryPage() {
             currentPackageStageVersion: asset.currentPackageStageVersion != null && Number.isFinite(Number(asset.currentPackageStageVersion))
               ? Number(asset.currentPackageStageVersion)
               : null,
-          }))
-      );
+          }));
+      setServiceVideoActivity(mappedActivity);
+      const summary = json?.activitySummary;
+      setActivitySummary({
+        totalCount: Number.isFinite(Number(summary?.totalCount))
+          ? Number(summary.totalCount)
+          : mappedActivity.length,
+        returnedCount: Number.isFinite(Number(summary?.returnedCount))
+          ? Number(summary.returnedCount)
+          : mappedActivity.length,
+        recentLimit: Number.isFinite(Number(summary?.recentLimit))
+          ? Number(summary.recentLimit)
+          : mappedActivity.length,
+        truncated: Boolean(summary?.truncated),
+      });
     } catch (e) {
       setActivityError(e instanceof Error ? e.message : "Failed to fetch service video activity");
-      setServiceVideoActivity([]);
     } finally {
       setActivityLoading(false);
+      setActivityLoaded(true);
     }
   }, [userId, resolvedVendorId]);
 
@@ -334,6 +355,8 @@ export default function VendorTelemetryPage() {
     }
     return serviceVideoActivity;
   }, [activityFilter, serviceVideoActivity]);
+  const allUploadsLabel = activitySummary?.truncated ? "Loaded files" : "All uploads";
+  const mediaHistoryLabel = activitySummary?.truncated ? "Recent media history" : "Media history";
 
   const displayFilters = useMemo(() => {
     const parts: string[] = [];
@@ -388,7 +411,11 @@ export default function VendorTelemetryPage() {
           <span>
             <span className="block text-base font-semibold text-gray-900">Recent service video recordings</span>
             <span className="mt-1 block text-xs text-gray-500">
-              {serviceVideoActivity.length} upload{serviceVideoActivity.length === 1 ? "" : "s"}; {currentPackageUploadCount} in current packages
+              {!activityLoaded
+                ? "Loading saved video activity..."
+                : activitySummary?.truncated
+                  ? `${serviceVideoActivity.length} of ${activitySummary.totalCount} files loaded; ${currentPackageUploadCount} current-package files`
+                  : `${activitySummary?.totalCount ?? serviceVideoActivity.length} saved file${(activitySummary?.totalCount ?? serviceVideoActivity.length) === 1 ? "" : "s"}; ${currentPackageUploadCount} current-package files`}
             </span>
           </span>
           <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 group-open:hidden">
@@ -408,6 +435,12 @@ export default function VendorTelemetryPage() {
             </div>
           ) : null}
 
+          {activitySummary?.truncated ? (
+            <p className="mb-4 text-xs text-gray-500">
+              Showing the latest {activitySummary.recentLimit} uploads plus any older files referenced by a current package.
+            </p>
+          ) : null}
+
           {serviceVideoActivity.length > 0 ? (
             <div className="mb-4">
               <label className="block sm:hidden">
@@ -418,16 +451,16 @@ export default function VendorTelemetryPage() {
                   onChange={(event) => setActivityFilter(event.target.value as ServiceVideoActivityFilter)}
                   className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900"
                 >
-                  <option value="all">All uploads ({serviceVideoActivity.length})</option>
-                  <option value="current">Current packages ({currentPackageUploadCount})</option>
-                  <option value="history">Media history ({serviceVideoActivity.length - currentPackageUploadCount})</option>
+                  <option value="all">{allUploadsLabel} ({serviceVideoActivity.length})</option>
+                  <option value="current">Current package files ({currentPackageUploadCount})</option>
+                  <option value="history">{mediaHistoryLabel} ({serviceVideoActivity.length - currentPackageUploadCount})</option>
                 </select>
               </label>
               <div role="tablist" aria-label="Filter Service Video uploads" className="hidden flex-wrap gap-2 sm:flex">
                 {([
-                  ["all", "All uploads", serviceVideoActivity.length],
-                  ["current", "Current packages", currentPackageUploadCount],
-                  ["history", "Media history", serviceVideoActivity.length - currentPackageUploadCount],
+                  ["all", allUploadsLabel, serviceVideoActivity.length],
+                  ["current", "Current package files", currentPackageUploadCount],
+                  ["history", mediaHistoryLabel, serviceVideoActivity.length - currentPackageUploadCount],
                 ] as const).map(([value, label, count]) => (
                   <button
                     key={value}
@@ -448,7 +481,10 @@ export default function VendorTelemetryPage() {
             </div>
           ) : null}
 
-          {serviceVideoActivity.length === 0 ? (
+          {!activityLoaded ? (
+            <div className="py-6 text-sm text-gray-600" role="status">Loading saved Service Video activity...</div>
+          ) : activityError && serviceVideoActivity.length === 0 ? null
+          : serviceVideoActivity.length === 0 ? (
             <div className="text-sm text-gray-600 py-4">No service video uploads have been saved yet.</div>
           ) : visibleServiceVideoActivity.length === 0 ? (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">

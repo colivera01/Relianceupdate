@@ -16,6 +16,8 @@ interface RouteParams {
   params: Promise<{ vendorId: string }>;
 }
 
+const ACTIVITY_RECENT_LIMIT = 100;
+
 function deriveMediaPurposeFromSessionType(sessionType: unknown): "progress" | "completion" {
   const normalized = String(sessionType || "").trim().toLowerCase();
   return normalized.includes("completion") ? "completion" : "progress";
@@ -56,7 +58,10 @@ export async function GET(
     const activityMode = searchParams.get("activity") === "true";
 
     const where: any = activityMode
-      ? countableMediaAssetWhere({ vendorId })
+      ? countableMediaAssetWhere({
+          vendorId,
+          mediaSession: { is: { sessionType: "JOB_SERVICE_VIDEO" } },
+        })
       : countableMediaAssetWhere({
           vendorId,
           ...getApprovedActiveBaseWhere(),
@@ -72,37 +77,6 @@ export async function GET(
       );
     }
 
-    const assets = await (prisma as any).mediaAsset.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        mediaSession: {
-          include: {
-            booking: {
-              select: {
-                id: true,
-                title: true,
-                clientName: true,
-              },
-            },
-            service: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            employee: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-      take: activityMode ? 100 : undefined,
-    });
-
     const currentPackageByAssetId = new Map<
       string,
       {
@@ -114,26 +88,54 @@ export async function GET(
         stage: string;
       }
     >();
-
-    if (activityMode) {
-      const bookingIds = Array.from(
-        new Set(
-          assets
-            .map((asset: any) => String(asset.mediaSession?.booking?.id || "").trim())
-            .filter(Boolean)
-        )
-      );
-      const currentPackages = bookingIds.length
-        ? await (prisma as any).serviceVideoPackageEvidence.findMany({
-            where: { vendorId, bookingId: { in: bookingIds }, isCurrent: true },
+    const assetInclude = {
+      mediaSession: {
+        include: {
+          booking: {
             select: {
               id: true,
-              version: true,
-              status: true,
-              stageEvidenceJson: true,
+              title: true,
+              clientName: true,
             },
-          })
-        : [];
+          },
+          service: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          employee: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+    };
+    let activityTotalCount: number | null = null;
+    let assets: any[] = [];
+
+    if (activityMode) {
+      const [currentPackages, totalCount, recentAssets] = await Promise.all([
+        (prisma as any).serviceVideoPackageEvidence.findMany({
+          where: { vendorId, isCurrent: true },
+          select: {
+            id: true,
+            version: true,
+            status: true,
+            stageEvidenceJson: true,
+          },
+        }),
+        (prisma as any).mediaAsset.count({ where }),
+        (prisma as any).mediaAsset.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          include: assetInclude,
+          take: ACTIVITY_RECENT_LIMIT,
+        }),
+      ]);
+      activityTotalCount = Number(totalCount || 0);
 
       for (const currentPackage of currentPackages) {
         for (const stageAsset of parsePackageStageAssets(currentPackage.stageEvidenceJson)) {
@@ -147,6 +149,29 @@ export async function GET(
           });
         }
       }
+
+      const recentIds = new Set(recentAssets.map((asset: any) => String(asset.id)));
+      const missingCurrentAssetIds = Array.from(currentPackageByAssetId.keys()).filter(
+        (assetId) => !recentIds.has(assetId)
+      );
+      const missingCurrentAssets = missingCurrentAssetIds.length
+        ? await (prisma as any).mediaAsset.findMany({
+            where: {
+              AND: [where, { id: { in: missingCurrentAssetIds } }],
+            },
+            include: assetInclude,
+          })
+        : [];
+      assets = [...recentAssets, ...missingCurrentAssets].sort(
+        (a: any, b: any) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    } else {
+      assets = await (prisma as any).mediaAsset.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: assetInclude,
+      });
     }
 
     // Calculate total storage for this vendor (non-deleted only)
@@ -208,6 +233,14 @@ export async function GET(
         totalMB: (Number(totalBytes) / (1024 * 1024)).toFixed(2),
         totalGB: (Number(totalBytes) / (1024 * 1024 * 1024)).toFixed(2),
       },
+      activitySummary: activityMode
+        ? {
+            totalCount: activityTotalCount || 0,
+            returnedCount: assets.length,
+            recentLimit: ACTIVITY_RECENT_LIMIT,
+            truncated: Number(activityTotalCount || 0) > assets.length,
+          }
+        : undefined,
     });
   } catch (error: any) {
     console.error("[media] GET error:", error);

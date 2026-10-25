@@ -42,8 +42,12 @@ export function buildVendorCoachingPlan(
     };
   }
 
-  const pendingModerationProofs = toNumber(dashboard.pendingModerationProofs);
-  const approvedProofs = toNumber(dashboard.approvedProofs);
+  const pendingServiceOrders = toNumber(
+    dashboard.pendingModerationServiceOrderCount ?? dashboard.pendingModerationProofs
+  );
+  const approvedServiceOrders = toNumber(
+    dashboard.approvedServiceOrderCount ?? dashboard.approvedProofs
+  );
   const storagePercentUsed = toNumber(dashboard.storagePercentUsed);
   const completedJobs =
     typeof dashboard.lifecycleCounts?.completed === "number"
@@ -57,7 +61,9 @@ export function buildVendorCoachingPlan(
       : Array.isArray(dashboard.recentJobs)
       ? dashboard.recentJobs.filter((job) => job.status === "in progress").length
       : 0;
-  const publicReviewCount = Array.isArray(dashboard.recentReviews) ? dashboard.recentReviews.length : 0;
+  const publicReviewCount = toNumber(
+    dashboard.stats?.publicWrittenReviewCount ?? dashboard.recentReviews?.length
+  );
 
   const workflowCompletion = trustScore?.components?.workflowCompletion ?? null;
   const videoVerification = trustScore?.components?.videoVerification ?? null;
@@ -77,8 +83,8 @@ export function buildVendorCoachingPlan(
         "Make sure each completed job has distinct staged service videos so verification outcomes can contribute to the score.",
       ],
       strengths:
-        approvedProofs > 0
-          ? [`${approvedProofs} service video asset${approvedProofs === 1 ? "" : "s"} already approved.`]
+        approvedServiceOrders > 0
+          ? [`${approvedServiceOrders} Service Order video package${approvedServiceOrders === 1 ? " is" : "s are"} already approved.`]
           : [],
       operationalNotes:
         inProgressJobs > 0
@@ -105,8 +111,8 @@ export function buildVendorCoachingPlan(
       `Video verification is fully intact with ${videoVerification.numerator} of ${videoVerification.denominator} finalized packages approved.`
     );
   }
-  if (pendingModerationProofs === 0 && approvedProofs > 0) {
-    strengths.push("There is no current moderation backlog in the service video pipeline.");
+  if (pendingServiceOrders === 0 && approvedServiceOrders > 0) {
+    strengths.push("There is no current Reliance Audit backlog in the Service Order video pipeline.");
   }
 
   if (operationalReliability && operationalReliability.pct !== null && operationalReliability.pct < 95) {
@@ -127,9 +133,9 @@ export function buildVendorCoachingPlan(
     );
   }
 
-  if (pendingModerationProofs > 0) {
+  if (pendingServiceOrders > 0) {
     priorityActions.push(
-      `${pendingModerationProofs} service video package${pendingModerationProofs === 1 ? "" : "s"} still await moderation. Clearing that queue is the fastest way to strengthen verification coverage.`
+      `${pendingServiceOrders} Service Order video package${pendingServiceOrders === 1 ? "" : "s"} still await${pendingServiceOrders === 1 ? "s" : ""} Reliance Audit. Clearing that queue is the fastest way to strengthen verification coverage.`
     );
   }
 
@@ -147,11 +153,11 @@ export function buildVendorCoachingPlan(
 
   if (publicReviewCount === 0 && completedJobs > 0) {
     operationalNotes.push(
-      "Completed jobs exist, but there are no recent public reviews in the current dashboard slice. Keep the optional review request loop healthy so customers can see genuine feedback alongside other trust signals."
+      "Completed jobs exist, but there are no public written reviews yet. Keep the optional review request loop healthy so customers can see genuine feedback alongside other trust signals."
     );
   } else if (publicReviewCount > 0 && completedJobs > 0) {
     operationalNotes.push(
-      `${publicReviewCount} recent public review${publicReviewCount === 1 ? "" : "s"} are visible against ${completedJobs} recent completed job${completedJobs === 1 ? "" : "s"}.`
+      `${publicReviewCount} public written review${publicReviewCount === 1 ? " is" : "s are"} visible alongside ${completedJobs} completed job${completedJobs === 1 ? "" : "s"}.`
     );
   }
 

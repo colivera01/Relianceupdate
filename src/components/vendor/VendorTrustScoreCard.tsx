@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientAuthHeaders } from '@/lib/client-session';
 import { buildVendorCoachingPlan } from '@/lib/vendor-coaching';
+import { deriveVendorAnalyticsMetrics } from '@/lib/vendor-analytics';
 import type { VendorDashboardResponse } from '@/types/vendor';
 
 interface TrustScoreComponentMetric {
@@ -85,33 +86,23 @@ function formatDate(value: string | null): string {
   }).format(date);
 }
 
-function buildDashboardSnapshot(dashboardData: VendorDashboardResponse) {
-  const totalBookings = Number(dashboardData.stats?.totalBookings || 0);
-  const completedJobs = Array.isArray(dashboardData.recentJobs)
-    ? dashboardData.recentJobs.filter((job) => job.status === 'completed').length
-    : 0;
+export function buildDashboardSnapshot(dashboardData: VendorDashboardResponse) {
+  const derived = deriveVendorAnalyticsMetrics(dashboardData);
 
   return {
-    totalBookings,
-    totalClients: Number(dashboardData.stats?.totalClients || 0),
-    rating: Number(dashboardData.stats?.rating || 0),
-    ratingCount: Number(dashboardData.stats?.ratingCount || 0),
-    approvedVideos: Number(dashboardData.approvedServiceOrderCount ?? dashboardData.approvedProofs ?? 0),
-    pendingVideos: Number(dashboardData.pendingModerationServiceOrderCount ?? dashboardData.pendingModerationProofs ?? 0),
-    archivedVideos: Number(dashboardData.archivedProofs || 0),
-    totalVideoAssets: Number(dashboardData.totalProofAssets || 0),
-    storagePercentUsed: Number(dashboardData.storagePercentUsed || 0),
-    completedJobs,
-    inProgressJobs: Array.isArray(dashboardData.recentJobs)
-      ? dashboardData.recentJobs.filter((job) => job.status === 'in progress').length
-      : 0,
-    scheduledJobs: Array.isArray(dashboardData.recentJobs)
-      ? dashboardData.recentJobs.filter((job) => job.status === 'scheduled').length
-      : 0,
-    reviewCoverage:
-      completedJobs > 0
-        ? Math.round(((dashboardData.recentReviews?.length || 0) / completedJobs) * 100)
-        : 0,
+    totalBookings: derived.totalBookings,
+    totalClients: derived.totalClients,
+    rating: derived.rating,
+    ratingCount: derived.ratingCount,
+    approvedVideos: derived.approvedServiceOrders,
+    pendingVideos: derived.pendingServiceOrders,
+    archivedVideos: derived.archivedServiceOrders,
+    totalVideoAssets: derived.totalProofAssets,
+    storagePercentUsed: derived.storagePercent,
+    completedJobs: derived.completedJobs,
+    inProgressJobs: derived.inProgressJobs,
+    scheduledJobs: derived.scheduledJobs,
+    reviewCoverage: derived.verifiedRatingCoverage,
   };
 }
 

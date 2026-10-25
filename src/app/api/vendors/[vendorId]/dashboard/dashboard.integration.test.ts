@@ -172,7 +172,7 @@ function mockHappyPathData() {
           client_phone: "555-0101",
         }),
         user: { id: "user-customer", name: "Pat", email: "unclaimed@example.test", phone: "555-9999" },
-        service: { id: "service-1", name: "Deep Cleaning", isPublished: true },
+        service: { id: "service-1", name: "Deep Cleaning", isPublished: false },
       },
     ])
     .mockResolvedValueOnce([])
@@ -307,6 +307,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     });
     const recentJobs = body.recentJobs as Array<Record<string, unknown>>;
     expect(recentJobs[0]).toMatchObject({
+      id: "job-1",
       customerEmail: "pat.client@example.com",
       customerPhone: "555-0101",
     });
@@ -323,6 +324,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(body).not.toHaveProperty("error");
     expect(body).not.toHaveProperty("suggestedVendorId");
     expect(vi.mocked(requireVendorMembership)).toHaveBeenCalledWith(req, "v1");
+    expect(hoisted.bookingFindMany.mock.calls[0]?.[0]).not.toHaveProperty("take");
+    expect(hoisted.bookingFindMany.mock.calls[1]?.[0]).not.toHaveProperty("take");
   });
 
   it("separates verified star metrics from publicly approved written comments", async () => {
