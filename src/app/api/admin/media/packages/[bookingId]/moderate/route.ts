@@ -14,6 +14,8 @@ import {
   sendCorePrivateProofRejectedNotification,
 } from "@/lib/service-video-admin-audit-notifications";
 import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
+import { tryReconcileCoreAuditDecisionAndScore } from "@/lib/trust-score-reconciliation";
+import { TRUST_SCORE_VERSION } from "@/lib/trust-score-calculator";
 import {
   CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY,
   CoreAdminAuditError,
@@ -133,6 +135,18 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       return NextResponse.json({ success: false, error: "Booking not found" }, { status: 404 });
     }
 
+    const trustScoreSync = await tryReconcileCoreAuditDecisionAndScore(prisma as any, {
+      id: result.decision.id,
+      bookingId,
+      vendorId: booking.vendorId,
+      packageId: result.package.id,
+      packageVersion: result.package.version,
+      decision,
+      decidedAt: result.decision.decidedAt,
+      adminUserId: result.decision.adminUserId || admin.userId,
+      evidenceVersion: result.decision.evidenceVersion || null,
+    });
+
     const metadata = parseMetadata(booking.customerMetadata);
     const customer = resolveBookingCustomer({
       ...booking,
@@ -202,6 +216,9 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       publicDisplayEligibility: result.decision.publicDisplayEligibility || null,
       notification,
       vendorNotification,
+      trustScoreSync: trustScoreSync.ok
+        ? { updated: true, scoreVersion: TRUST_SCORE_VERSION }
+        : { updated: false, retryable: true },
       message: decision === "PASS"
         ? "Admin PASS recorded. The Private Service Video was released to the customer."
         : "Admin REJECT recorded. The Service Video package is terminal and was not released.",

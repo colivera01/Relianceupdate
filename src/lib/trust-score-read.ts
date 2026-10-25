@@ -6,7 +6,7 @@
  * an already-computed `VendorTrustScoreSnapshot` row into audience-safe payloads.
  *
  * Three audiences with strict field separation:
- *   - public  : total + four component pcts/counts + computedAt + explanation only.
+ *   - public  : total + active component pcts/counts + computedAt + explanation only.
  *               Excludes inputHash, recalc trigger/source, detailJson, visibility, ids.
  *   - vendor  : public-safe fields + improvement hints for the vendor's own score.
  *   - admin   : full snapshot incl. inputHash, recalc trigger/source, parsed detail.
@@ -19,10 +19,9 @@ import {
 } from "@/lib/public-trust-score-presentation";
 
 export const TRUST_SCORE_PUBLIC_EXPLAINER =
-  "The Reliance Trust Score is a platform-generated reliability score based on verified, " +
-  "finalized Reliance activity (workflow completion, video verification, dispute-free " +
-  "completion, and operational reliability). It is calculated by Reliance and is separate " +
-  "from voluntary Customer Ratings/reviews.";
+  "The Reliance Trust Score is a platform-generated verified reliability index based " +
+  "on finalized workflow completion, video verification, and dispute-free completion. It is " +
+  "calculated by Reliance and remains separate from voluntary Customer Ratings and reviews.";
 
 export interface SnapshotRow {
   id?: string;
@@ -116,19 +115,19 @@ const COMPONENT_LABELS: Record<string, string> = {
   operationalReliability: "Operational reliability",
 };
 
-const COMPONENT_ORDER = [
+const ACTIVE_COMPONENT_ORDER = [
   "workflowCompletion",
   "videoVerification",
   "disputeFree",
-  "operationalReliability",
 ] as const;
 
-type ComponentKey = (typeof COMPONENT_ORDER)[number];
+type ComponentKey = (typeof ACTIVE_COMPONENT_ORDER)[number];
 
-const TRUST_SCORE_METHODology = [
-  "Only finalized Reliance workflow, verification, dispute, and operational outcomes are counted.",
+const TRUST_SCORE_METHODOLOGY = [
+  "Only finalized Reliance workflow, video-verification, and validated service-issue outcomes are counted.",
+  "All three active components must be measurable before a score is shown.",
   "Customer Ratings and review sentiment do not change the Reliance Trust Score.",
-  "If a component is not yet measurable, its weight is excluded and the remaining weights are renormalized.",
+  "The current score covers all finalized Reliance activity on record; no rolling time window is implied.",
 ];
 
 function componentLabel(key: ComponentKey): string {
@@ -150,20 +149,20 @@ export function buildTrustScoreExplanationDetails(
       overview:
         "Reliance has not recorded a current Trust Score snapshot for this vendor yet.",
       coverageSummary:
-        "No finalized Trust Score snapshot is available yet, so there are no measurable score components to explain.",
+        "No finalized reliability snapshot is available yet, so there are no measurable score components to explain.",
       strongestSignals: [],
       watchItems: [
-        "A vendor needs finalized Reliance activity before the Trust Score becomes explainable.",
+        "A vendor needs finalized Reliance activity before the reliability score becomes explainable.",
       ],
-      methodology: TRUST_SCORE_METHODology,
+      methodology: TRUST_SCORE_METHODOLOGY,
     };
   }
 
   const components = publicComponents(snapshot);
-  const measurable = COMPONENT_ORDER
+  const measurable = ACTIVE_COMPONENT_ORDER
     .map((key) => ({ key, component: components[key] }))
     .filter(({ component }) => component.pct !== null && component.denominator > 0);
-  const unmeasurable = COMPONENT_ORDER
+  const unmeasurable = ACTIVE_COMPONENT_ORDER
     .map((key) => ({ key, component: components[key] }))
     .filter(({ component }) => component.pct === null || component.denominator <= 0);
   const measurableWeightPct = measurable.reduce((sum, { component }) => sum + component.weightPct, 0);
@@ -193,23 +192,23 @@ export function buildTrustScoreExplanationDetails(
   if (snapshot.totalScorePct === null || snapshot.totalScorePct === undefined) {
     return {
       overview:
-        "A Trust Score snapshot exists, but none of the four score components are measurable from finalized Reliance activity yet.",
-      coverageSummary: `Measured components account for ${measurableWeightPct}% of the total Trust Score weight. Until a component has finalized qualifying records, it stays out of the score instead of lowering it.`,
+        "A reliability snapshot exists, but the required score components are not all measurable from finalized Reliance activity yet.",
+      coverageSummary: `${measurable.length} of ${ACTIVE_COMPONENT_ORDER.length} required components are measurable. A score stays in Building status until every active component has finalized qualifying records.`,
       strongestSignals,
       watchItems:
         watchItems.length > 0
           ? watchItems
           : ["More finalized Reliance activity is needed before a meaningful score can be explained."],
-      methodology: TRUST_SCORE_METHODology,
+      methodology: TRUST_SCORE_METHODOLOGY,
     };
   }
 
   return {
-    overview: `This vendor's current Reliance Trust Score is ${snapshot.totalScorePct}%. ${measurable.length} of 4 weighted components are currently measurable from finalized Reliance activity.`,
-    coverageSummary: `Measured components currently cover ${measurableWeightPct}% of the configured Trust Score weight. Any unmeasurable components are excluded and the remaining weights are renormalized.`,
+    overview: `This vendor's current Reliance Trust Score is ${snapshot.totalScorePct}/100. ${measurable.length} of ${ACTIVE_COMPONENT_ORDER.length} required components are measurable from finalized Reliance activity.`,
+    coverageSummary: `Measured components cover ${measurableWeightPct}% of the Version ${TRUST_SCORE_VERSION} score weight. The score uses all finalized Reliance activity on record.`,
     strongestSignals,
     watchItems,
-    methodology: TRUST_SCORE_METHODology,
+    methodology: TRUST_SCORE_METHODOLOGY,
   };
 }
 
@@ -219,7 +218,7 @@ export function buildTrustScoreExplanationDetails(
  */
 export function buildImprovementHints(snapshot: SnapshotRow): string[] {
   const components = publicComponents(snapshot);
-  const measurable = Object.entries(components)
+  const measurable = ACTIVE_COMPONENT_ORDER.map((key) => [key, components[key]] as const)
     .filter(([, c]) => c.pct !== null && c.denominator > 0)
     .map(([key, c]) => ({ key, pct: c.pct as number, c }));
 
@@ -231,7 +230,7 @@ export function buildImprovementHints(snapshot: SnapshotRow): string[] {
     const label = COMPONENT_LABELS[key] || key;
     hints.push(
       `${label}: ${c.numerator} of ${c.denominator} finalized (${pct}%). ` +
-        `This metric carries ${c.weightPct}% of the Trust Score.`
+        `This metric carries ${c.weightPct}% of the Reliance Trust Score.`
     );
   }
   return hints;
@@ -243,7 +242,9 @@ export function buildImprovementHints(snapshot: SnapshotRow): string[] {
  * current snapshot exists.
  */
 export function toPublicTrustScore(snapshot: SnapshotRow | null | undefined) {
-  if (!snapshot) {
+  const isCurrentVersion = Number(snapshot?.scoreVersion || 0) === TRUST_SCORE_VERSION;
+  if (!snapshot || !isCurrentVersion) {
+    const unscoredSnapshot = snapshot ? { ...snapshot, totalScorePct: null } : null;
     return {
       scored: false,
       scoreVersion: TRUST_SCORE_VERSION,
@@ -251,15 +252,15 @@ export function toPublicTrustScore(snapshot: SnapshotRow | null | undefined) {
       components: null,
       computedAt: null,
       explanation: TRUST_SCORE_PUBLIC_EXPLAINER,
-      explanationDetails: buildTrustScoreExplanationDetails(snapshot),
+      explanationDetails: buildTrustScoreExplanationDetails(unscoredSnapshot),
       evidence: buildPublicTrustEvidenceSummary(snapshot),
-      presentation: buildPublicTrustPresentationSummary(snapshot),
+      presentation: buildPublicTrustPresentationSummary(unscoredSnapshot),
       separation:
-        "Reliance Trust Score is separate from Customer Ratings; it does not use reviews.",
+        "The Reliance Trust Score is a verified reliability measure separate from Customer Ratings; it does not use reviews.",
     };
   }
   return {
-    scored: true,
+    scored: snapshot.totalScorePct !== null && snapshot.totalScorePct !== undefined,
     scoreVersion: snapshot.scoreVersion ?? TRUST_SCORE_VERSION,
     totalScorePct: snapshot.totalScorePct ?? null,
     components: publicComponents(snapshot),
@@ -269,7 +270,7 @@ export function toPublicTrustScore(snapshot: SnapshotRow | null | undefined) {
     evidence: buildPublicTrustEvidenceSummary(snapshot),
     presentation: buildPublicTrustPresentationSummary(snapshot),
     separation:
-      "Reliance Trust Score is separate from Customer Ratings; it does not use reviews.",
+      "The Reliance Trust Score is a verified reliability measure separate from Customer Ratings; it does not use reviews.",
   };
 }
 
@@ -281,7 +282,7 @@ export function toVendorTrustScore(snapshot: SnapshotRow | null | undefined) {
   const base = toPublicTrustScore(snapshot);
   return {
     ...base,
-    improvementHints: snapshot ? buildImprovementHints(snapshot) : [],
+    improvementHints: snapshot && base.scored ? buildImprovementHints(snapshot) : [],
   };
 }
 

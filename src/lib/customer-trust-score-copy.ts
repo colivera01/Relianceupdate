@@ -27,12 +27,12 @@ export function getCustomerTrustScoreCopy(
 ): CustomerTrustScoreCopy {
   if (input.trustScore?.scored && input.trustScore.totalScorePct !== null) {
     const verifiedBookings = input.trustScore.evidence?.verifiedBookings ?? 0;
-    const maturityState = input.trustScore.maturityState || "established";
+    const maturityState = input.trustScore.maturityState || "early_stage";
 
     if (maturityState === "early_stage") {
       return {
-        label: "Early-stage Trust Score",
-        headline: `${input.trustScore.totalScorePct}%`,
+        label: "Early-stage reliability",
+        headline: `${input.trustScore.totalScorePct}/100`,
         detail:
           verifiedBookings > 0
             ? `${verifiedBookings} verified booking${verifiedBookings === 1 ? "" : "s"} so far`
@@ -44,8 +44,8 @@ export function getCustomerTrustScoreCopy(
 
     if (maturityState === "emerging") {
       return {
-        label: "Emerging Trust Score",
-        headline: `${input.trustScore.totalScorePct}%`,
+        label: "Emerging reliability",
+        headline: `${input.trustScore.totalScorePct}/100`,
         detail:
           verifiedBookings > 0
             ? `${verifiedBookings} verified booking${verifiedBookings === 1 ? "" : "s"} and growing`
@@ -57,7 +57,7 @@ export function getCustomerTrustScoreCopy(
 
     return {
       label: "Reliance Trust Score",
-      headline: `${input.trustScore.totalScorePct}%`,
+      headline: `${input.trustScore.totalScorePct}/100`,
       detail:
         verifiedBookings > 0
           ? `${verifiedBookings} verified booking${verifiedBookings === 1 ? "" : "s"} on record`
@@ -69,7 +69,7 @@ export function getCustomerTrustScoreCopy(
 
   if (input.hasPublicMedia) {
     return {
-      label: "Early trust signal",
+      label: "Early reliability signal",
       headline: "Service video on file",
       detail: "Approved public service video available",
       tone: "calm",
@@ -88,9 +88,9 @@ export function getCustomerTrustScoreCopy(
   }
 
   return {
-    label: "Trust Score building",
-    headline: "Trust signals building",
-    detail: "More verified completed work will add public trust context",
+    label: "Reliability score building",
+    headline: "Verified history is building",
+    detail: "More finalized Reliance work will add public reliability context",
     tone: "muted",
     emphasis: "subtle",
   };

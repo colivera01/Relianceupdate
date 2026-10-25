@@ -161,24 +161,35 @@ async function installVendorReviewMetricsFixture(
         contentType: "application/json",
         body: JSON.stringify({
           success: true,
+          scoreVersion: 2,
+          verifiedAt: "2026-10-24T12:00:00.000Z",
           trustScore: {
             scored: true,
+            scoreVersion: 2,
             totalScorePct: 88,
             computedAt: "2026-09-07T12:00:00.000Z",
+            presentation: {
+              maturityState: "emerging",
+              maturityLabel: "Emerging",
+              title: "Emerging reliability score",
+              scoreDisplay: "88/100",
+              summary: "88/100 with growing finalized activity",
+            },
             components: {
-              workflowCompletion: { pct: 100, numerator: 1, denominator: 1, weightPct: 30 },
-              videoVerification: { pct: 100, numerator: 1, denominator: 1, weightPct: 25 },
-              disputeFree: { pct: 100, numerator: 1, denominator: 1, weightPct: 30 },
-              operationalReliability: { pct: 20, numerator: 1, denominator: 5, weightPct: 15 },
+              workflowCompletion: { pct: 100, numerator: 5, denominator: 5, weightPct: 35 },
+              videoVerification: { pct: 70, numerator: 7, denominator: 10, weightPct: 30 },
+              disputeFree: { pct: 90, numerator: 9, denominator: 10, weightPct: 35 },
+              operationalReliability: { pct: null, numerator: 0, denominator: 0, weightPct: 0 },
             },
             explanationDetails: {
               overview: "The current score is based on finalized Reliance activity.",
-              coverageSummary: "All configured Trust Score components are measurable.",
+              coverageSummary: "All three active Trust Score components are measurable.",
               strongestSignals: ["Workflow completion is fully verified."],
-              watchItems: ["Operational reliability has room to improve."],
+              watchItems: ["Video verification has room to improve."],
               methodology: ["Customer ratings do not change the Trust Score."],
             },
-            improvementHints: ["Review operational outcomes that are not clean."],
+            separation: "The Reliance Trust Score is separate from Customer Ratings; it does not use reviews.",
+            improvementHints: ["Improve staged-video capture quality."],
           },
         }),
       });
@@ -225,9 +236,53 @@ test.describe("Vendor review metrics", () => {
     await expect(page.getByText("Not yet rated", { exact: true })).toBeVisible();
     await expect(page.getByText("0.0", { exact: true })).toHaveCount(0);
 
+  });
+
+  test("keeps an unrated analytics account neutral instead of showing a poor rating", async ({ page }, testInfo) => {
+    await installVendorReviewMetricsFixture(page, {
+      rating: 0,
+      ratingCount: 0,
+      employeeRating: 0,
+      employeeReviewCount: 0,
+    });
     await page.goto("/test-fixtures/vendor-analytics");
     await expect(page.getByText("Customer rating", { exact: true })).toBeVisible();
     await expect(page.getByText("Not yet rated", { exact: true })).toBeVisible();
     await expect(page.getByText("0.0★", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Reliance Trust Score" })).toBeVisible();
+    await expect(page.getByText("88", { exact: true })).toBeVisible();
+    await expect(page.getByText("/100", { exact: true })).toBeVisible();
+    await expect(page.getByText("Operational reliability", { exact: true })).toHaveCount(0);
+    await page.locator("summary").filter({ hasText: "How the score is calculated" }).click();
+    await expect(page.getByText("Methodology", { exact: true })).toBeVisible();
+    const refreshRequest = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname === "/api/vendor/trust-score" &&
+        request.method() === "POST",
+    );
+    await page.getByRole("button", { name: "Refresh analytics" }).click();
+    await refreshRequest;
+    await expect(page.getByRole("button", { name: "Refresh analytics" })).toBeEnabled();
+    await page.screenshot({ path: testInfo.outputPath("vendor-analytics-desktop.png"), fullPage: true });
+  });
+
+  test("keeps analytics readable without horizontal overflow on mobile", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVendorReviewMetricsFixture(page, {
+      rating: 0,
+      ratingCount: 0,
+      employeeRating: 0,
+      employeeReviewCount: 0,
+    });
+    await page.goto("/test-fixtures/vendor-analytics");
+
+    await expect(page.getByRole("heading", { name: "Analytics & Trust" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Reliance Trust Score" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh analytics" })).toBeVisible();
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+    await page.screenshot({ path: testInfo.outputPath("vendor-analytics-mobile.png"), fullPage: true });
   });
 });

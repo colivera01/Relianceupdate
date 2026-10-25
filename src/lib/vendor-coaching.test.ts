@@ -50,22 +50,24 @@ describe("buildVendorCoachingPlan", () => {
     const plan = buildVendorCoachingPlan(
       {
         scored: true,
-        totalScorePct: 92,
+        totalScorePct: 88,
         components: {
-          workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-          videoVerification: { pct: 100, numerator: 24, denominator: 24, weightPct: 25 },
-          disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-          operationalReliability: { pct: 86.96, numerator: 20, denominator: 23, weightPct: 15 },
+          workflowCompletion: { pct: 95, numerator: 22, denominator: 23, weightPct: 35 },
+          videoVerification: { pct: 72, numerator: 18, denominator: 25, weightPct: 30 },
+          disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
+          operationalReliability: { pct: 0, numerator: 0, denominator: 23, weightPct: 0 },
         },
       },
       dashboard
     );
 
-    expect(plan.summary).toContain("Operational reliability");
-    expect(plan.priorityActions[0]).toContain("Operational reliability");
-    expect(plan.strengths.some((item) => item.includes("Workflow completion is perfect"))).toBe(true);
+    expect(plan.summary).toContain("video verification at 72%");
+    expect(plan.priorityActions[0]).toContain("Video verification is 72%");
+    expect(plan.priorityActions.some((item) => item.includes("Operational reliability"))).toBe(false);
+    expect(plan.strengths.some((item) => item.includes("Dispute-free completion"))).toBe(true);
     expect(plan.operationalNotes.some((item) => item.includes("Storage is 82% full"))).toBe(true);
-    expect(plan.priorityActions.some((item) => item.includes("1 Service Order video package still awaits Reliance Audit"))).toBe(true);
+    expect(plan.operationalNotes.some((item) => item.includes("1 Service Order video package is awaiting Reliance Audit"))).toBe(true);
+    expect(plan.priorityActions.some((item) => item.includes("awaits Reliance Audit"))).toBe(false);
     expect(plan.priorityActions.some((item) => item.includes("2 service video packages"))).toBe(false);
   });
 
@@ -79,7 +81,7 @@ describe("buildVendorCoachingPlan", () => {
       dashboard
     );
 
-    expect(plan.summary).toContain("does not have enough finalized Reliance activity");
+    expect(plan.summary).toContain("does not yet have complete finalized evidence");
     expect(plan.priorityActions[0]).toContain("Finish more jobs");
     expect(plan.strengths[0]).toBe("3 Service Order video packages are already approved.");
   });
@@ -90,10 +92,10 @@ describe("buildVendorCoachingPlan", () => {
         scored: true,
         totalScorePct: 100,
         components: {
-          workflowCompletion: { pct: 100, numerator: 5, denominator: 5, weightPct: 30 },
-          videoVerification: { pct: 100, numerator: 5, denominator: 5, weightPct: 25 },
-          disputeFree: { pct: 100, numerator: 5, denominator: 5, weightPct: 30 },
-          operationalReliability: { pct: 100, numerator: 5, denominator: 5, weightPct: 15 },
+          workflowCompletion: { pct: 100, numerator: 5, denominator: 5, weightPct: 35 },
+          videoVerification: { pct: 100, numerator: 5, denominator: 5, weightPct: 30 },
+          disputeFree: { pct: 100, numerator: 5, denominator: 5, weightPct: 35 },
+          operationalReliability: { pct: null, numerator: 0, denominator: 0, weightPct: 0 },
         },
       },
       {
@@ -104,7 +106,8 @@ describe("buildVendorCoachingPlan", () => {
       }
     );
 
-    expect(plan.priorityActions[0]).toContain("No major score weak point");
-    expect(plan.strengths.some((item) => item.includes("strong at 100%"))).toBe(true);
+    expect(plan.priorityActions[0]).toContain("No corrective score action");
+    expect(plan.summary).toContain("100/100");
+    expect(plan.strengths.some((item) => item.includes("Reliance Trust Score is 100/100"))).toBe(true);
   });
 });

@@ -14,7 +14,7 @@ export interface VendorTrustScoreForCoaching {
     workflowCompletion: CoachingMetric;
     videoVerification: CoachingMetric;
     disputeFree: CoachingMetric;
-    operationalReliability: CoachingMetric;
+    operationalReliability?: CoachingMetric;
   } | null;
 }
 
@@ -68,7 +68,6 @@ export function buildVendorCoachingPlan(
   const workflowCompletion = trustScore?.components?.workflowCompletion ?? null;
   const videoVerification = trustScore?.components?.videoVerification ?? null;
   const disputeFree = trustScore?.components?.disputeFree ?? null;
-  const operationalReliability = trustScore?.components?.operationalReliability ?? null;
 
   const strengths: string[] = [];
   const priorityActions: string[] = [];
@@ -77,7 +76,7 @@ export function buildVendorCoachingPlan(
   if (!trustScore?.scored || trustScore.totalScorePct === null || !trustScore.components) {
     return {
       summary:
-        "This account does not have enough finalized Reliance activity for a meaningful Trust Score coaching plan yet.",
+        "This account does not yet have complete finalized evidence for a Reliance Trust Score coaching plan.",
       priorityActions: [
         "Finish more jobs through finalized completion so workflow and dispute-free metrics become measurable.",
         "Make sure each completed job has distinct staged service videos so verification outcomes can contribute to the score.",
@@ -94,7 +93,7 @@ export function buildVendorCoachingPlan(
   }
 
   if (trustScore.totalScorePct >= 95) {
-    strengths.push(`Your current Reliance Trust Score is strong at ${trustScore.totalScorePct}%.`);
+    strengths.push(`Your current Reliance Trust Score is ${trustScore.totalScorePct}/100.`);
   }
   if (workflowCompletion?.pct === 100) {
     strengths.push(
@@ -115,33 +114,43 @@ export function buildVendorCoachingPlan(
     strengths.push("There is no current Reliance Audit backlog in the Service Order video pipeline.");
   }
 
-  if (operationalReliability && operationalReliability.pct !== null && operationalReliability.pct < 95) {
-    priorityActions.push(
-      `Operational reliability is the main Trust Score drag at ${operationalReliability.pct}%. Review canceled, late, or otherwise non-clean completions first.`
-    );
-  }
+  const scoreOpportunities = [
+    workflowCompletion?.pct !== null && workflowCompletion
+      ? {
+          label: "Workflow completion",
+          pct: workflowCompletion.pct,
+          weightPct: workflowCompletion.weightPct,
+          action: `Workflow completion is ${workflowCompletion.pct}%. Reduce cancellations and make sure scheduled work reaches finalized completion whenever service actually happens.`,
+        }
+      : null,
+    videoVerification?.pct !== null && videoVerification
+      ? {
+          label: "Video verification",
+          pct: videoVerification.pct,
+          weightPct: videoVerification.weightPct,
+          action: `Video verification is ${videoVerification.pct}%. Tighten stage capture quality so Starting Condition, Work in Progress, and Final Result videos are clearly distinct and moderation-ready.`,
+        }
+      : null,
+    disputeFree?.pct !== null && disputeFree
+      ? {
+          label: "Dispute-free completion",
+          pct: disputeFree.pct,
+          weightPct: disputeFree.weightPct,
+          action: `Dispute-free completion is ${disputeFree.pct}%. Review validated disputes, refunds, or confirmed service failures to prevent repeat issues.`,
+        }
+      : null,
+  ]
+    .filter(
+      (item): item is { label: string; pct: number; weightPct: number; action: string } =>
+        item !== null && item.pct < 100,
+    )
+    .sort((a, b) => a.pct - b.pct || b.weightPct - a.weightPct);
 
-  if (workflowCompletion && workflowCompletion.pct !== null && workflowCompletion.pct < 100) {
-    priorityActions.push(
-      `Workflow completion is ${workflowCompletion.pct}%. Reduce cancellations and make sure scheduled work reaches finalized completion whenever service actually happens.`
-    );
-  }
-
-  if (videoVerification && videoVerification.pct !== null && videoVerification.pct < 100) {
-    priorityActions.push(
-      `Video verification is ${videoVerification.pct}%. Tighten stage capture quality so Starting Condition, Work in Progress, and Final Result videos are clearly distinct and moderation-ready.`
-    );
-  }
+  priorityActions.push(...scoreOpportunities.map((item) => item.action));
 
   if (pendingServiceOrders > 0) {
-    priorityActions.push(
-      `${pendingServiceOrders} Service Order video package${pendingServiceOrders === 1 ? "" : "s"} still await${pendingServiceOrders === 1 ? "s" : ""} Reliance Audit. Clearing that queue is the fastest way to strengthen verification coverage.`
-    );
-  }
-
-  if (disputeFree && disputeFree.pct !== null && disputeFree.pct < 100) {
-    priorityActions.push(
-      `Dispute-free completion is ${disputeFree.pct}%. Review validated disputes, refunds, or confirmed service failures to prevent repeat issues.`
+    operationalNotes.push(
+      `${pendingServiceOrders} Service Order video package${pendingServiceOrders === 1 ? " is" : "s are"} awaiting Reliance Audit. No vendor action is required unless Reliance returns a correction request; finalized outcomes will appear after review.`
     );
   }
 
@@ -153,7 +162,7 @@ export function buildVendorCoachingPlan(
 
   if (publicReviewCount === 0 && completedJobs > 0) {
     operationalNotes.push(
-      "Completed jobs exist, but there are no public written reviews yet. Keep the optional review request loop healthy so customers can see genuine feedback alongside other trust signals."
+      "No public written reviews are available yet. Reviews remain optional customer feedback and are separate from the Reliance Trust Score."
     );
   } else if (publicReviewCount > 0 && completedJobs > 0) {
     operationalNotes.push(
@@ -169,13 +178,13 @@ export function buildVendorCoachingPlan(
 
   if (priorityActions.length === 0) {
     priorityActions.push(
-      "No major score weak point stands out right now. Keep completion quality, staged video discipline, and operational follow-through consistent."
+      "No corrective score action is required from the finalized evidence currently on record. Continue the same completion, staged-video, and issue-resolution practices."
     );
   }
 
-  const summary =
-    priorityActions[0] ||
-    `Your current Trust Score is ${trustScore.totalScorePct}%, with the strongest gains coming from verified workflow quality and clean finalized outcomes.`;
+  const summary = scoreOpportunities[0]
+    ? `The clearest verified reliability opportunity is ${scoreOpportunities[0].label.toLowerCase()} at ${scoreOpportunities[0].pct}%.`
+    : `The finalized evidence currently supports a ${trustScore.totalScorePct}/100 Reliance Trust Score with no corrective score action required.`;
 
   return {
     summary,

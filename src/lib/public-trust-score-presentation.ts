@@ -68,11 +68,11 @@ export function getPublicTrustMaturityState(
 
   const evidence = buildPublicTrustEvidenceSummary(input);
 
-  if (evidence.verifiedBookings >= 6 || evidence.approvedServiceVideos >= 3) {
+  if (evidence.verifiedBookings >= 20 && evidence.approvedServiceVideos >= 10) {
     return "established";
   }
 
-  if (evidence.verifiedBookings >= 3 || evidence.approvedServiceVideos >= 2) {
+  if (evidence.verifiedBookings >= 5 && evidence.approvedServiceVideos >= 3) {
     return "emerging";
   }
 
@@ -92,9 +92,9 @@ export function buildPublicTrustPresentationSummary(
     return {
       maturityState: "not_ready",
       maturityLabel: "Building",
-      title: "Trust Score building",
+      title: "Reliability score building",
       scoreDisplay: null,
-      summary: "More verified completed work is needed before a public Trust Score appears.",
+      summary: "More finalized verified activity is needed before a public score appears.",
       tone: "muted",
       scoreEmphasis: "subtle",
     };
@@ -104,9 +104,9 @@ export function buildPublicTrustPresentationSummary(
     return {
       maturityState,
       maturityLabel: "Early Stage",
-      title: "Early-stage Trust Score",
-      scoreDisplay: `${totalScorePct}%`,
-      summary: `${totalScorePct}% based on limited verified activity`,
+      title: "Early-stage reliability score",
+      scoreDisplay: `${totalScorePct}/100`,
+      summary: `${totalScorePct}/100 based on limited finalized activity`,
       tone: "calm",
       scoreEmphasis: "subtle",
     };
@@ -116,9 +116,9 @@ export function buildPublicTrustPresentationSummary(
     return {
       maturityState,
       maturityLabel: "Emerging",
-      title: "Emerging Trust Score",
-      scoreDisplay: `${totalScorePct}%`,
-      summary: `${totalScorePct}% with growing verified activity`,
+      title: "Emerging reliability score",
+      scoreDisplay: `${totalScorePct}/100`,
+      summary: `${totalScorePct}/100 with growing finalized activity`,
       tone: "balanced",
       scoreEmphasis: "standard",
     };
@@ -128,8 +128,8 @@ export function buildPublicTrustPresentationSummary(
     maturityState: "established",
     maturityLabel: "Established",
     title: "Reliance Trust Score",
-    scoreDisplay: `${totalScorePct}%`,
-    summary: `${totalScorePct}% based on a strong history of verified completed work`,
+    scoreDisplay: `${totalScorePct}/100`,
+    summary: `${totalScorePct}/100 based on an established history of finalized verified work`,
     tone: "strong",
     scoreEmphasis: "strong",
   };

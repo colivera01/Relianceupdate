@@ -36,18 +36,18 @@ const validBody = {
     explanationOverview: "Workflow and dispute-free outcomes are strong.",
     coverageSummary: "Coverage comes from 23 finalized workflows.",
     strongestSignals: ["Verified workflow completion is perfect."],
-    watchItems: ["Operational reliability is the main drag."],
-    improvementHints: ["Reduce cancellations and late completions."],
+    watchItems: ["Video verification is the main opportunity."],
+    improvementHints: ["Improve staged-video capture quality."],
     components: {
-      workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-      videoVerification: { pct: 100, numerator: 24, denominator: 24, weightPct: 25 },
-      disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-      operationalReliability: { pct: 86.96, numerator: 20, denominator: 23, weightPct: 15 },
+      workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
+      videoVerification: { pct: 86.96, numerator: 20, denominator: 23, weightPct: 30 },
+      disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
+      operationalReliability: { pct: null, numerator: 0, denominator: 0, weightPct: 0 },
     },
   },
   coachingPlan: {
-    summary: "Operational reliability is the main Trust Score drag.",
-    priorityActions: ["Review canceled or late completions first."],
+    summary: "Video verification is the clearest reliability opportunity.",
+    priorityActions: ["Improve staged-video capture quality."],
     strengths: ["Workflow completion is perfect right now."],
     operationalNotes: ["Storage is 82% full."],
   },
@@ -126,10 +126,10 @@ describe("POST /api/vendor/coaching-summary", () => {
   it("returns the AI coaching summary when inputs are valid", async () => {
     vi.mocked(getVendorCoachingSummarySuggestion).mockResolvedValue({
       data: {
-        summary: "Keep operational reliability as the next coaching focus.",
+        summary: "Keep staged-video quality as the next coaching focus.",
         confidence: "medium",
-        priorityHeadline: "Tighten operational reliability before scale.",
-        recommendedFocus: ["Review late and canceled outcomes first."],
+        priorityHeadline: "Tighten staged-video quality before scale.",
+        recommendedFocus: ["Review rejected Service Video packages first."],
         positiveSignals: ["Workflow completion is strong."],
         watchouts: ["Pending video moderation still exists."],
         nextCheckIn: "Recheck after the next 5 finalized bookings.",
@@ -156,8 +156,9 @@ describe("POST /api/vendor/coaching-summary", () => {
     expect(json.success).toBe(true);
     expect(json.suggestion).toMatchObject({
       confidence: "medium",
-      priorityHeadline: "Tighten operational reliability before scale.",
+      priorityHeadline: "Tighten staged-video quality before scale.",
     });
+    expect(json.promptVersion).toBe("vendor-coaching-summary-v2");
   });
 
   it("returns 502 with retryable=true when the AI provider call fails", async () => {

@@ -10,7 +10,7 @@ describe("public-trust-score-presentation", () => {
   it("treats no score as a building state", () => {
     expect(getPublicTrustMaturityState({ totalScorePct: null })).toBe("not_ready");
     expect(buildPublicTrustPresentationSummary({ totalScorePct: null }).summary).toContain(
-      "More verified completed work is needed"
+      "More finalized verified activity is needed"
     );
   });
 
@@ -26,7 +26,8 @@ describe("public-trust-score-presentation", () => {
     ).toMatchObject({
       maturityState: "early_stage",
       maturityLabel: "Early Stage",
-      summary: "100% based on limited verified activity",
+      scoreDisplay: "100/100",
+      summary: "100/100 based on limited finalized activity",
     });
   });
 
@@ -34,15 +35,15 @@ describe("public-trust-score-presentation", () => {
     expect(
       buildPublicTrustPresentationSummary({
         totalScorePct: 96,
-        workflowCompletionNumerator: 3,
-        videoVerificationNumerator: 1,
-        disputeFreeNumerator: 3,
-        disputeFreeDenominator: 3,
+        workflowCompletionNumerator: 5,
+        videoVerificationNumerator: 3,
+        disputeFreeNumerator: 5,
+        disputeFreeDenominator: 5,
       })
     ).toMatchObject({
       maturityState: "emerging",
       maturityLabel: "Emerging",
-      summary: "96% with growing verified activity",
+      summary: "96/100 with growing finalized activity",
     });
   });
 
@@ -50,10 +51,10 @@ describe("public-trust-score-presentation", () => {
     expect(
       buildPublicTrustPresentationSummary({
         totalScorePct: 94,
-        workflowCompletionNumerator: 6,
-        videoVerificationNumerator: 3,
-        disputeFreeNumerator: 6,
-        disputeFreeDenominator: 6,
+        workflowCompletionNumerator: 20,
+        videoVerificationNumerator: 10,
+        disputeFreeNumerator: 20,
+        disputeFreeDenominator: 20,
       })
     ).toMatchObject({
       maturityState: "established",

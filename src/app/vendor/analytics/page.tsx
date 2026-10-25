@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import {
-  BarChart3,
   CalendarDays,
   HardDrive,
   Medal,
@@ -84,18 +83,11 @@ export default function VendorAnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-8 px-4 py-8 md:px-8">
-        <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
-          <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-            Customer confidence
-          </div>
-          <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-            See which signals help customers trust and choose your business
-          </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-            Loading the trust, review, service video, and business-performance signals that shape how
-            customers experience your public profile.
-          </p>
+      <div className="space-y-6 px-4 py-8 md:px-8">
+        <header className="border-b pb-5">
+          <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+          <div className="mt-3 h-9 w-64 animate-pulse rounded bg-muted" />
+          <div className="mt-3 h-4 w-full max-w-2xl animate-pulse rounded bg-muted" />
         </header>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -168,33 +160,24 @@ export default function VendorAnalyticsPage() {
   ];
 
   return (
-    <div className="space-y-8 px-4 py-8 md:px-8">
-      <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
-        <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-          Customer confidence
+    <div className="space-y-6 px-4 py-8 md:px-8">
+      <header className="flex flex-col gap-5 border-b pb-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Vendor analytics</p>
+          <h1 className="mt-2 text-3xl font-semibold">Analytics &amp; Trust</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Monitor finalized Reliance activity, customer feedback, Service Video approvals, and
+            operational trends for {data.profile.businessName || "your business"}.
+          </p>
         </div>
-        <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl">
-            <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-              Understand what makes customers trust and contact your business
-            </h1>
-            <p className="mt-4 text-sm leading-7 text-white/72 sm:text-base">
-              Review the public trust signals, approved service videos, review strength, and
-              completed-work patterns that shape customer confidence in {data.profile.businessName || "your business"}.
+        <div className="flex max-w-xl gap-3 border-l-2 border-cyan-500/60 pl-4">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-cyan-500" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-medium">Two separate customer signals</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Customer reviews reflect customer opinion. The Reliance Trust Score uses only
+              finalized Reliance workflow, Service Video, and dispute evidence.
             </p>
-          </div>
-          <div className="flex items-center gap-3 rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
-            <div className="rounded-full bg-blue-50/90 p-3 text-blue-700">
-              <BarChart3 className="h-6 w-6" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs uppercase tracking-[0.28em] text-white/46">
-                Important distinction
-              </p>
-              <p className="text-sm font-medium text-white/82">
-                Customer Reviews and Reliance Trust Score help confidence in different ways.
-              </p>
-            </div>
           </div>
         </div>
       </header>
@@ -217,7 +200,7 @@ export default function VendorAnalyticsPage() {
         })}
       </div>
 
-      <VendorTrustScoreCard dashboardData={data} />
+      <VendorTrustScoreCard dashboardData={data} onRefreshDashboard={refetch} />
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
           <Card>

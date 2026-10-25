@@ -9,6 +9,7 @@ import { requireRequestActor } from "@/lib/request-actor";
 
 const hoisted = vi.hoisted(() => {
   const mediaAssetFindMany = vi.fn();
+  const mediaAssetCount = vi.fn();
   const mediaAssetAggregate = vi.fn();
   const mediaAssetFindUnique = vi.fn();
   const mediaAssetUpdate = vi.fn();
@@ -17,6 +18,7 @@ const hoisted = vi.hoisted(() => {
   const prisma = {
     mediaAsset: {
       findMany: mediaAssetFindMany,
+      count: mediaAssetCount,
       aggregate: mediaAssetAggregate,
       findUnique: mediaAssetFindUnique,
       update: mediaAssetUpdate,
@@ -29,6 +31,7 @@ const hoisted = vi.hoisted(() => {
   return {
     prisma,
     mediaAssetFindMany,
+    mediaAssetCount,
     mediaAssetAggregate,
     mediaAssetFindUnique,
     mediaAssetUpdate,
@@ -90,6 +93,8 @@ describe("GET /api/vendors/[vendorId]/media", () => {
       status: "REQUESTED",
     } as any);
     hoisted.mediaAssetFindMany.mockReset();
+    hoisted.mediaAssetCount.mockReset();
+    hoisted.mediaAssetCount.mockResolvedValue(0);
     hoisted.mediaAssetAggregate.mockReset();
     hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
     hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
@@ -190,6 +195,7 @@ describe("GET /api/vendors/[vendorId]/media", () => {
   });
 
   it("identifies only exact assets in the current Service Video package for activity view", async () => {
+    hoisted.mediaAssetCount.mockResolvedValue(2);
     hoisted.mediaAssetFindMany.mockResolvedValue([
       {
         id: "asset-current",

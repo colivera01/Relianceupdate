@@ -64,4 +64,29 @@ describe("deriveVendorAnalyticsMetrics", () => {
 
     expect(metrics.verifiedRatingCoverage).toBe(100);
   });
+
+  it("clamps stale or malformed dashboard values to usable display ranges", () => {
+    const metrics = deriveVendorAnalyticsMetrics(
+      dashboard({
+        stats: {
+          ...dashboard().stats,
+          totalBookings: Number.NaN,
+          rating: 8,
+          ratingCount: 4,
+          completionEligibleBookingCount: 1,
+        },
+        lifecycleCounts: {
+          ...dashboard().lifecycleCounts!,
+          completed: 2,
+        },
+        storagePercentUsed: 142,
+      }),
+    );
+
+    expect(metrics.totalBookings).toBe(0);
+    expect(metrics.rating).toBe(5);
+    expect(metrics.completionRate).toBe(100);
+    expect(metrics.verifiedRatingCoverage).toBe(100);
+    expect(metrics.storagePercent).toBe(100);
+  });
 });

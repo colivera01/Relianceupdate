@@ -370,15 +370,17 @@ export default function VendorDashboard() {
   const approvedServiceOrders = Number(data.approvedServiceOrderCount ?? data.approvedProofs ?? 0);
   const publicServiceOrders = Number(data.publicServiceOrderCount ?? approvedServiceOrders);
   const latestDashboardReviews = recentReviews.slice(0, 3);
-  const trustScoreRaw = Number(
+  const trustScoreSource =
     (dashboardStats as any)?.trustScore ??
       (data as any)?.trustScore ??
       (data as any)?.trustScoreSummary?.totalScorePct ??
       (data?.profile as any)?.trustScore ??
-      (vendorProfile as any)?.trustScore ??
-      0
-  );
-  const trustScoreValue = Number.isFinite(trustScoreRaw) ? Math.round(trustScoreRaw) : 0;
+      (vendorProfile as any)?.trustScore;
+  const trustScoreRaw = Number(trustScoreSource);
+  const trustScoreValue =
+    trustScoreSource !== null && trustScoreSource !== undefined && Number.isFinite(trustScoreRaw)
+      ? Math.round(trustScoreRaw)
+      : null;
   const storageUsedBytes = BigInt(String(data.storageUsedBytes || '0'));
   const storageLimitBytesRaw = BigInt(String(data.storageLimitBytes || '0'));
   const storageLimitBytes = storageLimitBytesRaw > BigInt(0) ? storageLimitBytesRaw : BigInt(1);
@@ -461,8 +463,8 @@ export default function VendorDashboard() {
     },
     {
       label: 'Trust Score',
-      value: trustScoreValue.toString(),
-      detail: 'Reliance trust signal from finalized workflow, video verification, dispute-free completion, and operational reliability. Customer ratings are separate.',
+      value: trustScoreValue === null ? 'Building' : `${trustScoreValue}/100`,
+      detail: 'Reliance score from finalized workflow completion, Service Video verification, and dispute-free completion. Customer ratings remain separate.',
       icon: ShieldCheck,
       color: 'blue' as keyof typeof colorMap,
     },

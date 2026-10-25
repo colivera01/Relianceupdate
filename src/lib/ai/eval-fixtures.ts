@@ -102,7 +102,6 @@ export const vendorCoachingEvalCase: Readonly<{
         workflowCompletion: { pct: number; numerator: number; denominator: number; weightPct: number };
         videoVerification: { pct: number; numerator: number; denominator: number; weightPct: number };
         disputeFree: { pct: number; numerator: number; denominator: number; weightPct: number };
-        operationalReliability: { pct: number; numerator: number; denominator: number; weightPct: number };
       };
     };
     coachingPlan: {
@@ -136,32 +135,26 @@ export const vendorCoachingEvalCase: Readonly<{
       scored: true,
       totalScorePct: 98,
       explanationOverview:
-        "Workflow and dispute-free outcomes are strong while operational reliability is the main watch item.",
+        "Workflow completion and dispute-free outcomes are strong while video verification is the main watch item.",
       coverageSummary:
-        "Coverage comes from 23 finalized workflows across the current Trust Score window.",
+        "Coverage comes from all finalized Reliance activity currently on record.",
       strongestSignals: [
         "Verified workflow completion is perfect.",
         "Dispute-free completion is holding at 100%.",
       ],
-      watchItems: ["Operational reliability is the main drag at 86.96%."],
-      improvementHints: ["Reduce cancellations and late completions."],
+      watchItems: ["Video verification is the lowest active signal at 93.75%."],
+      improvementHints: ["Review the rejected staged-video package before the next audit submission."],
       components: {
-        workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-        videoVerification: { pct: 100, numerator: 24, denominator: 24, weightPct: 25 },
-        disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-        operationalReliability: {
-          pct: 86.96,
-          numerator: 20,
-          denominator: 23,
-          weightPct: 15,
-        },
+        workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
+        videoVerification: { pct: 93.75, numerator: 15, denominator: 16, weightPct: 30 },
+        disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
       },
     },
     coachingPlan: {
       summary:
-        "Operational reliability is the main Trust Score drag at 86.96%. Review canceled, late, or otherwise non-clean completions first.",
+        "Video verification is the lowest active Reliance Trust Score signal at 93.75%.",
       priorityActions: [
-        "Operational reliability is the main Trust Score drag at 86.96%. Review canceled, late, or otherwise non-clean completions first.",
+        "Review the rejected staged-video package before the next audit submission.",
       ],
       strengths: [
         "Workflow completion is perfect right now (23 of 23 finalized).",
@@ -190,7 +183,7 @@ export const vendorCoachingEvalCase: Readonly<{
   expectation: {
     expectedConfidence: "medium",
     requiredSignalGroups: [
-      ["operational reliability", "late completions", "cancellations"],
+      ["video verification", "staged-video", "rejected"],
       ["workflow completion", "dispute-free", "video verification"],
       ["storage", "82%"],
     ],

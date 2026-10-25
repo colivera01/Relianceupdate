@@ -44,8 +44,8 @@ function makeBatchDb(opts: {
   return { db, reviewSpies, created };
 }
 
-describe("LATE_COMPLETION outcome (Phase 1C)", () => {
-  it("counts a late job as completed for workflow but as an operational-reliability failure", () => {
+describe("legacy LATE_COMPLETION outcome", () => {
+  it("does not penalize a job from the obsolete scheduled-start comparison", () => {
     const outcomes: OutcomeRow[] = [
       { bookingId: "b1", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
       { bookingId: "b1", outcomeType: LATE_COMPLETION, finalizedAt: new Date("2026-05-01") },
@@ -55,8 +55,8 @@ describe("LATE_COMPLETION outcome (Phase 1C)", () => {
 
     // Both bookings completed -> workflow completion 100%.
     expect(breakdown.workflowCompletion).toMatchObject({ numerator: 2, denominator: 2, pct: 100 });
-    // b1 is late -> only b2 is operationally clean -> 50%.
-    expect(breakdown.operationalReliability).toMatchObject({ numerator: 1, denominator: 2, pct: 50 });
+    // Version 2 ignores the legacy signal and leaves the compatibility metric unavailable.
+    expect(breakdown.operationalReliability).toMatchObject({ numerator: 0, denominator: 0, pct: null });
     // Late completion is not a dispute -> dispute-free stays 100%.
     expect(breakdown.disputeFree).toMatchObject({ numerator: 2, denominator: 2, pct: 100 });
   });

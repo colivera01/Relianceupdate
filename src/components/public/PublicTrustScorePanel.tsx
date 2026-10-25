@@ -45,16 +45,14 @@ const PUBLIC_TRUST_SCORE_RETRY_ATTEMPTS = 3;
 const PUBLIC_TRUST_SCORE_RETRY_DELAY_MS = 1_200;
 
 const componentLabels: Record<string, string> = {
-  workflowCompletion: "Workflow completion",
-  videoVerification: "Video verification",
+  workflowCompletion: "Verified workflow completion",
+  videoVerification: "Service Video verification",
   disputeFree: "Dispute-free completion",
-  operationalReliability: "Operational reliability",
 };
 
 const evidenceDetails: Record<string, string> = {
   verifiedBookings: "Completed service records verified through Reliance.",
   approvedServiceVideos: "Service Video packages that passed Reliance Audit, whether Private or Public.",
-  publicReviews: "Published customer reviews customers can read right now.",
   validatedDisputes: "Disputes confirmed through Reliance review records.",
 };
 
@@ -122,7 +120,7 @@ export function PublicTrustScorePanel({
               await new Promise((resolve) => setTimeout(resolve, PUBLIC_TRUST_SCORE_RETRY_DELAY_MS));
               continue;
             }
-            throw new Error(String(json?.error || "Trust Score is temporarily unavailable."));
+            throw new Error(String(json?.error || "Reliability score is temporarily unavailable."));
           }
 
           if (!cancelled) {
@@ -132,7 +130,7 @@ export function PublicTrustScorePanel({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Trust Score is temporarily unavailable.");
+          setError(err instanceof Error ? err.message : "Reliability score is temporarily unavailable.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -150,15 +148,17 @@ export function PublicTrustScorePanel({
 
   const componentEntries = useMemo(() => {
     const components = trustScore?.components || {};
-    return Object.entries(components).filter(([, value]) => value && value.pct !== null);
+    return Object.entries(components).filter(
+      ([, value]) => value && value.pct !== null && value.weightPct > 0,
+    );
   }, [trustScore?.components]);
 
   const presentation: PublicTrustPresentationSummary = trustScore?.presentation || {
     maturityState: "not_ready",
     maturityLabel: "Building",
-    title: "Trust Score building",
+    title: "Reliability score building",
     scoreDisplay: null,
-    summary: "More verified completed work is needed before a public Trust Score appears.",
+    summary: "More verified completed work is needed before a public reliability score appears.",
     tone: "muted",
     scoreEmphasis: "subtle",
   };
@@ -167,10 +167,6 @@ export function PublicTrustScorePanel({
     approvedServiceVideos: 0,
     validatedDisputes: 0,
   };
-  const publicReviewCountValue =
-    typeof customerReviewCount === "number" && Number.isFinite(customerReviewCount)
-      ? customerReviewCount
-      : 0;
   const visualTone = toneClasses[presentation.tone];
 
   return (
@@ -185,12 +181,12 @@ export function PublicTrustScorePanel({
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-white/78">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Provider trust
+              Provider reliability
             </div>
             <h3 className="mt-3 font-display text-xl font-semibold">{presentation.title}</h3>
             <p className="mt-2 max-w-lg text-sm leading-6 text-white/74">
               {loading
-                ? "Loading the latest Trust Score context for this provider."
+                ? "Loading the latest verified reliability context for this provider."
                 : presentation.summary}
             </p>
           </div>
@@ -198,7 +194,9 @@ export function PublicTrustScorePanel({
             <div className={cn("inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em]", visualTone.maturityBadge)}>
               {loading ? "Loading" : presentation.maturityLabel}
             </div>
-            <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-white/70">Trust Score</div>
+            <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-white/70">
+              Verified Reliability
+            </div>
             <div
               className={cn(
                 "mt-1 font-semibold",
@@ -236,7 +234,8 @@ export function PublicTrustScorePanel({
               Separate Systems
             </div>
             <p className="mt-2 text-sm leading-6 text-white/82">
-              Customer Rating comes from public reviews. The Reliance Trust Score reflects verified completed work and platform performance.
+              Customer Rating comes from public reviews. The Reliance Trust Score is a verified
+              reliability measure using finalized workflow, Service Video, and dispute records.
             </p>
           </div>
         </div>
@@ -252,13 +251,13 @@ export function PublicTrustScorePanel({
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <div className="flex items-center gap-2 font-semibold">
               <AlertTriangle className="h-4 w-4" />
-              Trust Score temporarily unavailable
+              Reliability score temporarily unavailable
             </div>
             <p className="mt-1 text-amber-800">{error}</p>
           </div>
         ) : !trustScore?.scored ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-            More verified completed work is needed before a public Trust Score appears.
+            More verified completed work is needed before a public reliability score appears.
           </div>
         ) : (
           <>
@@ -266,7 +265,7 @@ export function PublicTrustScorePanel({
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <div className="flex items-center gap-2 font-semibold">
                   <AlertTriangle className="h-4 w-4" />
-                  Showing the latest available Trust Score
+                  Showing the latest available reliability score
                 </div>
                 <p className="mt-1 text-amber-800">
                   Live refresh is temporarily unavailable, so this panel is showing the latest
@@ -276,7 +275,7 @@ export function PublicTrustScorePanel({
             ) : null}
             <div className={cn("rounded-2xl border px-4 py-4", visualTone.evidenceCard)}>
               <div className="text-sm font-semibold text-slate-950">What this score is based on</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 {[
                   {
                     key: 'verifiedBookings',
@@ -287,11 +286,6 @@ export function PublicTrustScorePanel({
                     key: 'approvedServiceVideos',
                     label: 'Reliance-approved Service Video packages',
                     value: evidence.approvedServiceVideos,
-                  },
-                  {
-                    key: 'publicReviews',
-                    label: 'Public reviews',
-                    value: publicReviewCountValue,
                   },
                   {
                     key: 'validatedDisputes',
@@ -309,7 +303,8 @@ export function PublicTrustScorePanel({
                 ))}
               </div>
               <p className="mt-3 text-xs leading-5 text-slate-600">
-                Public reviews help customers compare feedback, but they do not change the Reliance Trust Score.
+                Customer ratings and public reviews appear separately because they do not change
+                this verified reliability calculation.
               </p>
             </div>
 
@@ -327,7 +322,7 @@ export function PublicTrustScorePanel({
                         </div>
                       </div>
                       <div className="text-lg font-semibold text-slate-950">
-                        {component.pct ?? "Pending"}%
+                        {component.pct === null ? "Pending" : `${component.pct}%`}
                       </div>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">

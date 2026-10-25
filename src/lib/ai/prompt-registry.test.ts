@@ -36,7 +36,7 @@ describe("AI prompt registry", () => {
   it("keeps current prompt versions stable in one central file", () => {
     expect(MEDIA_MODERATION_ASSISTANT_PROMPT_VERSION).toBe("media-package-metadata-v1");
     expect(DISPUTE_SUMMARY_ASSISTANT_PROMPT_VERSION).toBe("content-report-case-v1");
-    expect(VENDOR_COACHING_SUMMARY_PROMPT_VERSION).toBe("vendor-coaching-summary-v1");
+    expect(VENDOR_COACHING_SUMMARY_PROMPT_VERSION).toBe("vendor-coaching-summary-v2");
     expect(VENDOR_APPROVAL_ASSISTANT_PROMPT_VERSION).toBe("vendor-approval-review-v1");
     expect(REVIEW_MODERATION_ASSISTANT_PROMPT_VERSION).toBe("review-moderation-v1");
     expect(PUBLISH_READINESS_ASSISTANT_PROMPT_VERSION).toBe("publish-readiness-v1");

@@ -67,17 +67,17 @@ export function buildVendorCoachingSummaryAssistantInput(
 
   return [
     "Reliance vendor coaching summary request.",
-    "Important scope: you are summarizing deterministic Reliance Trust Score explanations, deterministic vendor coaching output, and current dashboard metrics only.",
-    "Do not claim you watched videos, interviewed customers, inspected hidden moderation evidence, or changed the Trust Score.",
-    "Do not invent new metrics or promise ranking, promotion, or Trust Score gains.",
+    "Important scope: you are summarizing deterministic Reliance Trust Score verified-reliability explanations, deterministic vendor coaching output, and current dashboard metrics only.",
+    "Do not claim you watched videos, interviewed customers, inspected hidden moderation evidence, or changed the reliability score.",
+    "Do not invent new metrics or promise ranking, promotion, or reliability score gains.",
     "Use concise, supportive, action-oriented language for the vendor.",
     "",
     `Vendor name: ${context.vendorName}`,
-    `Trust Score scored: ${context.trustScore.scored ? "Yes" : "No"}`,
-    `Trust Score total: ${
-      context.trustScore.totalScorePct === null ? "Not yet measurable" : `${context.trustScore.totalScorePct}%`
+    `Reliability score available: ${context.trustScore.scored ? "Yes" : "No"}`,
+    `Reliability score total: ${
+      context.trustScore.totalScorePct === null ? "Not yet measurable" : `${context.trustScore.totalScorePct}/100`
     }`,
-    `Trust Score overview: ${context.trustScore.explanationOverview}`,
+    `Reliability score overview: ${context.trustScore.explanationOverview}`,
     `Coverage summary: ${context.trustScore.coverageSummary}`,
     `Strongest signals: ${
       context.trustScore.strongestSignals.length
@@ -95,13 +95,12 @@ export function buildVendorCoachingSummaryAssistantInput(
         : "None provided"
     }`,
     "",
-    "Trust Score component metrics:",
+    "Reliability score component metrics:",
     components
       ? [
           `Workflow completion: ${components.workflowCompletion.pct ?? "N/A"}% (${components.workflowCompletion.numerator}/${components.workflowCompletion.denominator})`,
           `Video verification: ${components.videoVerification.pct ?? "N/A"}% (${components.videoVerification.numerator}/${components.videoVerification.denominator})`,
           `Dispute-free completion: ${components.disputeFree.pct ?? "N/A"}% (${components.disputeFree.numerator}/${components.disputeFree.denominator})`,
-          `Operational reliability: ${components.operationalReliability.pct ?? "N/A"}% (${components.operationalReliability.numerator}/${components.operationalReliability.denominator})`,
         ].join("\n")
       : "Component metrics unavailable.",
     "",
@@ -142,11 +141,11 @@ export function buildVendorCoachingSummaryAssistantInput(
 export const VENDOR_COACHING_SUMMARY_INSTRUCTIONS = `
 You are the Reliance AI Vendor Coaching Summary Assistant.
 
-Your job is to turn existing deterministic Reliance Trust Score explanations, deterministic vendor coaching output, and current dashboard metrics into a short vendor-facing coaching brief.
+Your job is to turn existing deterministic Reliance Trust Score verified-reliability explanations, deterministic vendor coaching output, and current dashboard metrics into a short vendor-facing coaching brief.
 
 Constraints:
 - You are recommendation-only.
-- You do not change Trust Score math or outcomes.
+- You do not change reliability score math or outcomes.
 - You do not have hidden evidence, customer interviews, or raw video review.
 - You must stay grounded in the supplied metrics and guidance only.
 - Use calm, practical language that helps the vendor know what to focus on next.

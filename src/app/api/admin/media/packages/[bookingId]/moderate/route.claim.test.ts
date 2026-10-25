@@ -9,6 +9,7 @@ const hoisted = vi.hoisted(() => ({
   sendReady: vi.fn(),
   sendRejected: vi.fn(),
   sendVendor: vi.fn(),
+  syncTrustScore: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -25,11 +26,9 @@ vi.mock("@/lib/service-video-admin-audit-notifications", () => ({
   sendCoreAdminAuditVendorResultNotification: hoisted.sendVendor,
 }));
 vi.mock("@/lib/media-lifecycle", () => ({ ensureRetentionSchedulesForBooking: vi.fn() }));
-vi.mock("@/lib/trust-score-outcome-foundation", () => ({
-  TRUST_OUTCOME_TYPES: { VIDEO_PACKAGE_APPROVED: "approved", VIDEO_PACKAGE_REJECTED: "rejected" },
-  tryRecordFinalizedOperationalOutcome: vi.fn(),
+vi.mock("@/lib/trust-score-reconciliation", () => ({
+  tryReconcileCoreAuditDecisionAndScore: hoisted.syncTrustScore,
 }));
-vi.mock("@/lib/trust-score-calculator", () => ({ tryRecalculateVendorTrustScore: vi.fn() }));
 
 function booking() {
   return {
@@ -54,6 +53,7 @@ describe("core Admin Service Video audit route", () => {
     hoisted.sendReady.mockResolvedValue({ status: "SENT" });
     hoisted.sendRejected.mockResolvedValue({ status: "SENT" });
     hoisted.sendVendor.mockResolvedValue({ status: "SENT" });
+    hoisted.syncTrustScore.mockResolvedValue({ ok: true });
   });
 
   it("records PASS and sends the customer notice only after durable proof release", async () => {
@@ -83,6 +83,16 @@ describe("core Admin Service Video audit route", () => {
       notificationId: "vendor-notification-1",
     }));
     expect(hoisted.sendRejected).not.toHaveBeenCalled();
+    expect(hoisted.syncTrustScore).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: "audit-1",
+        bookingId: "b1",
+        vendorId: "v1",
+        packageId: "package-1",
+        decision: "PASS",
+      }),
+    );
   });
 
   it("sends Private Proof to the corrected current recipient, not historical claim metadata", async () => {
@@ -191,6 +201,10 @@ describe("core Admin Service Video audit route", () => {
       reason: "Video cannot be verified",
     }));
     expect(hoisted.sendReady).not.toHaveBeenCalled();
+    expect(hoisted.syncTrustScore).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "audit-2", decision: "REJECT" }),
+    );
   });
 
   it("fails closed before a non-Admin actor can decide a package", async () => {

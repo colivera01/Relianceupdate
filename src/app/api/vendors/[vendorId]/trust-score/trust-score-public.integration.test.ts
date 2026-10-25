@@ -50,22 +50,22 @@ describe("GET /api/vendors/[vendorId]/trust-score (public-safe)", () => {
     hoisted.snapshotFindFirst.mockResolvedValue({
       id: "snap-1",
       vendorId: "v1",
-      scoreVersion: 1,
-      totalScorePct: 91,
+      scoreVersion: 2,
+      totalScorePct: 95,
       workflowCompletionPct: 100,
       videoVerificationPct: 90,
       disputeFreePct: 95,
-      operationalReliabilityPct: 80,
+      operationalReliabilityPct: null,
       workflowCompletionNumerator: 5,
       workflowCompletionDenominator: 5,
       videoVerificationNumerator: 9,
       videoVerificationDenominator: 10,
       disputeFreeNumerator: 19,
       disputeFreeDenominator: 20,
-      operationalReliabilityNumerator: 4,
-      operationalReliabilityDenominator: 5,
+      operationalReliabilityNumerator: 0,
+      operationalReliabilityDenominator: 0,
       computedAt: new Date("2026-05-28T10:00:00.000Z"),
-      inputHash: "v1_secret",
+      inputHash: "v2_secret",
       recalcReason: "job_approved",
       recalcSource: "job_approve",
       detailJson: JSON.stringify({ internal: true }),
@@ -79,11 +79,11 @@ describe("GET /api/vendors/[vendorId]/trust-score (public-safe)", () => {
 
     expect(res.status).toBe(200);
     expect(body.trustScore.scored).toBe(true);
-    expect(body.trustScore.totalScorePct).toBe(91);
+    expect(body.trustScore.totalScorePct).toBe(95);
     expect(body.trustScore.components.videoVerification).toMatchObject({ pct: 90, numerator: 9, denominator: 10 });
 
     // Internal-only fields must not leak to the public payload.
-    expect(raw).not.toContain("v1_secret");
+    expect(raw).not.toContain("v2_secret");
     expect(raw).not.toContain("recalcReason");
     expect(raw).not.toContain("detailJson");
     expect(raw).not.toContain("visibilityStatus");

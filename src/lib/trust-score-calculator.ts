@@ -6,28 +6,31 @@
  * It NEVER reads from or writes to `Review`: Customer Rating and Reliance Trust Score
  * remain fully separate. Pending / unreviewed items never reduce the score.
  *
- * The four weighted metrics (per RELIANCE_TRUST_SCORE_HANDOFF.md):
- *   - Verified Workflow Completion Rate   30%
- *   - Video Verification Success Rate      25%
- *   - Dispute-Free Completion Rate         30%
- *   - Operational Reliability Rate         15%
+ * Version 2 uses three independent weighted metrics:
+ *   - Verified Workflow Completion Rate   35%
+ *   - Video Verification Success Rate      30%
+ *   - Dispute-Free Completion Rate         35%
  *
- * Empty-denominator behavior (documented): a metric with no finalized denominator is
- * "not yet measurable" -> its pct is `null` and it is EXCLUDED from the weighted total,
- * with the remaining weights renormalized. If no metric is measurable, `totalScorePct`
- * is `null` (a snapshot is still written so the system stays idempotent).
+ * Operational reliability is retained in the snapshot schema for Version 1 compatibility,
+ * but it is not scored in Version 2. Version 1 duplicated the same cancellation, package
+ * rejection, and validated-issue penalties already represented by the three metrics above.
+ * Its legacy LATE_COMPLETION signal also compared completion with a scheduled start time,
+ * which is not a defensible completion deadline.
+ *
+ * A score is available only when every active component has a finalized denominator. We do
+ * not silently renormalize partial evidence into an authoritative-looking total.
  */
 
 import { countableVendorWhere } from "@/lib/metrics-exclusion";
 import { TRUST_OUTCOME_TYPES, isServiceIssueScoreAffecting } from "@/lib/trust-score-outcome-foundation";
 
-export const TRUST_SCORE_VERSION = 1;
+export const TRUST_SCORE_VERSION = 2;
 
 export const TRUST_SCORE_WEIGHTS = {
-  workflowCompletion: 0.3,
-  videoVerification: 0.25,
-  disputeFree: 0.3,
-  operationalReliability: 0.15,
+  workflowCompletion: 0.35,
+  videoVerification: 0.3,
+  disputeFree: 0.35,
+  operationalReliability: 0,
 } as const;
 
 export interface OutcomeRow {
@@ -76,7 +79,7 @@ function toTime(value: Date | string | null | undefined): number {
 interface PerBookingState {
   completed: boolean;
   canceled: boolean;
-  lateCompletion: boolean;
+  terminalLatestAt: number;
   packageLatestType: string | null;
   packageLatestAt: number;
   hasScoreAffectingIssue: boolean;
@@ -99,7 +102,7 @@ export function aggregateBookingStates(
       state = {
         completed: false,
         canceled: false,
-        lateCompletion: false,
+        terminalLatestAt: -1,
         packageLatestType: null,
         packageLatestAt: -1,
         hasScoreAffectingIssue: false,
@@ -114,14 +117,16 @@ export function aggregateBookingStates(
     if (!bookingId) continue;
     const type = String(row.outcomeType || "").trim().toUpperCase();
     const state = ensure(bookingId);
-    if (type === TRUST_OUTCOME_TYPES.WORKFLOW_COMPLETED) {
-      state.completed = true;
-    } else if (type === TRUST_OUTCOME_TYPES.LATE_COMPLETION) {
-      // Late completion is an operational-reliability ding only; the workflow still
-      // counts as completed (so it does not reduce Verified Workflow Completion).
-      state.lateCompletion = true;
-    } else if (type === TRUST_OUTCOME_TYPES.BOOKING_CANCELED) {
-      state.canceled = true;
+    if (
+      type === TRUST_OUTCOME_TYPES.WORKFLOW_COMPLETED ||
+      type === TRUST_OUTCOME_TYPES.BOOKING_CANCELED
+    ) {
+      const at = toTime(row.finalizedAt);
+      if (at >= state.terminalLatestAt) {
+        state.terminalLatestAt = at;
+        state.completed = type === TRUST_OUTCOME_TYPES.WORKFLOW_COMPLETED;
+        state.canceled = type === TRUST_OUTCOME_TYPES.BOOKING_CANCELED;
+      }
     } else if (
       type === TRUST_OUTCOME_TYPES.VIDEO_PACKAGE_APPROVED ||
       type === TRUST_OUTCOME_TYPES.VIDEO_PACKAGE_REJECTED
@@ -160,7 +165,6 @@ export function computeTrustScoreBreakdown(
   let packageDenominator = 0;
   let packageApproved = 0;
   let disputeFreeNumerator = 0;
-  let operationalCleanCount = 0;
 
   for (const s of states) {
     const terminal = s.completed || s.canceled;
@@ -176,35 +180,30 @@ export function computeTrustScoreBreakdown(
 
     if (s.completed && !s.hasScoreAffectingIssue) disputeFreeNumerator += 1;
 
-    if (terminal) {
-      const operationalFailure =
-        s.canceled ||
-        s.lateCompletion ||
-        s.packageLatestType === TRUST_OUTCOME_TYPES.VIDEO_PACKAGE_REJECTED ||
-        s.hasScoreAffectingIssue;
-      if (!operationalFailure) operationalCleanCount += 1;
-    }
   }
 
   const workflowCompletion = rate(completedCount, terminalCount);
   const videoVerification = rate(packageApproved, packageDenominator);
   const disputeFree = rate(disputeFreeNumerator, completedCount);
-  const operationalReliability = rate(operationalCleanCount, terminalCount);
+  // Kept as an explicit unavailable metric for stored-schema and API compatibility.
+  // A future version may reintroduce it after Reliance defines an independent, validated
+  // operational signal such as a genuine service deadline or confirmed no-show outcome.
+  const operationalReliability = rate(0, 0);
 
-  const weighted: Array<{ weight: number; pct: number }> = [];
-  if (workflowCompletion.pct !== null)
-    weighted.push({ weight: TRUST_SCORE_WEIGHTS.workflowCompletion, pct: workflowCompletion.pct });
-  if (videoVerification.pct !== null)
-    weighted.push({ weight: TRUST_SCORE_WEIGHTS.videoVerification, pct: videoVerification.pct });
-  if (disputeFree.pct !== null)
-    weighted.push({ weight: TRUST_SCORE_WEIGHTS.disputeFree, pct: disputeFree.pct });
-  if (operationalReliability.pct !== null)
-    weighted.push({ weight: TRUST_SCORE_WEIGHTS.operationalReliability, pct: operationalReliability.pct });
+  const activeComponents = [
+    { weight: TRUST_SCORE_WEIGHTS.workflowCompletion, pct: workflowCompletion.pct },
+    { weight: TRUST_SCORE_WEIGHTS.videoVerification, pct: videoVerification.pct },
+    { weight: TRUST_SCORE_WEIGHTS.disputeFree, pct: disputeFree.pct },
+  ];
+  const hasCompleteCoverage = activeComponents.every(({ pct }) => pct !== null);
 
   let totalScorePct: number | null = null;
-  if (weighted.length > 0) {
-    const weightSum = weighted.reduce((acc, w) => acc + w.weight, 0);
-    const score = weighted.reduce((acc, w) => acc + w.weight * w.pct, 0) / weightSum;
+  if (hasCompleteCoverage) {
+    const weightSum = activeComponents.reduce((acc, component) => acc + component.weight, 0);
+    const score = activeComponents.reduce(
+      (acc, component) => acc + component.weight * (component.pct as number),
+      0,
+    ) / weightSum;
     totalScorePct = Math.round(score);
   }
 
@@ -214,7 +213,7 @@ export function computeTrustScoreBreakdown(
     disputeFree,
     operationalReliability,
     totalScorePct,
-    measurable: weighted.length > 0,
+    measurable: hasCompleteCoverage,
   };
 }
 

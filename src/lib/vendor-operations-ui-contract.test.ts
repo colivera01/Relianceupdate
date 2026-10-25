@@ -86,6 +86,7 @@ describe("Vendor operations UI contract", () => {
     expect(page).not.toContain("See whether employee devices are connected");
     expect(route).toContain("parsePackageStageAssets");
     expect(route).toContain("isCurrentPackageAsset: Boolean(currentPackage)");
-    expect(route).toContain("bookingId: { in: bookingIds }, isCurrent: true");
+    expect(route).toContain("where: { vendorId, isCurrent: true }");
+    expect(route).toContain("missingCurrentAssetIds");
   });
 });

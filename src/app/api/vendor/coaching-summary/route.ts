@@ -3,6 +3,7 @@ import { getUserIdFromRequest, getVendorIdFromRequest } from "@/lib/auth";
 import { AiFeatureDisabledError } from "@/lib/ai/errors";
 import { isAiFeatureEnabled } from "@/lib/ai/feature-flags";
 import { buildAiFailureResponse } from "@/lib/ai/http";
+import { VENDOR_COACHING_SUMMARY_PROMPT_VERSION } from "@/lib/ai/prompt-registry";
 import {
   getVendorCoachingSummarySuggestion,
   vendorCoachingAssistantRequestSchema,
@@ -46,8 +47,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error: "Trust Score is not yet ready for AI coaching summary",
-          message: "Trust Score is not yet ready for AI coaching summary",
+          error: "Reliability score is not yet ready for AI coaching summary",
+          message: "Reliability score is not yet ready for AI coaching summary",
         },
         { status: 422 }
       );
@@ -61,7 +62,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       model: ai.model,
       requestId: ai.requestId,
       responseId: ai.responseId,
-      promptVersion: "vendor-coaching-summary-v1",
+      promptVersion: VENDOR_COACHING_SUMMARY_PROMPT_VERSION,
       usage: ai.usage,
       suggestion: ai.data,
     });

@@ -2,7 +2,7 @@ import type { AiFeatureKey } from "./config";
 
 export const MEDIA_MODERATION_ASSISTANT_PROMPT_VERSION = "media-package-metadata-v1";
 export const DISPUTE_SUMMARY_ASSISTANT_PROMPT_VERSION = "content-report-case-v1";
-export const VENDOR_COACHING_SUMMARY_PROMPT_VERSION = "vendor-coaching-summary-v1";
+export const VENDOR_COACHING_SUMMARY_PROMPT_VERSION = "vendor-coaching-summary-v2";
 export const VENDOR_APPROVAL_ASSISTANT_PROMPT_VERSION = "vendor-approval-review-v1";
 export const REVIEW_MODERATION_ASSISTANT_PROMPT_VERSION = "review-moderation-v1";
 export const PUBLISH_READINESS_ASSISTANT_PROMPT_VERSION = "publish-readiness-v1";

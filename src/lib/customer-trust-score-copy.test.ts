@@ -17,7 +17,7 @@ describe("customer-trust-score-copy", () => {
       })
     ).toEqual({
       label: "Reliance Trust Score",
-      headline: "98%",
+      headline: "98/100",
       detail: "12 verified bookings on record",
       tone: "strong",
       emphasis: "strong",
@@ -37,8 +37,8 @@ describe("customer-trust-score-copy", () => {
         },
       })
     ).toEqual({
-      label: "Early-stage Trust Score",
-      headline: "100%",
+      label: "Early-stage reliability",
+      headline: "100/100",
       detail: "1 verified booking so far",
       tone: "calm",
       emphasis: "subtle",
@@ -53,7 +53,7 @@ describe("customer-trust-score-copy", () => {
         trustScore: { scored: false, totalScorePct: null },
       })
     ).toEqual({
-      label: "Early trust signal",
+      label: "Early reliability signal",
       headline: "Service video on file",
       detail: "Approved public service video available",
       tone: "calm",
@@ -85,11 +85,20 @@ describe("customer-trust-score-copy", () => {
         trustScore: { scored: false, totalScorePct: null },
       })
     ).toEqual({
-      label: "Trust Score building",
-      headline: "Trust signals building",
-      detail: "More verified completed work will add public trust context",
+      label: "Reliability score building",
+      headline: "Verified history is building",
+      detail: "More finalized Reliance work will add public reliability context",
       tone: "muted",
       emphasis: "subtle",
     });
+  });
+
+  it("defaults an unclassified scored vendor to early-stage wording", () => {
+    const copy = getCustomerTrustScoreCopy({
+      hasPublicMedia: false,
+      reviewCount: 0,
+      trustScore: { scored: true, totalScorePct: 95, evidence: { verifiedBookings: 1, approvedServiceVideos: 1, validatedDisputes: 0 } },
+    });
+    expect(copy).toMatchObject({ label: "Early-stage reliability", headline: "95/100", emphasis: "subtle" });
   });
 });

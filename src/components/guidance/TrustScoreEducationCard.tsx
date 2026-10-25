@@ -33,7 +33,8 @@ const reviewBullets = [
 
 const trustBullets = [
   "Based on verified completed work and finalized platform outcomes.",
-  "Uses service-video and operational signals, not review sentiment.",
+  "Uses workflow completion, Service Video verification, and dispute-free completion.",
+  "Shows a total only after all three components have finalized evidence.",
   "Can appear as early-stage, emerging, or established depending on verified activity depth.",
   "Stays separate from Customer Rating by design.",
 ];
@@ -51,10 +52,11 @@ export function TrustScoreEducationCard({
         <div className="space-y-2">
           <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] ${styles.badge}`}>
             <Info className="h-3.5 w-3.5" />
-            What is Reliance Trust Score?
+            What is the Reliance Trust Score?
           </div>
           <p className={`text-sm leading-6 ${styles.summary}`}>
-            Customer Rating shows what people said. The Reliance Trust Score shows what Reliance has verified about completed work.
+            Customer Rating shows what people said. The Reliance Trust Score is a verified
+            reliability measure based on finalized Reliance activity.
           </p>
           <p className={`text-xs leading-5 ${styles.helper}`}>
             New providers can show an early-stage Trust Score before public reviews are available.
@@ -84,7 +86,7 @@ export function TrustScoreEducationCard({
             </ul>
           </div>
           <div className="rounded-2xl border border-inherit bg-white/5 p-4">
-            <p className="text-sm font-semibold">Reliance Trust Score</p>
+            <p className="text-sm font-semibold">Reliance Trust Score: verified reliability</p>
             <ul className="mt-2 space-y-1.5 text-sm leading-6">
               {trustBullets.map((item) => (
                 <li key={item} className="flex items-start gap-2">

@@ -153,16 +153,16 @@ describe("text collectors", () => {
 
   it("collects vendor coaching summary text into a searchable body", () => {
     const text = collectVendorCoachingSummaryText({
-      summary: "Operational reliability should be the next focus.",
+      summary: "Video verification should be the next focus.",
       confidence: "medium",
-      priorityHeadline: "Reduce cancellations first.",
-      recommendedFocus: ["Review late completions."],
+      priorityHeadline: "Improve staged-video quality first.",
+      recommendedFocus: ["Review rejected video packages."],
       positiveSignals: ["Workflow completion is perfect."],
       watchouts: ["Storage is 82% full."],
       nextCheckIn: "Recheck after the next 5 finalized bookings.",
     });
 
-    expect(text).toContain("Operational reliability");
+    expect(text).toContain("Video verification");
     expect(text).toContain("Storage is 82% full.");
   });
 });
@@ -172,11 +172,11 @@ describe("evaluateVendorCoachingSummaryExpectation", () => {
     const result = evaluateVendorCoachingSummaryExpectation(
       {
         summary:
-          "Metro is strong overall, but operational reliability should be the next coaching focus while workflow completion and dispute-free outcomes stay protected.",
+          "Metro is strong overall, but video verification should be the next coaching focus while workflow completion and dispute-free outcomes stay protected.",
         confidence: "medium",
         priorityHeadline:
-          "Reduce cancellations and late completions to improve operational reliability.",
-        recommendedFocus: ["Review cancellations and late completions first."],
+          "Improve staged-video quality to strengthen video verification.",
+        recommendedFocus: ["Review rejected video packages first."],
         positiveSignals: [
           "Workflow completion is perfect.",
           "Dispute-free completion is at 100%.",
@@ -188,7 +188,7 @@ describe("evaluateVendorCoachingSummaryExpectation", () => {
       {
         expectedConfidence: "medium",
         requiredSignalGroups: [
-          ["operational reliability", "late completions", "cancellations"],
+          ["video verification", "staged-video", "rejected video packages"],
           ["workflow completion", "dispute-free", "video verification"],
           ["storage", "82%"],
         ],

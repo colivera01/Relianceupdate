@@ -15,18 +15,18 @@ describe("vendor coaching summary assistant", () => {
         explanationOverview: "Workflow and dispute-free outcomes are strong.",
         coverageSummary: "Coverage comes from 23 finalized workflows.",
         strongestSignals: ["Verified workflow completion is perfect."],
-        watchItems: ["Operational reliability is the main drag."],
-        improvementHints: ["Reduce cancellations and late completions."],
+        watchItems: ["Video verification is the main opportunity."],
+        improvementHints: ["Improve staged-video capture quality."],
         components: {
-          workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-          videoVerification: { pct: 100, numerator: 24, denominator: 24, weightPct: 25 },
-          disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 30 },
-          operationalReliability: { pct: 86.96, numerator: 20, denominator: 23, weightPct: 15 },
+          workflowCompletion: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
+          videoVerification: { pct: 86.96, numerator: 20, denominator: 23, weightPct: 30 },
+          disputeFree: { pct: 100, numerator: 23, denominator: 23, weightPct: 35 },
+          operationalReliability: { pct: null, numerator: 0, denominator: 0, weightPct: 0 },
         },
       },
       coachingPlan: {
-        summary: "Operational reliability is the main Trust Score drag.",
-        priorityActions: ["Review canceled or late completions first."],
+        summary: "Video verification is the clearest reliability opportunity.",
+        priorityActions: ["Improve staged-video capture quality."],
         strengths: ["Workflow completion is perfect right now."],
         operationalNotes: ["Storage is 82% full."],
       },
@@ -47,12 +47,13 @@ describe("vendor coaching summary assistant", () => {
       },
     });
 
-    expect(VENDOR_COACHING_SUMMARY_PROMPT_VERSION).toBe("vendor-coaching-summary-v1");
-    expect(input).toContain("deterministic Reliance Trust Score explanations");
+    expect(VENDOR_COACHING_SUMMARY_PROMPT_VERSION).toBe("vendor-coaching-summary-v2");
+    expect(input).toContain("deterministic Reliance Trust Score verified-reliability explanations");
     expect(input).toContain("Do not invent new metrics");
     expect(input).toContain("Vendor name: Metro Home Care Pros");
-    expect(input).toContain("Trust Score total: 98%");
-    expect(input).toContain("Operational reliability: 86.96%");
+    expect(input).toContain("Reliability score total: 98/100");
+    expect(input).toContain("Video verification: 86.96%");
+    expect(input).not.toContain("Operational reliability:");
     expect(input).toContain("Storage percent used: 82%");
   });
 

@@ -11,8 +11,13 @@ import {
   type OutcomeRow,
 } from "./trust-score-calculator";
 
-const { WORKFLOW_COMPLETED, BOOKING_CANCELED, VIDEO_PACKAGE_APPROVED, VIDEO_PACKAGE_REJECTED } =
-  TRUST_OUTCOME_TYPES;
+const {
+  WORKFLOW_COMPLETED,
+  BOOKING_CANCELED,
+  VIDEO_PACKAGE_APPROVED,
+  VIDEO_PACKAGE_REJECTED,
+  LATE_COMPLETION,
+} = TRUST_OUTCOME_TYPES;
 
 function makeDb(opts: {
   outcomes?: OutcomeRow[];
@@ -58,7 +63,7 @@ function expectReviewUntouched(reviewSpies: Record<string, ReturnType<typeof vi.
   }
 }
 
-/** Mixed dataset exercising all four metrics. */
+/** Mixed dataset exercising all three active metrics. */
 const MIXED_OUTCOMES: OutcomeRow[] = [
   { bookingId: "b1", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
   { bookingId: "b1", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-02") },
@@ -69,7 +74,7 @@ const MIXED_OUTCOMES: OutcomeRow[] = [
 ];
 const MIXED_ISSUES: IssueRow[] = [{ bookingId: "b3", status: "VALIDATED" }];
 
-describe("computeTrustScoreBreakdown — four weighted metrics", () => {
+describe("computeTrustScoreBreakdown — Version 2 independent metrics", () => {
   it("computes each metric and the weighted total from finalized data", () => {
     const b = computeTrustScoreBreakdown(MIXED_OUTCOMES, MIXED_ISSUES);
     // Workflow completion: 3 completed / 4 terminal
@@ -78,10 +83,10 @@ describe("computeTrustScoreBreakdown — four weighted metrics", () => {
     expect(b.videoVerification).toMatchObject({ numerator: 1, denominator: 2, pct: 50 });
     // Dispute-free: 2 clean / 3 completed (b3 has a validated dispute)
     expect(b.disputeFree).toMatchObject({ numerator: 2, denominator: 3, pct: 66.67 });
-    // Operational reliability: 1 clean / 4 terminal (b2 rejected, b3 disputed, b4 canceled fail)
-    expect(b.operationalReliability).toMatchObject({ numerator: 1, denominator: 4, pct: 25 });
-    // Weighted: .3*75 + .25*50 + .3*66.67 + .15*25 = 58.751 -> 59
-    expect(b.totalScorePct).toBe(59);
+    // Version 1 operational reliability duplicated these three signals and is retired.
+    expect(b.operationalReliability).toMatchObject({ numerator: 0, denominator: 0, pct: null });
+    // Weighted: .35*75 + .30*50 + .35*66.67 = 64.5845 -> 65
+    expect(b.totalScorePct).toBe(65);
     expect(b.measurable).toBe(true);
   });
 
@@ -92,12 +97,14 @@ describe("computeTrustScoreBreakdown — four weighted metrics", () => {
     ];
     const b = computeTrustScoreBreakdown(outcomes, []);
     expect(b.videoVerification).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
-    expect(b.totalScorePct).toBe(100);
+    expect(b.totalScorePct).toBeNull();
+    expect(b.measurable).toBe(false);
   });
 
   it("does NOT let pending / non-finalized issues reduce the score", () => {
     const outcomes: OutcomeRow[] = [
       { bookingId: "b1", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
+      { bookingId: "b1", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-02") },
     ];
     const issues: IssueRow[] = [
       { bookingId: "b1", status: "PENDING" },
@@ -105,11 +112,11 @@ describe("computeTrustScoreBreakdown — four weighted metrics", () => {
     ];
     const b = computeTrustScoreBreakdown(outcomes, issues);
     expect(b.disputeFree).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
-    expect(b.operationalReliability.pct).toBe(100);
+    expect(b.operationalReliability.pct).toBeNull();
     expect(b.totalScorePct).toBe(100);
   });
 
-  it("renormalizes weights when only some metrics are measurable", () => {
+  it("does not present a total when only some metrics are measurable", () => {
     const outcomes: OutcomeRow[] = [
       { bookingId: "b1", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-01") },
       { bookingId: "b2", outcomeType: VIDEO_PACKAGE_REJECTED, finalizedAt: new Date("2026-05-01") },
@@ -119,9 +126,8 @@ describe("computeTrustScoreBreakdown — four weighted metrics", () => {
     expect(b.disputeFree.pct).toBeNull();
     expect(b.operationalReliability.pct).toBeNull();
     expect(b.videoVerification.pct).toBe(50);
-    // Only one measurable metric -> total equals that metric.
-    expect(b.totalScorePct).toBe(50);
-    expect(b.measurable).toBe(true);
+    expect(b.totalScorePct).toBeNull();
+    expect(b.measurable).toBe(false);
   });
 
   it("returns null total when there is no finalized denominator at all", () => {
@@ -141,6 +147,28 @@ describe("computeTrustScoreBreakdown — four weighted metrics", () => {
     ];
     const b = computeTrustScoreBreakdown(outcomes, []);
     expect(b.workflowCompletion).toMatchObject({ numerator: 1, denominator: 1 });
+  });
+
+  it("uses the latest finalized terminal outcome for a booking", () => {
+    const outcomes: OutcomeRow[] = [
+      { bookingId: "b1", outcomeType: BOOKING_CANCELED, finalizedAt: new Date("2026-05-01") },
+      { bookingId: "b1", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-03") },
+      { bookingId: "b1", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-04") },
+    ];
+    const b = computeTrustScoreBreakdown(outcomes, []);
+    expect(b.workflowCompletion).toMatchObject({ numerator: 1, denominator: 1, pct: 100 });
+    expect(b.totalScorePct).toBe(100);
+  });
+
+  it("ignores the legacy late-completion signal", () => {
+    const outcomes: OutcomeRow[] = [
+      { bookingId: "b1", outcomeType: WORKFLOW_COMPLETED, finalizedAt: new Date("2026-05-01") },
+      { bookingId: "b1", outcomeType: VIDEO_PACKAGE_APPROVED, finalizedAt: new Date("2026-05-02") },
+      { bookingId: "b1", outcomeType: LATE_COMPLETION, finalizedAt: new Date("2026-05-03") },
+    ];
+    const b = computeTrustScoreBreakdown(outcomes, []);
+    expect(b.totalScorePct).toBe(100);
+    expect(b.operationalReliability.pct).toBeNull();
   });
 
   it("weights sum to 1.0", () => {
@@ -177,11 +205,12 @@ describe("recalculateVendorTrustScore — snapshot supersede semantics", () => {
     const data = db.vendorTrustScoreSnapshot.create.mock.calls[0][0].data;
     expect(data).toMatchObject({
       vendorId: "v1",
-      totalScorePct: 59,
+      scoreVersion: 2,
+      totalScorePct: 65,
       workflowCompletionPct: 75,
       videoVerificationPct: 50,
       disputeFreePct: 66.67,
-      operationalReliabilityPct: 25,
+      operationalReliabilityPct: null,
       isCurrent: true,
       visibilityStatus: "internal",
       recalcReason: "job_approved",
