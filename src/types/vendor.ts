@@ -46,6 +46,7 @@ export interface VendorReview {
   rating: number;
   comment: string;
   date: string;
+  createdAt?: string;
   jobType: string;
 }
 

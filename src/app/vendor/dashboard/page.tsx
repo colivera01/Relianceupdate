@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, MessageSquare, ShieldCheck, Bell } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, MessageSquare, ShieldCheck, Bell, RefreshCw } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -15,6 +16,13 @@ import { tutorialGuides } from '@/lib/user-guidance';
 import VendorBusinessVisibilitySection from '@/components/vendor/VendorBusinessVisibilitySection';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 import { navigateAfterNotificationRead } from '@/lib/vendor-notification-navigation';
+import {
+  deriveVendorAnalyticsMetrics,
+  formatStoragePercent,
+  formatStorageSize,
+  selectMostRecentPublicReview,
+  selectTopRatedTeamMember,
+} from '@/lib/vendor-analytics';
 
 type PromotionPackageOption = {
   packageKey: string;
@@ -60,7 +68,7 @@ const PROMOTIONS_ENABLED = false;
 
 export default function VendorDashboard() {
   const { data, loading, error, refetch, approvalPending } = useVendorDashboard();
-  const { data: vendorProfile, loading: vendorProfileLoading } = useVendorProfile();
+  const { data: vendorProfile, loading: vendorProfileLoading, refetch: refetchVendorProfile } = useVendorProfile();
   const { user } = useAuth();
   const router = useRouter();
   const [promotionOpen, setPromotionOpen] = useState(false);
@@ -80,6 +88,7 @@ export default function VendorDashboard() {
   const [promotionSubmitting, setPromotionSubmitting] = useState(false);
   const [promotionMessage, setPromotionMessage] = useState<string | null>(null);
   const [promotionError, setPromotionError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const pageShellClass = '';
   const pageContentClass = 'space-y-8';
 
@@ -181,11 +190,12 @@ export default function VendorDashboard() {
   }, [promotionRequestOptionsReloadKey, user?.id, vendorIdForPromotion]);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    const value = new Date(dateString);
+    if (Number.isNaN(value.getTime())) return 'Date unavailable';
+    return value.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      timeZone: 'UTC',
     });
   };
 
@@ -206,6 +216,15 @@ export default function VendorDashboard() {
     const normalized = String(status || '').trim().toLowerCase();
     if (normalized === 'awaiting_review') return 'awaiting review';
     return normalized || 'scheduled';
+  };
+
+  const refreshDashboard = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetch(), refetchVendorProfile()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   if (approvalPending) {
@@ -300,7 +319,7 @@ export default function VendorDashboard() {
             <p className="text-red-700 font-medium">We couldn't load your dashboard.</p>
             <p className="text-xs text-red-700/80">Please try again.</p>
             <Button
-              onClick={refetch}
+              onClick={() => void refreshDashboard()}
               className="mt-3"
               size="sm"
             >
@@ -327,9 +346,9 @@ export default function VendorDashboard() {
   }
 
   const { stats: dashboardStats, recentJobs, recentReviews } = data;
-  const topPerformer = (Array.isArray(data.employeePerformance) ? data.employeePerformance : [])
-    .filter((row) => Number(row?.reviewCount || 0) >= 1)
-    .sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0))[0];
+  const dashboardMetrics = deriveVendorAnalyticsMetrics(data);
+  const topRatedTeamMember = selectTopRatedTeamMember(data.employeePerformance);
+  const latestPublicReview = selectMostRecentPublicReview(recentReviews);
 
   // Color map for Tailwind classes - prevents class purging
   const colorMap = {
@@ -345,31 +364,19 @@ export default function VendorDashboard() {
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
   });
   const jobsToday = todaysJobs.length;
-  const jobsInProgress =
-    typeof data.lifecycleCounts?.inProgress === 'number'
-      ? data.lifecycleCounts.inProgress
-      : recentJobs.filter((job) => job.status === 'in progress').length;
-  const jobsCompleted =
-    typeof data.lifecycleCounts?.completed === 'number'
-      ? data.lifecycleCounts.completed
-      : recentJobs.filter((job) => job.status === 'completed').length;
-  const awaitingReview =
-    typeof data.lifecycleCounts?.awaitingReview === 'number'
-      ? data.lifecycleCounts.awaitingReview
-      : recentJobs.filter((job) => job.status === 'awaiting_review').length;
-  const ratingCount = Number(dashboardStats.ratingCount || 0);
-  const publicWrittenReviewCount = Number(dashboardStats.publicWrittenReviewCount || 0);
+  const jobsInProgress = dashboardMetrics.inProgressJobs;
+  const jobsCompleted = dashboardMetrics.completedJobs;
+  const awaitingReview = dashboardMetrics.awaitingReviewJobs;
+  const ratingCount = dashboardMetrics.ratingCount;
+  const publicWrittenReviewCount = Math.max(0, Math.floor(Number(dashboardStats.publicWrittenReviewCount || 0)));
   const completionEligibleBookings = Number(
     dashboardStats.completionEligibleBookingCount ??
       jobsCompleted + jobsInProgress + awaitingReview +
         Number(data.lifecycleCounts?.scheduled || 0)
   );
-  const completionRate = completionEligibleBookings > 0
-    ? Math.round((jobsCompleted / completionEligibleBookings) * 100)
-    : 0;
-  const approvedServiceOrders = Number(data.approvedServiceOrderCount ?? data.approvedProofs ?? 0);
-  const publicServiceOrders = Number(data.publicServiceOrderCount ?? approvedServiceOrders);
-  const latestDashboardReviews = recentReviews.slice(0, 3);
+  const completionRate = dashboardMetrics.completionRate;
+  const approvedServiceOrders = dashboardMetrics.approvedServiceOrders;
+  const publicServiceOrders = dashboardMetrics.publicServiceOrders;
   const trustScoreSource =
     (dashboardStats as any)?.trustScore ??
       (data as any)?.trustScore ??
@@ -381,15 +388,7 @@ export default function VendorDashboard() {
     trustScoreSource !== null && trustScoreSource !== undefined && Number.isFinite(trustScoreRaw)
       ? Math.round(trustScoreRaw)
       : null;
-  const storageUsedBytes = BigInt(String(data.storageUsedBytes || '0'));
-  const storageLimitBytesRaw = BigInt(String(data.storageLimitBytes || '0'));
-  const storageLimitBytes = storageLimitBytesRaw > BigInt(0) ? storageLimitBytesRaw : BigInt(1);
-  const storageUsedGb = Number(storageUsedBytes) / (1024 * 1024 * 1024);
-  const storageQuotaGb = Number(storageLimitBytes) / (1024 * 1024 * 1024);
-  const storageUsagePct = Math.max(
-    0,
-    Math.min(100, Number.isFinite(Number(data.storagePercentUsed)) ? Number(data.storagePercentUsed) : (Number(storageUsedBytes * BigInt(100)) / Number(storageLimitBytes)))
-  );
+  const storageUsagePct = dashboardMetrics.storagePercent;
 
   const selectedPromotionPackage = promotionPackages.find((pkg) => pkg.packageKey === promotionPackageKey);
   const selectedPromotionService = promotionServices.find((service) => service.id === promotionServiceId);
@@ -414,6 +413,7 @@ export default function VendorDashboard() {
     verifiedRatingCount: ratingCount,
     approvedServiceVideoCount: approvedServiceOrders,
     publicServiceOrderCount: publicServiceOrders,
+    promotionsEnabled: PROMOTIONS_ENABLED,
     promotionBrowseReadiness: PROMOTIONS_ENABLED ? promotionBrowseReadiness : null,
     promotionServices: PROMOTIONS_ENABLED ? promotionServices : [],
     promotionRecentRequests: PROMOTIONS_ENABLED ? promotionRecentRequests : [],
@@ -471,7 +471,7 @@ export default function VendorDashboard() {
     {
       label: 'Approved service orders',
       value: approvedServiceOrders.toString(),
-      detail: 'Approved service orders that support customer trust.',
+      detail: `${publicServiceOrders} currently Public after the customer's sharing choice.`,
       icon: Activity,
       color: 'green' as keyof typeof colorMap,
     },
@@ -552,7 +552,20 @@ export default function VendorDashboard() {
                     the jobs and reviews that help more customers choose you.
                   </p>
                 </div>
-                <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" className="self-start" />
+                <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void refreshDashboard()}
+                    disabled={refreshing}
+                    className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                  >
+                    <RefreshCw aria-hidden="true" className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    {refreshing ? 'Refreshing' : 'Refresh dashboard'}
+                  </Button>
+                  <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" />
+                </div>
               </div>
             </div>
 
@@ -875,7 +888,7 @@ export default function VendorDashboard() {
 
         {/* 3) Performance */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-white lg:col-span-7">
+          <Card className="bg-white md:col-span-3">
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="text-base">Customer confidence snapshot</CardTitle>
               <p className="text-sm text-gray-600">
@@ -895,34 +908,34 @@ export default function VendorDashboard() {
           </Card>
           <Card className="bg-white">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Completion Rate</CardTitle>
+              <CardTitle className="text-base">Completion rate</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-gray-900">{completionRate}%</p>
-                <p className="text-sm text-gray-600">
-                  {jobsCompleted} completed of {completionEligibleBookings} eligible Work Records. Canceled and archived records are excluded.
-                </p>
+              <p className="text-sm text-gray-600">
+                {jobsCompleted} completed of {completionEligibleBookings} eligible Work Records. Canceled, rejected, and archived records are excluded.
+              </p>
             </CardContent>
           </Card>
           <Card className="bg-white">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Top Performer</CardTitle>
+              <CardTitle className="text-base">Employee rating highlight</CardTitle>
             </CardHeader>
             <CardContent>
-              {topPerformer ? (
+              {topRatedTeamMember ? (
                 <>
-                  <p className="text-sm font-semibold text-gray-900">{topPerformer.displayName}</p>
+                  <p className="text-sm font-semibold text-gray-900">{topRatedTeamMember.displayName}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className="bg-amber-100 text-amber-900 border-amber-200">
-                      ⭐ {Number(topPerformer.averageRating || 0).toFixed(1)}
+                      {Number(topRatedTeamMember.averageRating || 0).toFixed(1)} out of 5
                     </Badge>
                     <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-200">
-                      {Number(topPerformer.reviewCount || 0)} review{Number(topPerformer.reviewCount || 0) === 1 ? '' : 's'}
+                      {Number(topRatedTeamMember.reviewCount || 0)} verified employee rating{Number(topRatedTeamMember.reviewCount || 0) === 1 ? '' : 's'}
                     </Badge>
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-gray-500">No employee reviews yet</p>
+                <p className="text-sm text-gray-500">No verified employee ratings yet.</p>
               )}
             </CardContent>
           </Card>
@@ -969,6 +982,9 @@ export default function VendorDashboard() {
                   ))}
                 </div>
               )}
+              <Button asChild variant="outline" size="sm" className="mt-4">
+                <Link href="/vendor/jobs">Open Manage Jobs</Link>
+              </Button>
             </CardContent>
           </Card>
 
@@ -976,46 +992,55 @@ export default function VendorDashboard() {
             <CardHeader className="space-y-1">
               <CardTitle className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-yellow-600" />
-                Latest customer feedback
+                Most recent public review
               </CardTitle>
               <p className="text-sm text-gray-600">
-                Published customer feedback helps you see how confidence is building in public.
+                This card always shows one newest verified, published written review.
               </p>
             </CardHeader>
-            <CardContent>
-              {recentReviews.length === 0 ? (
+            <CardContent className="space-y-4">
+              {!latestPublicReview ? (
                 <div className="text-center py-8 text-gray-500">
                   <p className="text-sm">No public reviews yet.</p>
                   <p className="text-xs mt-1">Published customer feedback will appear here as completed jobs move through the review process.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {latestDashboardReviews.map((review) => (
-                    <div key={review.id} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-gray-900">{review.client}</h4>
-                        <div className="flex items-center gap-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${
-                                i < review.rating ? 'text-yellow-500 fill-current' : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">{review.comment}</p>
-                      <p className="text-xs text-gray-500">{formatDate(review.date)}</p>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="font-medium text-gray-900">{latestPublicReview.client}</h4>
+                    <div
+                      className="flex items-center gap-1"
+                      aria-label={`${Number(latestPublicReview.rating || 0).toFixed(1)} out of 5 stars`}
+                    >
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          aria-hidden="true"
+                          className={`h-4 w-4 ${
+                            i < Math.max(0, Math.min(5, Number(latestPublicReview.rating || 0)))
+                              ? 'fill-current text-yellow-500'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
                     </div>
-                  ))}
-                  {recentReviews.length > latestDashboardReviews.length ? (
-                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                      Showing the latest {latestDashboardReviews.length} reviews. Open the Reviews tab for the full list.
-                    </div>
-                  ) : null}
+                  </div>
+                  <p className="mb-2 line-clamp-6 text-sm text-gray-600">{latestPublicReview.comment}</p>
+                  <p className="text-xs text-gray-500">{formatDate(latestPublicReview.date)}</p>
                 </div>
               )}
+              {publicWrittenReviewCount > 1 ? (
+                <p className="text-xs text-gray-500">
+                  Showing the newest of {publicWrittenReviewCount} public reviews.
+                </p>
+              ) : null}
+              <Button asChild variant="outline" size="sm" className="w-full">
+                <Link href="/vendor/reviews">
+                  {publicWrittenReviewCount > 0
+                    ? `View all public reviews (${publicWrittenReviewCount})`
+                    : 'Open Reviews'}
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -1032,16 +1057,23 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-600">Used</span>
               <span className="font-semibold text-gray-900">
-                {storageUsedGb.toFixed(2)} GB / {storageQuotaGb.toFixed(2)} GB
+                {formatStorageSize(dashboardMetrics.storageUsedBytes)} / {formatStorageSize(dashboardMetrics.storageLimitBytes)}
               </span>
             </div>
-            <div className="h-2 w-full rounded-full bg-gray-200">
+            <div
+              className="h-2 w-full rounded-full bg-gray-200"
+              role="progressbar"
+              aria-label="Storage quota used"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Number(storageUsagePct.toFixed(2))}
+            >
               <div
                 className="h-2 rounded-full bg-blue-600 transition-all"
                 style={{ width: `${storageUsagePct}%` }}
               />
             </div>
-            <p className="text-xs text-gray-500">{storageUsagePct.toFixed(0)}% of quota used.</p>
+            <p className="text-xs text-gray-500">{formatStoragePercent(storageUsagePct)} of quota used.</p>
           </CardContent>
         </Card>
 

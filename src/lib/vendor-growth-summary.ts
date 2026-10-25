@@ -56,6 +56,7 @@ type BuildVendorGrowthSummaryInput = {
   verifiedRatingCount?: number | null;
   approvedServiceVideoCount?: number | null;
   publicServiceOrderCount?: number | null;
+  promotionsEnabled?: boolean;
   promotionBrowseReadiness?: PromotionBrowseReadiness | null;
   promotionServices?: PromotionServiceOption[] | null;
   promotionRecentRequests?: PromotionRecentRequest[] | null;
@@ -80,7 +81,8 @@ export function buildVendorGrowthSummary(
   const vendorId = String(input.vendorId || "").trim();
   const verifiedRatingCount = toCount(input.verifiedRatingCount);
   const approvedServiceVideoCount = toCount(input.approvedServiceVideoCount);
-  const publicServiceOrderCount = toCount(input.publicServiceOrderCount ?? input.approvedServiceVideoCount);
+  const publicServiceOrderCount = toCount(input.publicServiceOrderCount);
+  const promotionsEnabled = input.promotionsEnabled === true;
   const publishedServiceCount = toCount(onboarding?.publishedServiceCount);
   const serviceDraftCount = toCount(onboarding?.serviceDraftCount);
   const promotionServices = Array.isArray(input.promotionServices) ? input.promotionServices : [];
@@ -97,7 +99,7 @@ export function buildVendorGrowthSummary(
   if (onboarding?.vendorVisibleToPublic) {
     visibilityTitle = "Your business is visible to customers";
     visibilityDetail =
-      "Customers can already find your published services offered. The next growth levers are stronger customer-visible evidence, approved service videos, and published reviews.";
+      "Customers can already find your published services offered. The next growth levers are verified ratings, published reviews, and approved Service Orders that customers choose to share publicly.";
   } else if (onboarding?.membershipStatus === "PENDING") {
     visibilityTitle = "Your business is not public yet";
     visibilityDetail =
@@ -113,20 +115,22 @@ export function buildVendorGrowthSummary(
   }
 
   let promotionStatus: VendorGrowthSummary["promotionStatus"] = {
-    label: "Not ready for promotions yet",
+    label: promotionsEnabled ? "Not ready for promotions yet" : "Promotions are not available yet",
     detail:
-      "Promotions become useful after your business is public and at least one service is published.",
-    tone: "warning",
+      promotionsEnabled
+        ? "Promotions become useful after your business is public and at least one service is published."
+        : "Reliance has not opened promotion requests. Keep strengthening published services, verified ratings, and eligible public proof.",
+    tone: promotionsEnabled ? "warning" : "neutral",
   };
 
-  if (hasInFlightPromotionRequest(promotionRecentRequests)) {
+  if (promotionsEnabled && hasInFlightPromotionRequest(promotionRecentRequests)) {
     promotionStatus = {
       label: "Promotion request already in progress",
       detail:
         "Reliance is already reviewing or running a promotion request for this business. Keep improving public trust signals while it moves forward.",
       tone: "neutral",
     };
-  } else if (onboarding?.vendorVisibleToPublic && publishedServiceCount > 0) {
+  } else if (promotionsEnabled && onboarding?.vendorVisibleToPublic && publishedServiceCount > 0) {
     const publishedPromotionServices = promotionServices.filter((service) => service.isPublished);
     if (publishedPromotionServices.length === 0) {
       promotionStatus = {
@@ -184,8 +188,8 @@ export function buildVendorGrowthSummary(
       value: String(publicServiceOrderCount),
       detail:
         publicServiceOrderCount > 0
-          ? "Public service orders show real completed work and make your business feel more trustworthy."
-          : "Public service orders are one of the clearest ways to help customers trust a newer profile.",
+          ? "These approved Service Orders are public because the customer chose Public sharing and all required approvals passed."
+          : "A Service Order appears publicly only after all required approvals pass and the customer chooses Public sharing.",
       tone: publicServiceOrderCount > 0 ? "success" : "neutral",
     },
   ];
@@ -223,6 +227,12 @@ export function buildVendorGrowthSummary(
         "Approved service videos make your business feel real to new customers before they know you.",
       href: "/vendor/jobs",
     });
+  } else if (publicServiceOrderCount < approvedServiceVideoCount) {
+    nextSteps.push({
+      label: "Review which approved Service Orders are public",
+      detail: `${publicServiceOrderCount} of ${approvedServiceVideoCount} approved Service Orders are currently Public. Public sharing remains the customer's choice; use Manage Jobs to confirm each order's visibility.`,
+      href: "/vendor/jobs",
+    });
   }
 
   if (verifiedRatingCount === 0) {
@@ -235,6 +245,7 @@ export function buildVendorGrowthSummary(
   }
 
   if (
+    promotionsEnabled &&
     onboarding?.vendorVisibleToPublic &&
     publishedServiceCount > 0 &&
     !hasInFlightPromotionRequest(promotionRecentRequests)

@@ -21,6 +21,8 @@ import { VendorTrustScoreCard } from "@/components/vendor/VendorTrustScoreCard";
 import { useVendorDashboard } from "@/hooks/useVendorDashboard";
 import {
   deriveVendorAnalyticsMetrics,
+  formatStoragePercent,
+  formatStorageSize,
   selectMostRecentPublicReview,
   selectTopRatedTeamMember,
 } from "@/lib/vendor-analytics";
@@ -42,20 +44,6 @@ function formatDate(value: string | null | undefined) {
     day: "numeric",
     year: "numeric",
   }).format(date);
-}
-
-function formatStorageSize(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
-  const gigabyte = 1024 * 1024 * 1024;
-  if (bytes >= gigabyte) {
-    return `${(bytes / gigabyte).toFixed(2)} GB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatStoragePercent(value: number) {
-  if (value > 0 && value < 0.1) return "<0.1%";
-  return `${value.toFixed(1)}%`;
 }
 
 export default function VendorAnalyticsPage() {

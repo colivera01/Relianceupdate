@@ -24,6 +24,8 @@ describe("vendor-growth-summary", () => {
       },
       verifiedRatingCount: 3,
       approvedServiceVideoCount: 2,
+      publicServiceOrderCount: 1,
+      promotionsEnabled: true,
       promotionServices: [{ id: "service-1", name: "Drain Cleaning", isPublished: true }],
     });
 
@@ -60,6 +62,37 @@ describe("vendor-growth-summary", () => {
     expect(summary.visibilityTitle).toContain("not public");
     expect(summary.nextSteps[0].label).toContain("Complete the missing profile details");
     expect(summary.nextSteps.some((step) => step.href === "/vendor/services")).toBe(true);
-    expect(summary.promotionStatus.label).toContain("Not ready");
+    expect(summary.promotionStatus.label).toContain("not available");
+  });
+
+  it("does not recommend unavailable promotions and keeps public proof tied to customer choice", () => {
+    const summary = buildVendorGrowthSummary({
+      vendorId: "vendor-3",
+      onboarding: {
+        membershipStatus: "ACTIVE",
+        isPubliclyListed: true,
+        publiclyListedAt: "2026-06-08T00:00:00.000Z",
+        serviceDraftCount: 3,
+        publishedServiceCount: 3,
+        missingProfileFields: [],
+        hasRequiredProfileFields: true,
+        readyForAdminReview: true,
+        readyForPublicVisibility: true,
+        vendorVisibleToPublic: true,
+        approvalLabel: "Approved for vendor access",
+        publicVisibilityLabel: "Publicly visible",
+        nextStep: "Your vendor listing is publicly visible.",
+        checklist: [],
+      },
+      verifiedRatingCount: 2,
+      approvedServiceVideoCount: 3,
+      publicServiceOrderCount: 1,
+      promotionsEnabled: false,
+    });
+
+    expect(summary.nextSteps.some((step) => /promotion/i.test(step.label))).toBe(false);
+    expect(summary.nextSteps[0].label).toContain("approved Service Orders");
+    expect(summary.nextSteps[0].detail).toContain("customer's choice");
+    expect(summary.metrics[3].detail).toContain("customer chose Public sharing");
   });
 });

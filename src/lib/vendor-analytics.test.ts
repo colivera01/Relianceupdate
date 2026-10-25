@@ -152,4 +152,29 @@ describe("deriveVendorAnalyticsMetrics", () => {
 
     expect(selected?.id).toBe("new");
   });
+
+  it("uses submission time to order public reviews that share the same review date", () => {
+    const selected = selectMostRecentPublicReview([
+      {
+        id: "same-day-earlier",
+        client: "A",
+        rating: 5,
+        comment: "Earlier submission",
+        date: "2026-10-25T00:00:00.000Z",
+        createdAt: "2026-10-25T14:00:00.000Z",
+        jobType: "A",
+      },
+      {
+        id: "same-day-later",
+        client: "B",
+        rating: 5,
+        comment: "Later submission",
+        date: "2026-10-25T00:00:00.000Z",
+        createdAt: "2026-10-25T18:00:00.000Z",
+        jobType: "B",
+      },
+    ]);
+
+    expect(selected?.id).toBe("same-day-later");
+  });
 });

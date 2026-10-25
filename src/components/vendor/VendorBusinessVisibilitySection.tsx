@@ -1,7 +1,7 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { VendorGrowthSummary } from "@/lib/vendor-growth-summary";
-import { Eye, ShieldCheck, Star, Video } from "lucide-react";
+import { ArrowRight, Eye, ShieldCheck, Star, Video } from "lucide-react";
+import Link from "next/link";
 
 const toneClasses: Record<
   "success" | "warning" | "neutral",
@@ -44,11 +44,11 @@ export function VendorBusinessVisibilitySection({
         <div className="flex flex-wrap gap-3">
           {summary.publicProfileHref ? (
             <Button asChild className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-              <a href={summary.publicProfileHref}>View Public Profile</a>
+              <Link href={summary.publicProfileHref}>View Public Profile</Link>
             </Button>
           ) : null}
           <Button asChild variant="outline" className="rounded-full">
-            <a href="/vendor/services">Manage Services Offered</a>
+            <Link href="/vendor/services">Manage Services Offered</Link>
           </Button>
         </div>
       </div>
@@ -87,10 +87,17 @@ export function VendorBusinessVisibilitySection({
 
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {summary.nextSteps.map((step) => (
-            <div key={step.label} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
-              <p className="text-sm font-semibold text-white">{step.label}</p>
+            <Link
+              key={step.label}
+              href={step.href}
+              className="group rounded-2xl border border-white/10 bg-slate-950/50 p-4 transition-colors hover:border-blue-300/45 hover:bg-slate-900/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
+              <span className="flex items-start justify-between gap-4">
+                <span className="text-sm font-semibold text-white">{step.label}</span>
+                <ArrowRight aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-blue-200 transition-transform group-hover:translate-x-0.5" />
+              </span>
               <p className="mt-2 text-sm leading-6 text-slate-300">{step.detail}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

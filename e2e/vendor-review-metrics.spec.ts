@@ -82,6 +82,22 @@ async function installVendorReviewMetricsFixture(
             specializations: [],
             serviceAreas: [],
             totalEmployees: 1,
+            onboarding: {
+              membershipStatus: "ACTIVE",
+              isPubliclyListed: true,
+              publiclyListedAt: "2026-06-08T00:00:00.000Z",
+              serviceDraftCount: 3,
+              publishedServiceCount: 3,
+              missingProfileFields: [],
+              hasRequiredProfileFields: true,
+              readyForAdminReview: true,
+              readyForPublicVisibility: true,
+              vendorVisibleToPublic: true,
+              approvalLabel: "Approved for vendor access",
+              publicVisibilityLabel: "Publicly visible",
+              nextStep: "Your vendor listing is publicly visible.",
+              checklist: [],
+            },
           },
         }),
       });
@@ -149,7 +165,8 @@ async function installVendorReviewMetricsFixture(
                   client: "Riley Customer",
                   rating: 5,
                   comment: "Clear work and an excellent final result.",
-                  date: "2026-10-23T18:30:00.000Z",
+                  date: "2026-10-23T00:00:00.000Z",
+                  createdAt: "2026-10-23T18:30:00.000Z",
                   jobType: "Outlet Installation",
                 },
                 {
@@ -157,7 +174,8 @@ async function installVendorReviewMetricsFixture(
                   client: "Pat Customer",
                   rating: 4,
                   comment: "Older review.",
-                  date: "2026-09-10T18:30:00.000Z",
+                  date: "2026-10-23T00:00:00.000Z",
+                  createdAt: "2026-10-23T16:30:00.000Z",
                   jobType: "Breaker Replacement",
                 },
               ]
@@ -364,5 +382,54 @@ test.describe("Vendor review metrics", () => {
     await page.getByRole("button", { name: "Refresh analytics" }).click();
     await dashboardRefresh;
     await page.screenshot({ path: testInfo.outputPath("populated-vendor-analytics.png"), fullPage: true });
+  });
+
+  test("keeps the vendor dashboard metrics precise and shows exactly one newest public review", async ({ page }, testInfo) => {
+    await installVendorReviewMetricsFixture(page, { populatedAnalytics: true });
+    await page.goto("/test-fixtures/rv8-vendor-dashboard");
+
+    await expect(page.getByRole("button", { name: "Refresh dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Completion rate" })).toBeVisible();
+    await expect(page.getByText("2 completed of 5 eligible Work Records. Canceled, rejected, and archived records are excluded.", { exact: true })).toBeVisible();
+
+    await expect(page.getByRole("heading", { name: "Employee rating highlight" })).toBeVisible();
+    await expect(page.getByText("Bradley Coopers", { exact: true })).toBeVisible();
+    await expect(page.getByText("3 verified employee ratings", { exact: true })).toBeVisible();
+
+    await expect(page.getByRole("heading", { name: "Most recent public review" })).toBeVisible();
+    await expect(page.getByText("Clear work and an excellent final result.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Older review.", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Showing the newest of 2 public reviews.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "View all public reviews (2)" })).toHaveAttribute("href", "/vendor/reviews");
+
+    await expect(page.getByText("50.0 MB / 1.00 GB", { exact: true })).toBeVisible();
+    await expect(page.getByText("4.9% of quota used.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("progressbar", { name: "Storage quota used" })).toHaveAttribute("aria-valuenow", "4.88");
+
+    await expect(page.getByRole("link", { name: /Review which approved Service Orders are public/ })).toHaveAttribute("href", "/vendor/jobs");
+    await expect(page.getByText(/promotion request/i)).toHaveCount(0);
+
+    const dashboardRefresh = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname === `/api/vendors/${VENDOR_ID}/dashboard` && url.searchParams.get("refresh") === "1";
+    });
+    await page.getByRole("button", { name: "Refresh dashboard" }).click();
+    await dashboardRefresh;
+    await expect(page.getByRole("button", { name: "Refresh dashboard" })).toBeEnabled();
+    await page.screenshot({ path: testInfo.outputPath("vendor-dashboard-desktop.png"), fullPage: true });
+  });
+
+  test("keeps the corrected dashboard readable on mobile", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVendorReviewMetricsFixture(page, { populatedAnalytics: true });
+    await page.goto("/test-fixtures/rv8-vendor-dashboard");
+
+    await expect(page.getByRole("heading", { name: "Most recent public review" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "View all public reviews (2)" })).toBeVisible();
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+    await page.screenshot({ path: testInfo.outputPath("vendor-dashboard-mobile.png"), fullPage: true });
   });
 });

@@ -75,8 +75,27 @@ export function selectMostRecentPublicReview(rows: VendorReview[]): VendorReview
         const timestamp = new Date(review.date).getTime();
         return Boolean(String(review.comment || "").trim()) && Number.isFinite(timestamp);
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] || null
+      .sort(
+        (a, b) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime() ||
+          new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime() ||
+          String(b.id || "").localeCompare(String(a.id || ""))
+      )[0] || null
   );
+}
+
+export function formatStorageSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
+  const gigabyte = 1024 * 1024 * 1024;
+  if (bytes >= gigabyte) {
+    return `${(bytes / gigabyte).toFixed(2)} GB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function formatStoragePercent(value: number): string {
+  if (value > 0 && value < 0.1) return "<0.1%";
+  return `${Math.max(0, Math.min(100, value)).toFixed(1)}%`;
 }
 
 export function deriveVendorAnalyticsMetrics(

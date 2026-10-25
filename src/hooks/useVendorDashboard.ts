@@ -1,12 +1,13 @@
 // src/hooks/useVendorDashboard.ts
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { VendorDashboardResponse } from "@/types/vendor";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { useAuth } from "@/contexts/AuthContext";
 
 const VENDOR_DASHBOARD_TIMEOUT_MS = 22_000;
+const VENDOR_DASHBOARD_FOCUS_REFRESH_INTERVAL_MS = 15_000;
 
 export function useVendorDashboard() {
   const { user } = useAuth();
@@ -24,8 +25,9 @@ export function useVendorDashboard() {
   const [data, setData] = useState<VendorDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lastSuccessfulFetchAtRef = useRef(0);
 
-  const fetchDashboard = useCallback(async (forceRefresh = false) => {
+  const fetchDashboard = useCallback(async (forceRefresh = false, preserveCurrentView = false) => {
     if (profileLoading && !vendorId && !hasResolvedVendorContext) {
       setLoading(true);
       return;
@@ -47,8 +49,10 @@ export function useVendorDashboard() {
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!preserveCurrentView) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const headers = getClientSessionHeaders(userId);
@@ -70,14 +74,20 @@ export function useVendorDashboard() {
 
       const json = (await res.json()) as VendorDashboardResponse;
       setData(json);
+      setError(null);
+      lastSuccessfulFetchAtRef.current = Date.now();
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
+      if (preserveCurrentView) {
+        console.warn("[vendor/dashboard] background refresh unavailable", {
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      } else if (err instanceof Error && err.name === "AbortError") {
         setError("Vendor dashboard took longer than expected to load. Please retry.");
       } else {
         setError(err instanceof Error ? err.message : "Unknown error");
       }
     } finally {
-      setLoading(false);
+      if (!preserveCurrentView) setLoading(false);
     }
   }, [approvalPending, hasResolvedVendorContext, profileError, profileLoading, userId, vendorId]);
 
@@ -85,6 +95,21 @@ export function useVendorDashboard() {
     // Vendor pages are operational views. Load a fresh snapshot on entry so a newly
     // completed job, review, audit decision, or storage change is never hidden by the API TTL.
     void fetchDashboard(true);
+  }, [fetchDashboard]);
+
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastSuccessfulFetchAtRef.current < VENDOR_DASHBOARD_FOCUS_REFRESH_INTERVAL_MS) return;
+      void fetchDashboard(true, true);
+    };
+
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", refreshIfStale);
+    return () => {
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", refreshIfStale);
+    };
   }, [fetchDashboard]);
 
   const refetch = useCallback(() => fetchDashboard(true), [fetchDashboard]);

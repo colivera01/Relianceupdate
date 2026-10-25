@@ -1055,6 +1055,7 @@ export async function GET(
       rating: review.rating,
       comment: review.comment || "",
       date: review.date?.toISOString() || review.createdAt.toISOString(),
+      createdAt: review.createdAt.toISOString(),
       jobType: review.jobType || "Service",
     }));
 
