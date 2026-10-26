@@ -429,42 +429,42 @@ export default function VendorDashboard() {
     {
       label: 'Work in progress',
       value: jobsInProgress.toString(),
-      detail: 'Active jobs your team is working right now.',
+      detail: 'Jobs your team is actively working.',
       icon: TrendingUp,
       color: 'green' as keyof typeof colorMap,
     },
     {
       label: 'Awaiting review',
       value: awaitingReview.toString(),
-      detail: 'Finished jobs still waiting on review or approval steps.',
+      detail: 'Finished jobs waiting for manager or Reliance review.',
       icon: Star,
       color: 'yellow' as keyof typeof colorMap,
     },
     {
       label: 'Completed',
       value: jobsCompleted.toString(),
-      detail: 'Completed jobs already closed out in Reliance.',
+      detail: 'Jobs already closed out in Reliance.',
       icon: CheckCircle,
       color: 'purple' as keyof typeof colorMap,
     },
     {
       label: 'Verified ratings',
       value: ratingCount.toString(),
-      detail: 'Verified customer star ratings, separate from written-comment moderation.',
+      detail: 'Verified star ratings; written comments are tracked separately.',
       icon: Star,
       color: 'yellow' as keyof typeof colorMap,
     },
     {
       label: 'Public written reviews',
       value: publicWrittenReviewCount.toString(),
-      detail: 'Written comments approved and currently visible to customers.',
+      detail: 'Approved written comments currently visible to customers.',
       icon: MessageSquare,
       color: 'blue' as keyof typeof colorMap,
     },
     {
       label: 'Trust Score',
       value: trustScoreValue === null ? 'Building' : `${trustScoreValue}/100`,
-      detail: 'Reliance score from finalized workflow completion, Service Video verification, and dispute-free completion. Customer ratings remain separate.',
+      detail: 'Finalized workflow, Service Video, and dispute evidence. Customer ratings stay separate.',
       icon: ShieldCheck,
       color: 'blue' as keyof typeof colorMap,
     },
@@ -474,6 +474,19 @@ export default function VendorDashboard() {
       detail: `${publicServiceOrders} currently Public after the customer's sharing choice.`,
       icon: Activity,
       color: 'green' as keyof typeof colorMap,
+    },
+  ];
+
+  const heroMetricGroups = [
+    {
+      label: 'Active work',
+      detail: 'Current workload and follow-through',
+      cards: heroMetricCards.slice(0, 4),
+    },
+    {
+      label: 'Trust and public proof',
+      detail: 'Customer-facing confidence signals',
+      cards: heroMetricCards.slice(4),
     },
   ];
 
@@ -536,78 +549,103 @@ export default function VendorDashboard() {
         {vendorProfile?.onboarding ? (
           <VendorOnboardingStatusPanel profile={vendorProfile} showActions compact />
         ) : null}
-        <section className="reliance-operator-hero mb-8 rounded-[32px] px-6 py-7">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
-            <div>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-                    Vendor dashboard
-                  </div>
-                  <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-                    See what is helping your business grow
-                  </h1>
-                  <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-                    Start with business status, customer visibility, and trust signals, then move into
-                    the jobs and reviews that help more customers choose you.
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void refreshDashboard()}
-                    disabled={refreshing}
-                    className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-                  >
-                    <RefreshCw aria-hidden="true" className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                    {refreshing ? 'Refreshing' : 'Refresh dashboard'}
-                  </Button>
-                  <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/10 bg-[rgba(4,10,22,0.48)] p-5 shadow-[0_24px_70px_rgba(4,9,20,0.22)]">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100/78">
-                First read
-              </div>
-              <p className="mt-2 text-sm leading-6 text-white/72">
+        <section
+          className="reliance-operator-hero mb-8 rounded-[28px] px-5 py-5 sm:px-6 sm:py-6"
+          data-testid="dashboard-metric-overview"
+        >
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 max-w-4xl">
+              <p className="text-xs font-semibold uppercase tracking-normal text-blue-100/78">
+                Vendor dashboard
+              </p>
+              <h1 className="mt-2 font-display text-3xl font-semibold text-white sm:text-4xl">
+                See what is helping your business grow
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-white/72 sm:text-base">
                 Public trust, active work, and approved proof in one glance.
               </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {heroMetricCards.map((card) => {
-                  const colors = colorMap[card.color];
-                  const isAwaitingReview = card.label === 'Awaiting review' && awaitingReview > 0;
-                  return (
-                    <div
-                      key={card.label}
-                      className={`rounded-[22px] border p-4 text-left ${
-                        isAwaitingReview
-                          ? 'border-amber-300/40 bg-amber-500/10'
-                          : 'border-white/10 bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/54">
-                            {card.label}
-                          </p>
-                          <p className={`mt-2 text-3xl font-semibold ${isAwaitingReview ? 'text-amber-200' : 'text-white'}`}>
-                            {card.value}
-                          </p>
-                        </div>
-                        <div className={`rounded-full p-2.5 ${colors.bg} ${colors.text}`}>
-                          <card.icon className="h-4 w-4" />
-                        </div>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-white/68">{card.detail}</p>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 self-start xl:self-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void refreshDashboard()}
+                disabled={refreshing}
+                className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+                />
+                {refreshing ? 'Refreshing' : 'Refresh dashboard'}
+              </Button>
+              <TutorialEntryPoint
+                guide={tutorialGuides.vendorDashboard}
+                surface="dark"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-5 border-t border-white/10 pt-5">
+            {heroMetricGroups.map((group) => (
+              <section
+                key={group.label}
+                aria-labelledby={`dashboard-${group.label.toLowerCase().replaceAll(' ', '-')}`}
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2
+                    id={`dashboard-${group.label.toLowerCase().replaceAll(' ', '-')}`}
+                    className="text-sm font-semibold text-white"
+                  >
+                    {group.label}
+                  </h2>
+                  <p className="text-xs text-white/54">{group.detail}</p>
+                </div>
+                <div
+                  className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+                  data-testid="dashboard-metric-grid"
+                >
+                  {group.cards.map((card) => {
+                    const colors = colorMap[card.color];
+                    const isAwaitingReview =
+                      card.label === 'Awaiting review' && awaitingReview > 0;
+                    return (
+                      <article
+                        key={card.label}
+                        data-testid="dashboard-metric-card"
+                        className={`min-h-[148px] rounded-lg border p-4 text-left ${
+                          isAwaitingReview
+                            ? 'border-amber-300/40 bg-amber-500/10'
+                            : 'border-white/10 bg-white/5'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-normal text-white/54">
+                              {card.label}
+                            </p>
+                            <p
+                              className={`mt-2 text-3xl font-semibold ${isAwaitingReview ? 'text-amber-200' : 'text-white'}`}
+                            >
+                              {card.value}
+                            </p>
+                          </div>
+                          <div
+                            className={`rounded-full p-2.5 ${colors.bg} ${colors.text}`}
+                          >
+                            <card.icon aria-hidden="true" className="h-4 w-4" />
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-white/68">
+                          {card.detail}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         </section>
 

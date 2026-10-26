@@ -385,10 +385,20 @@ test.describe("Vendor review metrics", () => {
   });
 
   test("keeps the vendor dashboard metrics precise and shows exactly one newest public review", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1728, height: 900 });
     await installVendorReviewMetricsFixture(page, { populatedAnalytics: true });
     await page.goto("/test-fixtures/rv8-vendor-dashboard");
 
     await expect(page.getByRole("button", { name: "Refresh dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Active work" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Trust and public proof" })).toBeVisible();
+    await expect(page.getByTestId("dashboard-metric-card")).toHaveCount(8);
+    const metricGridColumns = await page.getByTestId("dashboard-metric-grid").evaluateAll((grids) =>
+      grids.map((grid) => window.getComputedStyle(grid).gridTemplateColumns.split(" ").length),
+    );
+    expect(metricGridColumns).toEqual([4, 4]);
+    const metricOverviewBox = await page.getByTestId("dashboard-metric-overview").boundingBox();
+    expect(metricOverviewBox?.height).toBeLessThan(650);
     await expect(page.getByRole("heading", { name: "Completion rate" })).toBeVisible();
     await expect(page.getByText("2 completed of 5 eligible Work Records. Canceled, rejected, and archived records are excluded.", { exact: true })).toBeVisible();
 
