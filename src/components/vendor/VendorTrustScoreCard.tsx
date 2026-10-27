@@ -271,7 +271,6 @@ export function VendorTrustScoreCard({
             <div className="flex flex-wrap items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-blue-500" aria-hidden="true" />
               <CardTitle>Reliance Trust Score</CardTitle>
-              <Badge variant="outline">Version {trustScore?.scoreVersion || 3}</Badge>
               <Badge variant="outline">Vendor view</Badge>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-muted-foreground">

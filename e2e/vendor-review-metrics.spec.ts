@@ -359,6 +359,7 @@ test.describe("Vendor review metrics", () => {
     await installVendorReviewMetricsFixture(page, { populatedAnalytics: true });
     await page.goto("/test-fixtures/vendor-analytics");
 
+    await expect(page.getByText("Version 3", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Verified rating participation", { exact: true })).toBeVisible();
     await expect(page.getByText("2 of 4 completed, approved Service Orders received a verified customer star rating.", { exact: false })).toBeVisible();
     await expect(page.getByText("50.0 MB used of 1.00 GB.", { exact: false })).toBeVisible();
@@ -393,6 +394,16 @@ test.describe("Vendor review metrics", () => {
     await expect(page.getByRole("heading", { name: "Active work" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Trust and public proof" })).toBeVisible();
     await expect(page.getByTestId("dashboard-metric-card")).toHaveCount(8);
+    await expect(page.getByTestId("business-visibility-metric-card")).toHaveCount(4);
+    const visibilityCardSurfaces = await page
+      .getByTestId("business-visibility-metric-card")
+      .evaluateAll((cards) =>
+        cards.map((card) => {
+          const styles = window.getComputedStyle(card);
+          return `${styles.backgroundColor}|${styles.borderColor}`;
+        }),
+      );
+    expect(new Set(visibilityCardSurfaces).size).toBe(1);
     const metricGridColumns = await page.getByTestId("dashboard-metric-grid").evaluateAll((grids) =>
       grids.map((grid) => window.getComputedStyle(grid).gridTemplateColumns.split(" ").length),
     );

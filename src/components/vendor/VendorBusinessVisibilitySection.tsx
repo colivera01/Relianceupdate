@@ -3,24 +3,6 @@ import type { VendorGrowthSummary } from "@/lib/vendor-growth-summary";
 import { ArrowRight, Eye, ShieldCheck, Star, Video } from "lucide-react";
 import Link from "next/link";
 
-const toneClasses: Record<
-  "success" | "warning" | "neutral",
-  { card: string; badge: string }
-> = {
-  success: {
-    card: "border-blue-400/30 bg-blue-500/10",
-    badge: "border-blue-300/40 bg-blue-500/15 text-blue-100",
-  },
-  warning: {
-    card: "border-blue-300/20 bg-slate-900/72",
-    badge: "border-blue-300/35 bg-blue-500/12 text-blue-100",
-  },
-  neutral: {
-    card: "border-white/10 bg-white/6",
-    badge: "border-white/12 bg-white/8 text-white/78",
-  },
-};
-
 const metricIcons = [Eye, ShieldCheck, Star, Video] as const;
 
 export function VendorBusinessVisibilitySection({
@@ -56,9 +38,12 @@ export function VendorBusinessVisibilitySection({
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summary.metrics.map((metric, index) => {
           const Icon = metricIcons[index] || Eye;
-          const tone = toneClasses[metric.tone];
           return (
-            <div key={metric.label} className={`rounded-3xl border p-4 ${tone.card}`}>
+            <div
+              key={metric.label}
+              data-testid="business-visibility-metric-card"
+              className="rounded-3xl border border-blue-400/30 bg-blue-500/10 p-4"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-100/62">
                   {metric.label}
