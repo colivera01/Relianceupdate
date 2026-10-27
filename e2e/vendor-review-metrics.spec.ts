@@ -359,7 +359,7 @@ test.describe("Vendor review metrics", () => {
     await installVendorReviewMetricsFixture(page, { populatedAnalytics: true });
     await page.goto("/test-fixtures/vendor-analytics");
 
-    await expect(page.getByText("Version 3", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Version 3/i)).toHaveCount(0);
     await expect(page.getByText("Verified rating participation", { exact: true })).toBeVisible();
     await expect(page.getByText("2 of 4 completed, approved Service Orders received a verified customer star rating.", { exact: false })).toBeVisible();
     await expect(page.getByText("50.0 MB used of 1.00 GB.", { exact: false })).toBeVisible();

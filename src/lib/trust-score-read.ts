@@ -208,7 +208,7 @@ export function buildTrustScoreExplanationDetails(
 
   return {
     overview: `This vendor's current Reliance Trust Score is ${snapshot.totalScorePct}/100. ${measurable.length} of ${ACTIVE_COMPONENT_ORDER.length} required components are measurable from finalized Reliance activity.`,
-    coverageSummary: `Measured components cover ${measurableWeightPct}% of the Version ${TRUST_SCORE_VERSION} score weight. The score uses all finalized Reliance activity on record.`,
+    coverageSummary: `Measured components cover ${measurableWeightPct}% of the configured Trust Score weight. The score uses all finalized Reliance activity on record.`,
     strongestSignals,
     watchItems,
     methodology: TRUST_SCORE_METHODOLOGY,

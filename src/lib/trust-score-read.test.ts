@@ -142,7 +142,10 @@ describe("trust-score-read shaping (public vs vendor vs admin separation)", () =
   it("buildTrustScoreExplanationDetails explains measurable coverage and weakest signals deterministically", () => {
     const details = buildTrustScoreExplanationDetails(FULL_SNAPSHOT);
     expect(details.overview).toContain("88/100");
-    expect(details.coverageSummary).toContain("100%");
+    expect(details.coverageSummary).toBe(
+      "Measured components cover 100% of the configured Trust Score weight. The score uses all finalized Reliance activity on record.",
+    );
+    expect(details.coverageSummary).not.toMatch(/\bVersion \d+\b/i);
     expect(details.strongestSignals[0]).toContain("Verified workflow completion");
     expect(details.watchItems[0]).toContain("Video verification");
     expect(details.methodology.some((item) => item.includes("Customer Ratings"))).toBe(true);
