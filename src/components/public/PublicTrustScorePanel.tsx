@@ -69,25 +69,25 @@ const toneClasses: Record<
     scoreCard: "border-white/10 bg-white/8",
     scoreValue: "text-white/78",
     maturityBadge: "border-white/12 bg-white/8 text-white/72",
-    evidenceCard: "border-slate-200 bg-slate-50",
+    evidenceCard: "border-white/10 bg-white/5",
   },
   calm: {
     scoreCard: "border-blue-200/30 bg-blue-400/12",
     scoreValue: "text-blue-100",
     maturityBadge: "border-blue-200/40 bg-blue-400/12 text-blue-100",
-    evidenceCard: "border-blue-100 bg-blue-50",
+    evidenceCard: "border-blue-200/20 bg-blue-400/10",
   },
   balanced: {
     scoreCard: "border-cyan-200/30 bg-cyan-400/12",
     scoreValue: "text-cyan-100",
     maturityBadge: "border-cyan-200/40 bg-cyan-400/12 text-cyan-100",
-    evidenceCard: "border-cyan-100 bg-cyan-50",
+    evidenceCard: "border-cyan-200/20 bg-cyan-400/10",
   },
   strong: {
     scoreCard: "border-emerald-200/30 bg-emerald-400/12",
     scoreValue: "text-emerald-300",
     maturityBadge: "border-emerald-200/40 bg-emerald-400/12 text-emerald-100",
-    evidenceCard: "border-emerald-100 bg-emerald-50",
+    evidenceCard: "border-emerald-200/20 bg-emerald-400/10",
   },
 };
 
@@ -293,7 +293,7 @@ export function PublicTrustScorePanel({
                     value: evidence.validatedDisputes,
                   },
                 ].map((item) => (
-                  <div key={item.key} className="min-w-0 rounded-2xl border border-white/60 bg-white/80 px-4 py-3">
+                  <div key={item.key} className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                     <div className="text-[11px] font-semibold uppercase leading-4 tracking-[0.14em] text-slate-500">
                       {item.label}
                     </div>
