@@ -19,6 +19,18 @@ export type BusinessHoursStatus = {
   todayLabel: string | null;
 };
 
+export type PublicBusinessHoursDay = {
+  day: BusinessHoursDayKey;
+  dayLabel: string;
+  enabled: boolean;
+  hoursLabel: string;
+};
+
+export type PublicBusinessHoursView = BusinessHoursStatus & {
+  timezone: string | null;
+  schedule: PublicBusinessHoursDay[];
+};
+
 const DAY_KEYS: BusinessHoursDayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const DISPLAY_ORDER: BusinessHoursDayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
@@ -108,12 +120,41 @@ export function formatBusinessTime(value: string): string {
   return `${hours12}:${String(minutes).padStart(2, "0")} ${suffix}`;
 }
 
-function dayForDate(date: Date): BusinessHoursDayKey {
-  return DAY_KEYS[date.getDay()];
+function zonedClock(date: Date, timezone?: string | null): {
+  day: BusinessHoursDayKey;
+  minutes: number;
+} {
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date);
+      const weekday = String(parts.find((part) => part.type === "weekday")?.value || "")
+        .slice(0, 3)
+        .toLowerCase() as BusinessHoursDayKey;
+      const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+      const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+      if (DAY_KEYS.includes(weekday) && Number.isFinite(hour) && Number.isFinite(minute)) {
+        return { day: weekday, minutes: hour * 60 + minute };
+      }
+    } catch {
+      // Invalid or unsupported time zones fall back to the runtime's local clock.
+    }
+  }
+
+  return {
+    day: DAY_KEYS[date.getDay()],
+    minutes: date.getHours() * 60 + date.getMinutes(),
+  };
 }
 
 function statusForDay(schedule: BusinessHoursSchedule, date: Date): BusinessHoursStatus {
-  const dayKey = dayForDate(date);
+  const clock = zonedClock(date, schedule.timezone);
+  const dayKey = clock.day;
   const day = schedule.days.find((entry) => entry.day === dayKey) || null;
   const configured = schedule.days.some((entry) => entry.enabled);
   if (!configured) {
@@ -134,7 +175,7 @@ function statusForDay(schedule: BusinessHoursSchedule, date: Date): BusinessHour
   }
   const open = minutesFromTime(day.open);
   const close = minutesFromTime(day.close);
-  const now = date.getHours() * 60 + date.getMinutes();
+  const now = clock.minutes;
   const openNow = close > open ? now >= open && now < close : now >= open || now < close;
   return {
     configured: true,
@@ -157,4 +198,28 @@ export function getBusinessHoursStatus(
     };
   }
   return statusForDay(normalizeBusinessHours(value || null), date);
+}
+
+export function getPublicBusinessHours(
+  value: string | BusinessHoursSchedule | null | undefined,
+  date = new Date()
+): PublicBusinessHoursView {
+  const status = getBusinessHoursStatus(value, date);
+  if (value == null || value === "") {
+    return { ...status, timezone: null, schedule: [] };
+  }
+
+  const schedule = normalizeBusinessHours(value);
+  return {
+    ...status,
+    timezone: schedule.timezone || null,
+    schedule: schedule.days.map((day) => ({
+      day: day.day,
+      dayLabel: DAY_LABELS[day.day],
+      enabled: day.enabled,
+      hoursLabel: day.enabled
+        ? `${formatBusinessTime(day.open)}-${formatBusinessTime(day.close)}`
+        : "Closed",
+    })),
+  };
 }

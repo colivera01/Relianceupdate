@@ -118,8 +118,13 @@ describe('proof-first platform shell', () => {
     expect(publicProfile).toContain("searchParams?.get('preview') === 'vendor'");
     expect(publicProfile).toContain('You are previewing your public profile');
     expect(publicProfile).toContain('This is exactly what customers can see');
+    expect(publicProfile).toContain("secondaryLabel={headerAccountLabel}");
+    expect(publicProfile).toContain('public-business-specialties');
     expect(publicProfile).toContain('public-approved-services');
+    expect(publicProfile).toContain('public-work-library');
     expect(trustPanel).toContain('Verified jobs completed');
+    expect(publicProfileRoute).toContain('getPublicBusinessHours');
+    expect(publicProfileRoute).toContain('publicProofSummary');
     expect(publicProfileRoute).toContain('profilePhoto: null');
     expect(publicProfileRoute).toContain('vendor profile photo (until governed as public-safe)');
   });

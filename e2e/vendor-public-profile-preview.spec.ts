@@ -12,6 +12,9 @@ test('vendor public-profile preview shows only customer-facing proof and metrics
           businessType: 'Limited Liability Company',
           category: 'Electrical Services',
           bio: 'Residential and commercial electrical work backed by verified service records.',
+          website: 'https://electro.example/',
+          foundedYear: 2018,
+          specialties: ['Electrical Repair', 'Lighting Installation', 'Residential Rewiring'],
           location: 'Orlando, FL',
           serviceAreas: ['Orlando', 'Winter Garden', 'Ocoee'],
           businessHours: {
@@ -19,6 +22,11 @@ test('vendor public-profile preview shows only customer-facing proof and metrics
             openNow: true,
             label: 'Open now',
             todayLabel: 'Open today, 8:00 AM–6:00 PM',
+            timezone: 'America/New_York',
+            schedule: [
+              { day: 'mon', dayLabel: 'Monday', enabled: true, hoursLabel: '8:00 AM-6:00 PM' },
+              { day: 'sun', dayLabel: 'Sunday', enabled: false, hoursLabel: 'Closed' },
+            ],
           },
           profilePhoto: null,
           rating: 4.9,
@@ -29,7 +37,7 @@ test('vendor public-profile preview shows only customer-facing proof and metrics
             serviceId: 'service-outlet',
             serviceName: 'Outlet Installation',
             serviceDescription: 'New outlets, replacements, and code-conscious upgrades.',
-            price: null,
+            price: 125,
             previewMediaUrl: null,
             previewMediaType: null,
           },
@@ -42,7 +50,26 @@ test('vendor public-profile preview shows only customer-facing proof and metrics
             previewMediaType: null,
           },
         ],
-        publicMedia: [],
+        publicMedia: [
+          {
+            mediaId: 'media-completed-outlet',
+            serviceId: 'service-outlet',
+            serviceName: 'Outlet Installation',
+            title: 'Completed outlet installation',
+            mimeType: 'video/mp4',
+            url: '/tutorials/service-videos-and-reviews.mp4',
+            createdAt: '2026-10-18T14:00:00.000Z',
+            stageKey: 'COMPLETED',
+            stageLabel: 'Completed',
+            isPrimaryServiceVideo: true,
+            isPrimaryProofVideo: true,
+          },
+        ],
+        publicProofSummary: {
+          completedWorkCount: 1,
+          publicMediaCount: 1,
+          servicesWithPublicProof: 1,
+        },
       }),
     });
   });
@@ -114,10 +141,21 @@ test('vendor public-profile preview shows only customer-facing proof and metrics
   await expect(page.getByTestId('vendor-public-profile-preview-banner')).toContainText(
     'This is exactly what customers can see',
   );
+  await expect(page.getByRole('link', { name: 'Vendor Workspace' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign In' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Vendor Dashboard' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'Electro LLC' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Visit business website' })).toHaveAttribute('href', 'https://electro.example/');
   await expect(page.getByText('4.9', { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId('public-approved-services')).toContainText('Outlet Installation');
   await expect(page.getByTestId('public-approved-services')).toContainText('Electrical Panel Service');
+  await expect(page.getByTestId('public-approved-services')).toContainText('Reference price: $125.00');
+  await expect(page.getByTestId('public-business-specialties')).toContainText('Electrical Repair');
+  await expect(page.getByText('Weekly business hours')).toBeVisible();
+  await expect(page.getByText('Monday', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('public-work-library')).toContainText('Completed public work');
+  await expect(page.getByTestId('public-work-library')).toContainText('Completed outlet installation');
+  await expect(page.getByText('1', { exact: true })).toBeVisible();
   await expect(page.getByText('Verified jobs completed', { exact: true })).toBeVisible();
   await expect(page.getByText('14', { exact: true })).toBeVisible();
   await expect(page.getByText('Clear communication, careful work, and a clean finish.')).toBeVisible();
@@ -125,6 +163,18 @@ test('vendor public-profile preview shows only customer-facing proof and metrics
 
   await page.screenshot({
     path: `test-results/vendor-public-profile-preview-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    )
+    .toBe(true);
+  await expect(page.getByRole('heading', { level: 1, name: 'Electro LLC' })).toBeVisible();
+  await page.screenshot({
+    path: `test-results/vendor-public-profile-preview-mobile-${testInfo.project.name}.png`,
     fullPage: true,
   });
 });

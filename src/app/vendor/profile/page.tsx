@@ -308,9 +308,15 @@ export default function VendorProfilePage() {
   const handleSaveBusinessHours = async () => {
     setBusinessHoursError('');
     try {
-      const serialized = serializeBusinessHours(businessHours);
+      const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+      const scheduleWithTimezone = {
+        ...businessHours,
+        timezone: businessHours.timezone || browserTimezone,
+      };
+      const serialized = serializeBusinessHours(scheduleWithTimezone);
       await updateProfile({ businessHoursJson: serialized });
       setLocalFormData((current) => ({ ...current, businessHoursJson: serialized }));
+      setBusinessHours(normalizeBusinessHours(serialized));
       setShowBusinessHoursToast(true);
       setTimeout(() => setShowBusinessHoursToast(false), 2000);
     } catch (err) {
@@ -634,7 +640,7 @@ export default function VendorProfilePage() {
                 </div>
 
                 {/* Business Bio Section */}
-                <div className="mb-6">
+                <div id="business-specialties" className="mb-6 scroll-mt-6">
                   <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <label htmlFor="business-bio" className="block text-sm font-medium text-gray-700">Business Bio</label>
@@ -1073,7 +1079,7 @@ export default function VendorProfilePage() {
               </form>
             </CardContent>
           </Card>
-          <Card className="order-3 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
+          <Card id="business-hours" className="order-3 scroll-mt-6 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-lg border border-emerald-300/20 bg-emerald-500/12 p-2">

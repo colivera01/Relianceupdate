@@ -19,13 +19,28 @@ const accountLinks = [
   { href: "/auth/register?type=vendor", label: "Join as Vendor" },
 ];
 
+type FooterLink = {
+  href: string;
+  label: string;
+};
+
+type PublicSiteFooterProps = {
+  accountLinksOverride?: FooterLink[];
+  accountHeading?: string;
+};
+
 const legalLinks = [
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/terms", label: "Terms" },
   { href: "/sms-policy", label: "SMS Policy" },
 ];
 
-export function PublicSiteFooter() {
+export function PublicSiteFooter({
+  accountLinksOverride,
+  accountHeading = "Accounts",
+}: PublicSiteFooterProps = {}) {
+  const displayedAccountLinks = accountLinksOverride || accountLinks;
+
   return (
     <footer className="overflow-hidden border-t border-white/8 bg-[linear-gradient(180deg,#04070d,#02050b)]">
       <div className="w-full max-w-full px-4 py-14 sm:px-6 sm:py-20 lg:px-6 xl:px-8 2xl:px-10">
@@ -60,9 +75,9 @@ export function PublicSiteFooter() {
           </div>
 
           <div>
-            <div className="text-sm font-semibold uppercase tracking-[0.28em] text-white/48">Accounts</div>
+            <div className="text-sm font-semibold uppercase tracking-[0.28em] text-white/48">{accountHeading}</div>
             <div className="mt-6 space-y-4">
-              {accountLinks.map((link) => (
+              {displayedAccountLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}

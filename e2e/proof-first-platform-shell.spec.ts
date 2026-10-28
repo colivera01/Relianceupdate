@@ -69,7 +69,7 @@ test('public provider profile leads with credibility and keeps Services Offered 
   });
   await expect(page.getByRole('heading', { name: 'Customer feedback', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Services Offered', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Recent public service videos', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Completed public work', exact: true })).toBeVisible();
 });
 
 test('signed-out role routes remain blocked without exposing role controls', async ({ page }) => {

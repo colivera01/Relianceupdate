@@ -22,7 +22,7 @@ import {
   normalizeVendorJobVideoStage,
 } from "@/lib/vendor-job-video-stages";
 import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
-import { getBusinessHoursStatus } from "@/lib/business-hours";
+import { getPublicBusinessHours } from "@/lib/business-hours";
 import {
   isTransientDbConnectivityError,
   PUBLIC_DB_UNAVAILABLE_CODE,
@@ -32,6 +32,25 @@ import {
 
 interface RouteContext {
   params: Promise<{ vendorId: string }>;
+}
+
+function parsePublicList(value: string | null | undefined): string[] {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizePublicWebsite(value: string | null | undefined): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -52,10 +71,14 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
           businessType: true,
           category: true,
           bio: true,
+          website: true,
           city: true,
           state: true,
           serviceAreas: true,
           businessHoursJson: true,
+          serviceTypes: true,
+          specializations: true,
+          foundedYear: true,
         },
       })
     );
@@ -215,10 +238,19 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
     });
 
-    const serviceAreas =
-      typeof vendor.serviceAreas === "string"
-        ? vendor.serviceAreas.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
+    const completedPublicWork = proofSafePublicAssets.filter((asset) =>
+      isCompletedStageProofVideo(asset?.mediaSession || null)
+    );
+    const servicesWithPublicProof = new Set(
+      proofSafePublicAssets
+        .map((asset) => String(asset?.mediaSession?.serviceId || "").trim())
+        .filter(Boolean)
+    );
+
+    const serviceAreas = parsePublicList(vendor.serviceAreas);
+    const specialties = Array.from(
+      new Set([...parsePublicList(vendor.serviceTypes), ...parsePublicList(vendor.specializations)])
+    );
     let vendorReviewAgg:
       | {
           rating: number | null;
@@ -241,15 +273,23 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         businessType: vendor.businessType || null,
         category: vendor.category || null,
         bio: vendor.bio || null,
+        website: normalizePublicWebsite(vendor.website),
+        foundedYear: vendor.foundedYear || null,
+        specialties,
         location: [vendor.city, vendor.state].filter(Boolean).join(", ") || null,
         serviceAreas,
-        businessHours: getBusinessHoursStatus((vendor as any).businessHoursJson || null),
+        businessHours: getPublicBusinessHours((vendor as any).businessHoursJson || null),
         profilePhoto: null, // Intentionally omitted until profile-photo public visibility governance exists.
         rating: vendorReviewAgg?.rating ?? null,
         reviewCount: vendorReviewAgg?.reviewCount ?? null,
       },
       publicServices,
       publicMedia,
+      publicProofSummary: {
+        completedWorkCount: completedPublicWork.length,
+        publicMediaCount: proofSafePublicAssets.length,
+        servicesWithPublicProof: servicesWithPublicProof.size,
+      },
       meta: {
         serviceEligibilityRule:
           "Only active vendors with isPubliclyListed=true and services with isPublished=true are returned.",
