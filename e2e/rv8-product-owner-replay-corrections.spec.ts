@@ -629,6 +629,10 @@ test.describe("RV-8 Product Owner replay corrections", () => {
 
     await selectWorkflowFilter(page, "moderator_review", /Reliance Audit/);
     await expect(page.getByText(pendingAdminAuditJob.title, { exact: true })).toBeVisible();
+    const pendingCard = page.getByTestId(`vendor-job-card-${pendingAdminAuditJob.id}`);
+    const workflowPanel = pendingCard.getByLabel("Work record progress");
+    await expect(workflowPanel.getByRole("button", { name: "Open Work Record", exact: true })).toBeVisible();
+    await expect(pendingCard.getByRole("button", { name: "View Job", exact: true })).toHaveCount(0);
     await expect(page.getByText(passedAuditJob.title, { exact: true })).toHaveCount(0);
     await expect(page.getByText(rejectedAuditJob.title, { exact: true })).toHaveCount(0);
   });

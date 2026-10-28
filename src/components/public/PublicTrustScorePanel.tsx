@@ -51,7 +51,7 @@ const componentLabels: Record<string, string> = {
 };
 
 const evidenceDetails: Record<string, string> = {
-  verifiedBookings: "Completed service records verified through Reliance.",
+  verifiedBookings: "Completed jobs verified through Reliance service records.",
   approvedServiceVideos: "Service Video packages that passed Reliance Audit, whether Private or Public.",
   validatedDisputes: "Disputes confirmed through Reliance review records.",
 };
@@ -279,7 +279,7 @@ export function PublicTrustScorePanel({
                 {[
                   {
                     key: 'verifiedBookings',
-                    label: 'Verified service records',
+                    label: 'Verified jobs completed',
                     value: evidence.verifiedBookings,
                   },
                   {

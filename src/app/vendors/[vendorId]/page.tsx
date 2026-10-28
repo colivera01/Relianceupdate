@@ -16,7 +16,7 @@ import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButton';
-import { ArrowLeft, Building2, Clock, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Clock, Eye, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
 
 interface PublicService {
   serviceId: string;
@@ -102,6 +102,7 @@ export default function PublicVendorProfilePage() {
   const { user } = useAuth();
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
+  const isVendorPreview = searchParams?.get('preview') === 'vendor';
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
   const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Proof';
 
@@ -228,6 +229,30 @@ export default function PublicVendorProfilePage() {
             ctaLabel="Explore Proof"
           />
 
+          {isVendorPreview ? (
+            <div
+              className="mb-6 flex flex-col gap-4 rounded-[24px] border border-blue-300/25 bg-blue-400/10 px-5 py-4 text-white shadow-[0_18px_55px_rgba(2,8,23,0.28)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"
+              data-testid="vendor-public-profile-preview-banner"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-blue-200/20 bg-blue-300/10">
+                  <Eye aria-hidden="true" className="h-5 w-5 text-blue-100" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">You are previewing your public profile</p>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/72">
+                    This is exactly what customers can see. Only public-approved business details, services,
+                    reviews, reliability signals, and Service Videos appear here.
+                  </p>
+                </div>
+              </div>
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+                <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                Customer view
+              </div>
+            </div>
+          ) : null}
+
           <div className="mb-8">
             <Link href={returnTo}>
               <Button
@@ -270,13 +295,14 @@ export default function PublicVendorProfilePage() {
             <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
               <div>
                 <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
-                  About this provider
+                  {isVendorPreview ? 'Customer-facing provider profile' : 'About this provider'}
                 </div>
                 <h1 className="mt-6 max-w-3xl font-display text-5xl font-semibold leading-[0.98] text-white sm:text-6xl">
                   {vendor.vendorName}
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-white/74">
-                  See service details, public reviews, and any available public service videos in one place.
+                  Explore approved services, verified customer feedback, reliability context, and available
+                  public Service Videos in one place.
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
@@ -323,9 +349,9 @@ export default function PublicVendorProfilePage() {
                     </div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Services offered</div>
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Public-approved services</div>
                     <div className="mt-3 text-3xl font-semibold">{services.length}</div>
-                    <div className="mt-1 text-sm text-white/66">Approved services offered currently shown to customers</div>
+                    <div className="mt-1 text-sm text-white/66">Services currently approved for customer viewing</div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
                     <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Service videos</div>
@@ -487,13 +513,13 @@ export default function PublicVendorProfilePage() {
             </div>
 
             <div className="space-y-8">
-              <section className="reliance-light-card rounded-[32px] px-6 py-6">
+              <section className="reliance-light-card rounded-[32px] px-6 py-6" data-testid="public-approved-services">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                      Services Offered
+                      Public-approved services
                     </div>
-                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Services Offered</h2>
+                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Choose a work type</h2>
                   </div>
                   <Badge className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">
                     {services.length} live
@@ -507,12 +533,15 @@ export default function PublicVendorProfilePage() {
                 ) : (
                   <div className="mt-6 grid gap-5 md:grid-cols-2">
                     {services.map((service) => (
-                      <Card key={service.serviceId} className="overflow-hidden rounded-[28px] border-slate-200 shadow-none">
+                      <Card
+                        key={service.serviceId}
+                        className="group overflow-hidden rounded-[28px] border-slate-200 shadow-none transition duration-300 hover:-translate-y-1 hover:border-blue-300/35 hover:shadow-[0_22px_50px_rgba(0,0,0,0.26)]"
+                      >
                         <PublicMediaPreview
                           url={service.previewMediaUrl}
                           type={service.previewMediaType}
                           alt={service.serviceName}
-                          className="h-40 w-full object-cover"
+                          className="h-44 w-full object-cover transition duration-500 group-hover:scale-[1.02]"
                           videoLabel="Service video available"
                         />
                         <CardContent className="space-y-3 p-5">

@@ -89,4 +89,15 @@ describe("Vendor operations UI contract", () => {
     expect(route).toContain("where: { vendorId, isCurrent: true }");
     expect(route).toContain("missingCurrentAssetIds");
   });
+
+  it("integrates passive work-record access into the workflow panel", () => {
+    const page = source("src/app/vendor/jobs/page.tsx");
+    const smoke = source("e2e/route-smoke.spec.ts");
+
+    expect(page).toContain("return 'Open Work Record'");
+    expect(page).not.toContain("return 'View Job'");
+    expect(page).toContain('aria-label="Work record progress"');
+    expect(page).toContain('data-testid={`vendor-job-primary-action-${job.id}`}');
+    expect(smoke).toContain("name: 'Open Work Record'");
+  });
 });

@@ -184,7 +184,7 @@ async function openFirstVendorJobDetailIfPresent(page: Page): Promise<boolean> {
   const state = await waitForVendorJobsRouteState(page);
   if (state !== 'jobs') return false;
 
-  const directViewButton = page.getByRole('button', { name: 'View Job' }).first();
+  const directViewButton = page.getByRole('button', { name: 'Open Work Record' }).first();
   if (await directViewButton.isVisible().catch(() => false)) {
     await directViewButton.click();
   } else {

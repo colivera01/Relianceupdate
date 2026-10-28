@@ -10,6 +10,10 @@ export function VendorBusinessVisibilitySection({
 }: {
   summary: VendorGrowthSummary;
 }) {
+  const publicProfilePreviewHref = summary.publicProfileHref
+    ? `${summary.publicProfileHref}?preview=vendor&returnTo=${encodeURIComponent('/vendor/dashboard')}&returnLabel=${encodeURIComponent('Back to Vendor Dashboard')}`
+    : null;
+
   return (
     <section className="mb-8 rounded-[32px] border border-white/10 bg-slate-950/65 p-6 shadow-[0_22px_70px_rgba(2,6,14,0.28)]">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -24,9 +28,9 @@ export function VendorBusinessVisibilitySection({
         </div>
 
         <div className="flex flex-wrap gap-3">
-          {summary.publicProfileHref ? (
+          {publicProfilePreviewHref ? (
             <Button asChild className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-              <Link href={summary.publicProfileHref}>View Public Profile</Link>
+              <Link href={publicProfilePreviewHref}>Preview Public Profile</Link>
             </Button>
           ) : null}
           <Button asChild variant="outline" className="rounded-full">

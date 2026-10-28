@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, User, Shield, Camera, Sparkles } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, User, Shield, Camera, Sparkles, ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
 import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
@@ -370,6 +371,10 @@ export default function VendorProfilePage() {
       : null;
   const savedBusinessHoursStatus = getBusinessHoursStatus(savedBusinessHoursJson);
   const businessHoursDirty = serializeBusinessHours(businessHours) !== savedBusinessHoursJson;
+  const publicProfilePreviewHref =
+    vendorId && profile?.isPubliclyListed
+      ? `/vendors/${encodeURIComponent(vendorId)}?preview=vendor&returnTo=${encodeURIComponent('/vendor/profile')}&returnLabel=${encodeURIComponent('Back to Profile & Settings')}`
+      : null;
 
   const requestVendorCopySuggestion = async () => {
     if (!vendorId) return;
@@ -414,11 +419,21 @@ export default function VendorProfilePage() {
   return (
     <div className="text-white">
       <div className="w-full">
-      <div className="mb-6 rounded-3xl border border-white/10 bg-slate-950/75 p-5 shadow-[0_20px_70px_rgba(3,8,20,0.28)]">
-        <h1 className="text-3xl font-semibold text-white">Public Credibility Center</h1>
-        <p className="mt-1 text-sm text-slate-300">
-          Manage the business details, public signals, and account settings that shape how customers experience your business.
-        </p>
+      <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-950/75 p-5 shadow-[0_20px_70px_rgba(3,8,20,0.28)] sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold text-white">Public Credibility Center</h1>
+          <p className="mt-1 text-sm text-slate-300">
+            Manage the business details, public signals, and account settings that shape how customers experience your business.
+          </p>
+        </div>
+        {publicProfilePreviewHref ? (
+          <Button asChild variant="outline" className="shrink-0 border-blue-300/25 bg-blue-500/10 text-white hover:bg-blue-500/20 hover:text-white">
+            <Link href={publicProfilePreviewHref}>
+              Preview Public Profile
+              <ExternalLink aria-hidden="true" className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        ) : null}
       </div>
 
       {loading && (
@@ -524,10 +539,10 @@ export default function VendorProfilePage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="inline-flex rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-100">
-                        {localFormData.profilePhoto || profile.profilePhoto ? 'Photo visible on your public profile' : 'Initials shown until you upload a photo'}
+                        {localFormData.profilePhoto || profile.profilePhoto ? 'Photo saved to your vendor workspace' : 'Initials shown until you upload a photo'}
                       </div>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        Upload a business, team, or workspace photo. Customers see it on your public profile and vendor cards.
+                        Upload a business, team, or workspace photo. Public display will appear only after a governed customer-visibility rule is available.
                       </p>
                       <div className="mt-3">
                         <button

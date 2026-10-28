@@ -17,7 +17,7 @@ import {
 } from '@/lib/vendor-job-card-state';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive, Sparkles } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive, Sparkles, ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from "next/navigation";
 import { useVendorProfile } from '@/hooks/useVendorProfile';
@@ -849,14 +849,14 @@ export default function VendorJobs() {
   const getPrimaryJobCtaLabel = (job: any): string => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
     if (phase === 'AWAITING_ADMIN_REVIEW') {
-      return 'View Job';
+      return 'Open Work Record';
     }
     const normalizedStatus = String(job?.status || '').trim().toLowerCase();
     if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
       return '';
     }
     if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
-      return 'View Job';
+      return 'Open Work Record';
     }
     const label = getVendorWorkflowStateForJob(job).actionLabel;
     if (label === 'Service Order Sent') return '';
@@ -8309,6 +8309,8 @@ export default function VendorJobs() {
                 >
                   {(() => {
                     const workflow = getVendorWorkflowStateForJob(job);
+                    const primaryCtaLabel = !isEmployeeView ? getPrimaryJobCtaLabel(job) : '';
+                    const isViewOnlyCta = primaryCtaLabel === 'Open Work Record';
                     const toneClasses: Record<string, string> = {
                       green: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-50',
                       blue: 'border-blue-400/30 bg-blue-500/10 text-blue-50',
@@ -8327,6 +8329,27 @@ export default function VendorJobs() {
                             <div><dt className="font-semibold">Who acts next</dt><dd className="mt-0.5 opacity-80">{workflow.responsibleParticipant}</dd></div>
                             <div className="sm:col-span-2 lg:col-span-1"><dt className="font-semibold">What resolves it</dt><dd className="mt-0.5 opacity-80">{workflow.resolution}</dd></div>
                           </dl>
+                          {primaryCtaLabel ? (
+                            <Button
+                              size="sm"
+                              variant={isViewOnlyCta ? 'outline' : 'default'}
+                              className={
+                                isViewOnlyCta
+                                  ? 'mt-4 w-full justify-between border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white'
+                                  : 'mt-4 w-full justify-between bg-blue-600 text-white hover:bg-blue-700'
+                              }
+                              data-no-card-open
+                              data-testid={`vendor-job-primary-action-${job.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePrimaryJobAction(job);
+                              }}
+                              disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
+                            >
+                              <span>{primaryCtaLabel}</span>
+                              <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                            </Button>
+                          ) : null}
                         </div>
                         {permissionFeedbackIsCurrentForJob(job) && permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()] ? (() => {
                           const feedback = permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()];
@@ -8345,21 +8368,7 @@ export default function VendorJobs() {
                       </>
                     );
                   })()}
-                  <div className="flex items-center gap-2 lg:justify-end">
-                    {!isEmployeeView && getPrimaryJobCtaLabel(job) ? (
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 lg:flex-none"
-                        data-no-card-open
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePrimaryJobAction(job);
-                        }}
-                        disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
-                      >
-                        {getPrimaryJobCtaLabel(job)}
-                      </Button>
-                    ) : null}
+                  <div className="flex items-center justify-end gap-2">
                   <div className="relative ml-auto border-l border-white/10 pl-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"

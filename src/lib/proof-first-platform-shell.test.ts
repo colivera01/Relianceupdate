@@ -103,4 +103,24 @@ describe('proof-first platform shell', () => {
     expect(vendorProfile).not.toContain('ratingCount || 0)} verified customer ratings');
     expect(assistant).toContain('free of volatile numeric counts');
   });
+
+  it('gives vendors a public-safe preview of the customer-facing profile', () => {
+    const vendorLayout = read('src/app/vendor/layout.tsx');
+    const vendorProfile = read('src/app/vendor/profile/page.tsx');
+    const visibility = read('src/components/vendor/VendorBusinessVisibilitySection.tsx');
+    const publicProfile = read('src/app/vendors/[vendorId]/page.tsx');
+    const publicProfileRoute = read('src/app/api/vendors/[vendorId]/public/route.ts');
+    const trustPanel = read('src/components/public/PublicTrustScorePanel.tsx');
+
+    expect(vendorLayout).toContain('Public profile');
+    expect(vendorProfile).toContain('Preview Public Profile');
+    expect(visibility).toContain('Preview Public Profile');
+    expect(publicProfile).toContain("searchParams?.get('preview') === 'vendor'");
+    expect(publicProfile).toContain('You are previewing your public profile');
+    expect(publicProfile).toContain('This is exactly what customers can see');
+    expect(publicProfile).toContain('public-approved-services');
+    expect(trustPanel).toContain('Verified jobs completed');
+    expect(publicProfileRoute).toContain('profilePhoto: null');
+    expect(publicProfileRoute).toContain('vendor profile photo (until governed as public-safe)');
+  });
 });
