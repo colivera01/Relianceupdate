@@ -53,8 +53,8 @@ it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta c
     await db.vendorFavorite.count();
     await db.review.findMany({ take: 1, select: Object.fromEntries(['id', ...manifest.requiredReviewFields].map((field) => [field, true])) });
     const all = await loadCustomerServiceRecords({ db, customerUserId: customerUserId!, includeAll: true });
-    expect(all.counts).toEqual({ upcoming: 0, completed: 5, needs_attention: 0, cancelled: 4, archived: 1, unclassified: 0 });
-    expect(all.records).toHaveLength(10);
+    expect(all.counts).toEqual({ upcoming: 2, completed: 6, needs_attention: 0, cancelled: 4, archived: 1, unclassified: 0 });
+    expect(all.records).toHaveLength(13);
     const page = await loadCustomerServiceRecords({ db, customerUserId: customerUserId!, requestedTab: 'completed', search: 'Breaker', page: 1, limit: 1 });
     expect(page.records.map((row) => row.id)).toEqual(['cmtoz4dp40016nzfju8bcqbva']);
     expect(page.pagination.total).toBe(2);
