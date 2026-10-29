@@ -81,8 +81,8 @@ describe("trust-score-read shaping (public vs vendor vs admin separation)", () =
     });
     expect(out.presentation).toMatchObject({
       maturityState: "emerging",
-      maturityLabel: "Emerging",
-      title: "Emerging reliability score",
+      maturityLabel: "Emerging evidence",
+      title: "Verified reliability performance",
       scoreDisplay: "88/100",
     });
 

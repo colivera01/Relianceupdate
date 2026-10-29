@@ -53,6 +53,11 @@ import {
   formatRelianceDateTime,
   formatRelianceTime,
 } from '@/lib/reliance-date-time';
+import {
+  dateAndTimeInZone,
+  DEFAULT_SERVICE_TIME_ZONE,
+  zonedDateTimeToUtc,
+} from '@/lib/booking-schedule';
 
 // BACKEND DEVELOPER NOTES:
 // - Fetch jobs for this vendor from GET /api/vendor/jobs
@@ -149,6 +154,70 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
   } finally {
     window.clearTimeout(timeoutHandle);
   }
+}
+
+type ServiceRequestLifecycleState =
+  | 'REQUESTED'
+  | 'VENDOR_ACCEPTED'
+  | 'COUNTEROFFERED'
+  | 'SCHEDULED'
+  | 'VENDOR_DECLINED'
+  | 'CUSTOMER_DECLINED'
+  | 'CANCELED'
+  | '';
+
+function serviceRequestLifecycleForJob(job: any): {
+  state: ServiceRequestLifecycleState;
+  responseReason: string;
+  proposedScheduledFor: string;
+} {
+  const lifecycle = job?.requestLifecycle && typeof job.requestLifecycle === 'object'
+    ? job.requestLifecycle
+    : {};
+  const rawState = String(lifecycle.state || '').trim().toUpperCase();
+  const supported = new Set([
+    'REQUESTED',
+    'VENDOR_ACCEPTED',
+    'COUNTEROFFERED',
+    'SCHEDULED',
+    'VENDOR_DECLINED',
+    'CUSTOMER_DECLINED',
+    'CANCELED',
+  ]);
+  const source = String(job?.source || '').trim().toLowerCase();
+  const status = String(job?.status || '').trim().toLowerCase();
+  const fallbackState = source === 'customer_booking' && status === 'pending' ? 'REQUESTED' : '';
+  return {
+    state: (supported.has(rawState) ? rawState : fallbackState) as ServiceRequestLifecycleState,
+    responseReason: String(lifecycle.responseReason || lifecycle.response_reason || '').trim(),
+    proposedScheduledFor: String(lifecycle.proposedScheduledFor || lifecycle.proposed_scheduled_for || '').trim(),
+  };
+}
+
+function serviceRequestStatusCopy(state: ServiceRequestLifecycleState): { label: string; detail: string } {
+  if (state === 'REQUESTED') return { label: 'New service request', detail: 'Review the customer details, then accept, decline, or propose another time.' };
+  if (state === 'VENDOR_ACCEPTED') return { label: 'Accepted by your business', detail: 'The customer has been notified that the requested appointment is accepted.' };
+  if (state === 'COUNTEROFFERED') return { label: 'Waiting for customer', detail: 'You proposed a new time. The appointment is not scheduled until the customer accepts it.' };
+  if (state === 'SCHEDULED') return { label: 'Appointment scheduled', detail: 'The appointment time has been accepted by both sides.' };
+  if (state === 'VENDOR_DECLINED') return { label: 'Declined by your business', detail: 'The customer was notified that this request could not be accepted.' };
+  if (state === 'CUSTOMER_DECLINED') return { label: 'Customer declined proposed time', detail: 'The proposed time was declined and is not scheduled.' };
+  if (state === 'CANCELED') return { label: 'Request cancelled', detail: 'This customer request is no longer active.' };
+  return { label: 'Service request', detail: 'Open the work record for current request details.' };
+}
+
+function serviceTimeZoneForJob(job: any): string {
+  return String(job?.serviceTimeZone || job?.service_time_zone || DEFAULT_SERVICE_TIME_ZONE).trim()
+    || DEFAULT_SERVICE_TIME_ZONE;
+}
+
+function localDateTimeInputMin(timeZone: string): string {
+  const { date, time } = dateAndTimeInZone(new Date(Date.now() + 60_000), timeZone);
+  return `${date}T${time}`;
+}
+
+function proposedDateTimeToUtc(value: string, timeZone: string): Date | null {
+  const [date = '', time = ''] = String(value || '').split('T');
+  return zonedDateTimeToUtc({ date, time, timeZone });
 }
 
 export default function VendorJobs() {
@@ -1092,6 +1161,12 @@ export default function VendorJobs() {
     Record<string, { tone: 'info' | 'success' | 'warning' | 'error'; message: string }>
   >({});
   const [jobActionLoading, setJobActionLoading] = useState(false);
+  const [serviceRequestActionTarget, setServiceRequestActionTarget] = useState<any>(null);
+  const [serviceRequestAction, setServiceRequestAction] = useState<'DECLINE' | 'COUNTER' | null>(null);
+  const [serviceRequestReason, setServiceRequestReason] = useState('');
+  const [serviceRequestProposedAt, setServiceRequestProposedAt] = useState('');
+  const [serviceRequestActionError, setServiceRequestActionError] = useState('');
+  const serviceRequestIdempotencyRef = useRef<{ actionKey: string; requestId: string } | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
   const [cancellationAttribution, setCancellationAttribution] = useState('');
   const [permissionEvidence, setPermissionEvidence] = useState<any>(null);
@@ -4607,7 +4682,10 @@ export default function VendorJobs() {
       | "RELEASE_EMPLOYEE_SERVICE_ORDER"
       | "CANCEL_SERVICE_ORDER"
       | "UPDATE_STATUS"
-      | "APPROVE_JOB_COMPLETION",
+      | "APPROVE_JOB_COMPLETION"
+      | "ACCEPT_SERVICE_REQUEST"
+      | "DECLINE_SERVICE_REQUEST"
+      | "COUNTER_SERVICE_REQUEST",
     extra: Record<string, unknown> = {}
   ) => {
     if (!vendorId) {
@@ -4624,6 +4702,96 @@ export default function VendorJobs() {
       throw new Error(payload?.error || payload?.message || `Job action failed (${res.status})`);
     }
     return payload;
+  };
+
+  const acceptServiceRequest = async (job: any) => {
+    if (jobMutationLoadingId) return;
+    setJobMutationLoadingId(`service-request:${String(job.id)}`);
+    setJobActionFeedback(null);
+    try {
+      const actionKey = `${String(job.id)}:ACCEPT_SERVICE_REQUEST`;
+      if (serviceRequestIdempotencyRef.current?.actionKey !== actionKey) {
+        serviceRequestIdempotencyRef.current = {
+          actionKey,
+          requestId: globalThis.crypto?.randomUUID?.() || `accept-request-${Date.now()}`,
+        };
+      }
+      const payload = await runPersistedJobAction(job, 'ACCEPT_SERVICE_REQUEST', {
+        requestId: serviceRequestIdempotencyRef.current.requestId,
+      });
+      setJobActionFeedback({
+        type: 'success',
+        message: String(payload?.message || 'Service request accepted. The customer has been notified.'),
+      });
+      serviceRequestIdempotencyRef.current = null;
+      await reloadJobsFromBackend();
+    } catch (error) {
+      setJobActionFeedback({ type: 'error', message: error instanceof Error ? error.message : 'Unable to accept this request.' });
+    } finally {
+      setJobMutationLoadingId(null);
+    }
+  };
+
+  const openServiceRequestAction = (job: any, action: 'DECLINE' | 'COUNTER') => {
+    setServiceRequestActionTarget(job);
+    setServiceRequestAction(action);
+    setServiceRequestReason('');
+    setServiceRequestProposedAt('');
+    setServiceRequestActionError('');
+  };
+
+  const submitServiceRequestAction = async () => {
+    if (!serviceRequestActionTarget || !serviceRequestAction || jobMutationLoadingId) return;
+    const reason = serviceRequestReason.trim();
+    if (reason.length < 3) {
+      setServiceRequestActionError('Add a short explanation (at least 3 characters) so the customer understands your response.');
+      return;
+    }
+    let proposedScheduledFor: string | undefined;
+    if (serviceRequestAction === 'COUNTER') {
+      const parsed = proposedDateTimeToUtc(
+        serviceRequestProposedAt,
+        serviceTimeZoneForJob(serviceRequestActionTarget),
+      );
+      if (!serviceRequestProposedAt || !parsed || parsed.getTime() <= Date.now()) {
+        setServiceRequestActionError('Choose a valid future date and time.');
+        return;
+      }
+      proposedScheduledFor = parsed.toISOString();
+    }
+    const action = serviceRequestAction === 'COUNTER'
+      ? 'COUNTER_SERVICE_REQUEST'
+      : 'DECLINE_SERVICE_REQUEST';
+    const actionKey = `${String(serviceRequestActionTarget.id)}:${action}`;
+    if (serviceRequestIdempotencyRef.current?.actionKey !== actionKey) {
+      serviceRequestIdempotencyRef.current = {
+        actionKey,
+        requestId: globalThis.crypto?.randomUUID?.() || `service-request-response-${Date.now()}`,
+      };
+    }
+    setJobMutationLoadingId(`service-request:${String(serviceRequestActionTarget.id)}`);
+    setServiceRequestActionError('');
+    try {
+      const payload = await runPersistedJobAction(serviceRequestActionTarget, action, {
+        reason,
+        proposedScheduledFor,
+        requestId: serviceRequestIdempotencyRef.current.requestId,
+      });
+      setJobActionFeedback({
+        type: 'success',
+        message: String(payload?.message || (serviceRequestAction === 'COUNTER'
+          ? 'New time proposed. The customer has been notified.'
+          : 'Service request declined. The customer has been notified.')),
+      });
+      setServiceRequestActionTarget(null);
+      setServiceRequestAction(null);
+      serviceRequestIdempotencyRef.current = null;
+      await reloadJobsFromBackend();
+    } catch (error) {
+      setServiceRequestActionError(error instanceof Error ? error.message : 'Unable to respond to this request.');
+    } finally {
+      setJobMutationLoadingId(null);
+    }
   };
 
   const requestRecordingLocationException = async () => {
@@ -6972,6 +7140,78 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={Boolean(serviceRequestActionTarget && serviceRequestAction)}
+        onOpenChange={(open) => {
+          if (open || jobMutationLoadingId) return;
+          setServiceRequestActionTarget(null);
+          setServiceRequestAction(null);
+          setServiceRequestReason('');
+          setServiceRequestProposedAt('');
+          setServiceRequestActionError('');
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{serviceRequestAction === 'COUNTER' ? 'Propose a new appointment time' : 'Decline service request'}</DialogTitle>
+            <DialogDescription>
+              {serviceRequestAction === 'COUNTER'
+                ? 'The customer must accept your proposed time before this appointment is scheduled.'
+                : 'The customer will be notified immediately and will see your explanation in their Service Record.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {serviceRequestAction === 'COUNTER' ? (
+              <div>
+                <label htmlFor="service-request-proposed-at" className="mb-1 block text-sm font-medium text-slate-800">Proposed date and time ({serviceTimeZoneForJob(serviceRequestActionTarget)})</label>
+                <Input
+                  id="service-request-proposed-at"
+                  type="datetime-local"
+                  value={serviceRequestProposedAt}
+                  min={localDateTimeInputMin(serviceTimeZoneForJob(serviceRequestActionTarget))}
+                  onChange={(event) => setServiceRequestProposedAt(event.target.value)}
+                  disabled={Boolean(jobMutationLoadingId)}
+                />
+                <p className="mt-1 text-xs text-slate-600">Times are interpreted in the business service timezone: {serviceTimeZoneForJob(serviceRequestActionTarget)}.</p>
+              </div>
+            ) : null}
+            <div>
+              <label htmlFor="service-request-reason" className="mb-1 block text-sm font-medium text-slate-800">
+                {serviceRequestAction === 'COUNTER' ? 'Why this time works better' : 'Reason for declining'}
+              </label>
+              <textarea
+                id="service-request-reason"
+                value={serviceRequestReason}
+                onChange={(event) => setServiceRequestReason(event.target.value)}
+                rows={4}
+                disabled={Boolean(jobMutationLoadingId)}
+                placeholder={serviceRequestAction === 'COUNTER' ? 'For example: Our first available technician can arrive at this time.' : 'Give the customer a clear, respectful explanation.'}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+              />
+            </div>
+            {serviceRequestActionError ? <p role="alert" className="text-sm font-medium text-red-700">{serviceRequestActionError}</p> : null}
+          </div>
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button type="button" variant="outline" disabled={Boolean(jobMutationLoadingId)} onClick={() => {
+              setServiceRequestActionTarget(null);
+              setServiceRequestAction(null);
+            }}>Cancel</Button>
+            <Button
+              type="button"
+              disabled={Boolean(jobMutationLoadingId)}
+              className={serviceRequestAction === 'DECLINE' ? 'bg-red-600 text-white hover:bg-red-700' : ''}
+              onClick={() => void submitServiceRequestAction()}
+            >
+              {jobMutationLoadingId
+                ? 'Sending response...'
+                : serviceRequestAction === 'COUNTER'
+                  ? 'Send proposed time'
+                  : 'Decline and notify customer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Job Status Modal */}
       <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md">
@@ -8130,6 +8370,14 @@ export default function VendorJobs() {
                      <p className="text-xs text-gray-500">
                        Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Service Record' : 'Vendor-Created Job'}
                      </p>
+                    {String(job.source || '').toLowerCase() === 'customer_booking' ? (
+                      <div className="mt-2 space-y-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-slate-700">
+                        <p><span className="font-semibold text-slate-950">Requested appointment: </span>{job.requestedFor ? formatRelianceDateTime(job.requestedFor) : 'Customer asked your business to propose a time'}</p>
+                        {job.serviceAddress ? <p><span className="font-semibold text-slate-950">Service address: </span>{String(job.serviceAddress)}</p> : <p className="font-medium text-amber-800">Service address not provided</p>}
+                        {job.requestNotes || job.customerNotes ? <p><span className="font-semibold text-slate-950">Customer instructions: </span>{String(job.requestNotes || job.customerNotes)}</p> : null}
+                        {job.customerEmail || job.customerPhone ? <p><span className="font-semibold text-slate-950">Contact on request: </span>{[job.customerEmail, job.customerPhone].filter(Boolean).join(' · ')}</p> : null}
+                      </div>
+                    ) : null}
                     <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
                     <p className="text-gray-600">Created: {formatRelianceDate(job.createdAt)}</p>
                     <p className="text-gray-600">Updated: {formatRelianceDate(job.updatedAt)}</p>
@@ -8307,6 +8555,36 @@ export default function VendorJobs() {
                   data-no-card-open
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {!isEmployeeView && String(job.source || '').toLowerCase() === 'customer_booking' ? (() => {
+                    const lifecycle = serviceRequestLifecycleForJob(job);
+                    const copy = serviceRequestStatusCopy(lifecycle.state);
+                    const awaitingVendor = lifecycle.state === 'REQUESTED';
+                    const canAcceptRequestedTime = Boolean(job.requestedFor);
+                    return (
+                      <div className={`rounded-md border px-4 py-3 ${awaitingVendor ? 'border-blue-300 bg-blue-50 text-blue-950' : lifecycle.state === 'COUNTEROFFERED' ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-slate-200 bg-slate-50 text-slate-900'}`} data-testid={`service-request-response-${job.id}`}>
+                        <p className="text-xs font-semibold uppercase tracking-wide opacity-70">Customer service request</p>
+                        <p className="mt-1 text-sm font-semibold">{copy.label}</p>
+                        <p className="mt-1 text-xs leading-5 opacity-80">{copy.detail}</p>
+                        {lifecycle.proposedScheduledFor ? <p className="mt-2 text-xs font-semibold">Proposed: {formatRelianceDateTime(lifecycle.proposedScheduledFor)}</p> : null}
+                        {lifecycle.responseReason ? <p className="mt-1 text-xs">Note: {lifecycle.responseReason}</p> : null}
+                        {awaitingVendor ? (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                            {canAcceptRequestedTime ? (
+                              <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={Boolean(jobMutationLoadingId)} onClick={() => void acceptServiceRequest(job)}>
+                                Accept request
+                              </Button>
+                            ) : null}
+                            <Button size="sm" variant="outline" className="border-blue-300 bg-white text-blue-800 hover:bg-blue-100" disabled={Boolean(jobMutationLoadingId)} onClick={() => openServiceRequestAction(job, 'COUNTER')}>
+                              {canAcceptRequestedTime ? 'Propose new time' : 'Propose a time'}
+                            </Button>
+                            <Button size="sm" variant="outline" className="border-red-300 bg-white text-red-700 hover:bg-red-50" disabled={Boolean(jobMutationLoadingId)} onClick={() => openServiceRequestAction(job, 'DECLINE')}>
+                              Decline
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })() : null}
                   {(() => {
                     const workflow = getVendorWorkflowStateForJob(job);
                     const primaryCtaLabel = !isEmployeeView ? getPrimaryJobCtaLabel(job) : '';

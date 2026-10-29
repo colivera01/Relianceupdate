@@ -14,6 +14,11 @@ import {
   dispatchEmployeeParticipationDeclinedNotification,
   isEmployeeParticipationDeclinedNotificationKind,
 } from "@/lib/notifications/send-employee-participation-declined";
+import {
+  SERVICE_REQUEST_NOTIFICATION_PREFIX,
+  dispatchServiceRequestNotification,
+  enqueueServiceRequestAppointmentReminders,
+} from "@/lib/notifications/service-request";
 
 function secretMatches(supplied: string, expected: string): boolean {
   const left = crypto.createHash("sha256").update(supplied).digest();
@@ -35,6 +40,19 @@ export async function POST(request: Request) {
   }
 
   const now = new Date();
+  let reminderQueued = 0;
+  let reminderError: string | null = null;
+  try {
+    const reminders = await enqueueServiceRequestAppointmentReminders({
+      db: prisma as any,
+      now,
+      baseUrl: new URL(request.url).origin,
+    });
+    reminderQueued = reminders.length;
+  } catch (error) {
+    reminderError = error instanceof Error ? error.message.slice(0, 500) : "service_request_reminder_enqueue_failed";
+    console.error("[notifications/process] appointment reminder enqueue failed:", error);
+  }
   const candidates = await (prisma as any).bookingNotification.findMany({
     where: {
       OR: [
@@ -51,7 +69,59 @@ export async function POST(request: Request) {
     select: { id: true, kind: true, consentRecordId: true, attemptCount: true, maxAttempts: true },
   });
 
+  const serviceRequestCandidates = await (prisma as any).bookingNotification.findMany({
+    where: {
+      kind: { startsWith: SERVICE_REQUEST_NOTIFICATION_PREFIX },
+      deadLetteredAt: null,
+      OR: [
+        { status: "QUEUED" },
+        {
+          status: "FAILED",
+          OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+        },
+        { status: "SENDING", leaseExpiresAt: { lte: now } },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+    select: { id: true, kind: true, attemptCount: true, maxAttempts: true },
+  });
+
   const results: Array<Record<string, unknown>> = [];
+  for (const candidate of serviceRequestCandidates) {
+    const maxAttempts = Math.max(1, Number(candidate.maxAttempts || 4));
+    if (Number(candidate.attemptCount || 0) >= maxAttempts) {
+      await (prisma as any).bookingNotification.update({
+        where: { id: candidate.id },
+        data: {
+          deadLetteredAt: now,
+          leaseExpiresAt: null,
+          lastError: "service_request_delivery_retry_limit_reached",
+        },
+      });
+      results.push({ notificationId: candidate.id, kind: candidate.kind, status: "dead_lettered" });
+      continue;
+    }
+    try {
+      const delivered = await dispatchServiceRequestNotification({
+        notificationId: candidate.id,
+        actorUserId: "service-request-notification-worker",
+        db: prisma as any,
+      });
+      results.push({ notificationId: candidate.id, kind: candidate.kind, status: delivered?.status || "FAILED" });
+    } catch (error) {
+      await (prisma as any).bookingNotification.update({
+        where: { id: candidate.id },
+        data: {
+          status: "FAILED",
+          leaseExpiresAt: null,
+          nextAttemptAt: new Date(Date.now() + 15 * 60 * 1000),
+          lastError: error instanceof Error ? error.message.slice(0, 500) : "service_request_retry_failed",
+        },
+      });
+      results.push({ notificationId: candidate.id, kind: candidate.kind, status: "retry_failed" });
+    }
+  }
   for (const candidate of candidates) {
     const maxAttempts = Math.max(1, Number(candidate.maxAttempts || 4));
     if (Number(candidate.attemptCount || 0) >= maxAttempts) {
@@ -155,5 +225,10 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ success: true, processed: results.length, results });
+  return NextResponse.json({
+    success: true,
+    processed: results.length,
+    reminders: { queued: reminderQueued, error: reminderError },
+    results,
+  });
 }

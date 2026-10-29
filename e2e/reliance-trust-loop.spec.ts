@@ -201,15 +201,16 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   await page.locator('[data-testid^="booking-slot-time-"]').first().click();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByPlaceholder("Enter your full name").fill(bookingClientName);
-  await page.getByPlaceholder("Enter your email").fill(fixture.customerEmail);
-  await page.getByPlaceholder("Enter your phone number").fill("555-0111");
+  const bookingEmailInput = page.getByPlaceholder("Enter your email");
+  if (await bookingEmailInput.isEditable()) await bookingEmailInput.fill(fixture.customerEmail);
+  await page.getByPlaceholder("Enter your phone number").fill("(407) 555-0111");
   await page.getByPlaceholder("Enter the address where you need the service").fill("100 Trust Loop Ave");
   await page.getByRole("button", { name: "Continue" }).click();
   console.log("[trust-loop][booking] url before confirm click:", page.url());
   const bookingPostPromise = page.waitForResponse((response) => {
     return response.request().method() === "POST" && response.url().includes("/api/bookings");
   });
-  await page.getByRole("button", { name: "Confirm booking" }).click();
+  await page.getByRole("button", { name: "Send Service Request" }).click();
   const bookingPostResponse = await bookingPostPromise;
   const bookingPostStatus = bookingPostResponse.status();
   const bookingPostBody = await bookingPostResponse.text().catch(() => "");
@@ -220,11 +221,11 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   console.log("[trust-loop][booking] url after confirm click:", page.url());
   const bookingIdMatch = page.url().match(/bookingId=([^&]+)/);
   const confirmationHeadingVisible = await page
-    .getByRole("heading", { name: "Booking Confirmed!" })
+    .getByRole("heading", { name: "Service Request Sent" })
     .isVisible()
     .catch(() => false);
   const confirmationLoadErrorVisible = await page
-    .getByText("Unable to load booking confirmation")
+    .getByText("Unable to load service-record confirmation")
     .isVisible()
     .catch(() => false);
   console.log("[trust-loop][booking] confirmation heading visible:", confirmationHeadingVisible);
@@ -249,7 +250,23 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   const actors = await ensureActors(String(booking?.vendorId), String(booking?.serviceId));
   console.log("[trust-loop] selected employee:", actors.employeeDisplayName, actors.employeeMembershipId);
 
-  // STEP 2 — Vendor assigns employee
+  // STEP 2 — Vendor accepts the customer request before operational work begins.
+  const acceptRequestRes = await apiJson(
+    request,
+    "PATCH",
+    `/api/vendors/${actors.vendorId}/jobs/${bookingId}/actions`,
+    {
+      action: "ACCEPT_SERVICE_REQUEST",
+      requestId: `e2e-accept-${bookingId}`,
+    },
+    {
+      "x-user-id": actors.managerUserId,
+      "x-vendor-id": actors.vendorId,
+    },
+  );
+  expect(acceptRequestRes.response.ok(), JSON.stringify(acceptRequestRes.json)).toBeTruthy();
+
+  // STEP 3 — Vendor assigns employee
   const assignRes = await apiJson(
     request,
     "PATCH",
@@ -266,7 +283,7 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   expect(assignRes.response.ok(), JSON.stringify(assignRes.json)).toBeTruthy();
   expect(assignRes.json?.job?.assignedMembershipIds?.includes(actors.employeeMembershipId)).toBeTruthy();
 
-  // STEP 3 — Employee uploads stages (seed assets, then submit stage completion)
+  // STEP 4 — Employee uploads stages (seed assets, then submit stage completion)
   const stageSessionIds: Record<"INTRO" | "IN_PROGRESS" | "COMPLETED", string> = {
     INTRO: "",
     IN_PROGRESS: "",

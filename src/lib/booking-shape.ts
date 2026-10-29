@@ -3,6 +3,7 @@ import {
   cleanPublicServiceName,
   cleanPublicServicePrice,
 } from '@/lib/launch-content-cleanup';
+import { dateAndTimeInZone, DEFAULT_SERVICE_TIME_ZONE } from '@/lib/booking-schedule';
 
 type BookingLike = {
   id: string;
@@ -53,7 +54,13 @@ function customerMetadataToContract(raw: unknown): Record<string, unknown> | nul
 }
 
 export function mapBookingToContract(booking: BookingLike) {
-  const at = booking.scheduledFor || booking.date || booking.createdAt;
+  // A request without a chosen appointment intentionally has no service date.
+  // Never substitute the record creation time; that makes an unscheduled request
+  // look like a confirmed appointment in customer-facing Service Records.
+  const at = booking.scheduledFor || booking.date;
+  const customerMetadata = customerMetadataToContract(booking.customerMetadata);
+  const serviceTimeZone = String(customerMetadata?.service_time_zone || '').trim() || DEFAULT_SERVICE_TIME_ZONE;
+  const localSchedule = at ? dateAndTimeInZone(at, serviceTimeZone) : null;
   const safeStatus = String(booking.status || 'PENDING').toLowerCase();
   const servicePrice = booking.service?.price ?? 0;
   const amountRaw = booking.amount;
@@ -71,8 +78,10 @@ export function mapBookingToContract(booking: BookingLike) {
     service_id: booking.serviceId,
     title: booking.title,
     client_name: booking.clientName,
-    booking_date: at?.toISOString().split('T')[0] || null,
-    booking_time: at?.toISOString().split('T')[1]?.split('.')[0] || null,
+    booking_date: localSchedule?.date || null,
+    booking_time: localSchedule ? `${localSchedule.time}:00` : null,
+    scheduled_for: at?.toISOString() || null,
+    service_time_zone: serviceTimeZone,
     status: safeStatus,
     total_price: total,
     created_at: booking.createdAt.toISOString(),
@@ -102,6 +111,6 @@ export function mapBookingToContract(booking: BookingLike) {
           location: [booking.vendor.city, booking.vendor.state].filter(Boolean).join(', ') || null,
         }
       : null,
-    customer_metadata: customerMetadataToContract(booking.customerMetadata),
+    customer_metadata: customerMetadata,
   };
 }

@@ -45,6 +45,16 @@ import {
 } from "@/lib/service-video-admin-audit";
 import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 import { tryReconcileBookingCancellationAndScore } from "@/lib/trust-score-reconciliation";
+import {
+  readServiceRequestLifecycle,
+  serializeServiceRequestMetadata,
+  transitionServiceRequestMetadata,
+} from "@/lib/service-request-lifecycle";
+import {
+  dispatchServiceRequestNotifications,
+  enqueueServiceRequestCustomerEvent,
+} from "@/lib/notifications/service-request";
+import { bookingIntervalsOverlap, resolveServiceDurationMinutes } from "@/lib/availability-slots";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -59,6 +69,9 @@ type JobAction =
   | "UPDATE_RECORDING_COMPLIANCE"
   | "RELEASE_EMPLOYEE_SERVICE_ORDER"
   | "CANCEL_SERVICE_ORDER"
+  | "ACCEPT_SERVICE_REQUEST"
+  | "DECLINE_SERVICE_REQUEST"
+  | "COUNTER_SERVICE_REQUEST"
   | "RESEND_COMPLETED_WORK_ORDER"
   | "UPDATE_STATUS"
   | "APPROVE_JOB_COMPLETION";
@@ -411,6 +424,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         clientName: true,
         scheduledFor: true,
         date: true,
+        createdAt: true,
         service: { select: { id: true, name: true } },
         vendor: {
           select: {
@@ -473,6 +487,296 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         );
       }
       throw error;
+    }
+
+    if (
+      action === "ACCEPT_SERVICE_REQUEST" ||
+      action === "DECLINE_SERVICE_REQUEST" ||
+      action === "COUNTER_SERVICE_REQUEST"
+    ) {
+      const reason = String(body?.reason || "").trim();
+      const requestId = String(body?.requestId || "").trim();
+      if (!requestId) {
+        return NextResponse.json(
+          apiResponse(false, "IDEMPOTENCY_KEY_REQUIRED", "Refresh this work record and try your response again."),
+          { status: 400 },
+        );
+      }
+      if ((action === "DECLINE_SERVICE_REQUEST" || action === "COUNTER_SERVICE_REQUEST") && reason.length < 3) {
+        return NextResponse.json(
+          apiResponse(false, "SERVICE_REQUEST_REASON_REQUIRED", "Enter a brief reason for this response."),
+          { status: 422 },
+        );
+      }
+      const proposedRaw = String(body?.proposedScheduledFor || "").trim();
+      const proposedAt = proposedRaw ? new Date(proposedRaw) : null;
+      if (action === "COUNTER_SERVICE_REQUEST") {
+        if (!proposedAt || Number.isNaN(proposedAt.getTime())) {
+          return NextResponse.json(
+            apiResponse(false, "SERVICE_REQUEST_PROPOSED_TIME_REQUIRED", "Choose a valid proposed appointment date and time."),
+            { status: 422 },
+          );
+        }
+        if (proposedAt.getTime() <= Date.now()) {
+          return NextResponse.json(
+            apiResponse(false, "SERVICE_REQUEST_PROPOSED_TIME_IN_PAST", "Choose a proposed appointment time in the future."),
+            { status: 422 },
+          );
+        }
+      }
+
+      const now = new Date();
+      const notificationBaseUrl = resolveJobLinkBaseUrl(request);
+      const result = await prisma.$transaction(async (tx) => {
+        const current = await tx.booking.findFirst({
+          where: { id: jobId, vendorId },
+          select: {
+            id: true,
+            status: true,
+            scheduledFor: true,
+            createdAt: true,
+            customerMetadata: true,
+            service: { select: { description: true } },
+          },
+        });
+        if (!current) throw new Error("SERVICE_REQUEST_NOT_FOUND");
+        const status = normalizeBookingStatus(current.status);
+        const lifecycle = readServiceRequestLifecycle(current.customerMetadata, {
+          requestedAt: current.createdAt,
+          scheduledFor: current.scheduledFor,
+        });
+        const metadata = parseCustomerMetadata(current.customerMetadata);
+        const processedIds = Array.isArray(metadata.service_request_action_request_ids)
+          ? metadata.service_request_action_request_ids.map((value) => String(value))
+          : [];
+        const requestToken = requestId ? `${action}:${requestId}` : "";
+        if (requestToken && processedIds.includes(requestToken)) {
+          return { booking: current, lifecycle, previousStatus: status, idempotent: true };
+        }
+        if (status !== "PENDING") throw new Error("SERVICE_REQUEST_STATE_CHANGED");
+        if (!["REQUESTED", "COUNTEROFFERED"].includes(lifecycle.state)) {
+          throw new Error("SERVICE_REQUEST_RESPONSE_NOT_ALLOWED");
+        }
+
+        if (action === "ACCEPT_SERVICE_REQUEST") {
+          if (!current.scheduledFor) throw new Error("SERVICE_REQUEST_SCHEDULE_REQUIRED");
+          if (lifecycle.state === "COUNTEROFFERED") throw new Error("SERVICE_REQUEST_CUSTOMER_RESPONSE_REQUIRED");
+          if (current.scheduledFor.getTime() <= now.getTime()) {
+            throw new Error("SERVICE_REQUEST_SCHEDULE_EXPIRED");
+          }
+          const requestedDuration = resolveServiceDurationMinutes(current.service?.description);
+          const possibleConflicts = await tx.booking.findMany({
+            where: {
+              id: { not: current.id },
+              vendorId,
+              status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS"] as any },
+              scheduledFor: {
+                gt: new Date(current.scheduledFor.getTime() - 8 * 60 * 60 * 1000),
+                lt: new Date(current.scheduledFor.getTime() + 8 * 60 * 60 * 1000),
+              },
+            },
+            select: { scheduledFor: true, service: { select: { description: true } } },
+          });
+          if (possibleConflicts.some((candidate) => candidate.scheduledFor && bookingIntervalsOverlap(
+            current.scheduledFor!,
+            requestedDuration,
+            candidate.scheduledFor,
+            resolveServiceDurationMinutes(candidate.service?.description),
+          ))) {
+            throw new Error("SERVICE_REQUEST_SCHEDULE_UNAVAILABLE");
+          }
+          const transitioned = transitionServiceRequestMetadata({
+            metadataValue: metadata,
+            fallback: { requestedAt: current.createdAt, scheduledFor: current.scheduledFor },
+            state: "VENDOR_ACCEPTED",
+            at: now,
+            actorUserId: member.userId,
+            actorMembershipId: member.membershipId,
+            scheduledFor: current.scheduledFor,
+          });
+          if (requestToken) transitioned.metadata.service_request_action_request_ids = [...processedIds, requestToken].slice(-25);
+          const updated = await tx.booking.update({
+            where: { id: current.id },
+            data: { status: "CONFIRMED", customerMetadata: serializeServiceRequestMetadata(transitioned.metadata) },
+            select: { id: true, status: true, scheduledFor: true, createdAt: true, customerMetadata: true },
+          });
+          const queued = await enqueueServiceRequestCustomerEvent({
+            db: tx as any,
+            bookingId: current.id,
+            event: "ACCEPTED_CUSTOMER",
+            actorUserId: member.userId,
+            baseUrl: notificationBaseUrl,
+            scheduledFor: current.scheduledFor,
+            dedupeKey: "accepted_customer",
+          });
+          return { booking: updated, lifecycle: transitioned.lifecycle, previousStatus: status, idempotent: false, queued };
+        }
+
+        if (action === "DECLINE_SERVICE_REQUEST") {
+          const transitioned = transitionServiceRequestMetadata({
+            metadataValue: metadata,
+            fallback: { requestedAt: current.createdAt, scheduledFor: current.scheduledFor },
+            state: "VENDOR_DECLINED",
+            at: now,
+            actorUserId: member.userId,
+            actorMembershipId: member.membershipId,
+            reason,
+            scheduledFor: current.scheduledFor,
+          });
+          if (requestToken) transitioned.metadata.service_request_action_request_ids = [...processedIds, requestToken].slice(-25);
+          const updated = await tx.booking.update({
+            where: { id: current.id },
+            data: {
+              status: "CANCELED",
+              rejectionReason: reason,
+              rejectedAt: now,
+              rejectedBy: member.userId,
+              customerMetadata: serializeServiceRequestMetadata(transitioned.metadata),
+            },
+            select: { id: true, status: true, scheduledFor: true, createdAt: true, customerMetadata: true },
+          });
+          const queued = await enqueueServiceRequestCustomerEvent({
+            db: tx as any,
+            bookingId: current.id,
+            event: "DECLINED_CUSTOMER",
+            actorUserId: member.userId,
+            baseUrl: notificationBaseUrl,
+            reason,
+            scheduledFor: current.scheduledFor,
+            dedupeKey: "declined_customer",
+          });
+          return { booking: updated, lifecycle: transitioned.lifecycle, previousStatus: status, idempotent: false, queued };
+        }
+
+        const possibleConflicts = await tx.booking.findMany({
+          where: {
+            id: { not: current.id },
+            vendorId,
+            status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS"] as any },
+            scheduledFor: {
+              gt: new Date(proposedAt!.getTime() - 8 * 60 * 60 * 1000),
+              lt: new Date(proposedAt!.getTime() + 8 * 60 * 60 * 1000),
+            },
+          },
+          select: { scheduledFor: true, service: { select: { description: true } } },
+        });
+        const proposedDuration = resolveServiceDurationMinutes(current.service?.description);
+        const conflict = possibleConflicts.some((candidate) => candidate.scheduledFor && bookingIntervalsOverlap(
+          proposedAt!,
+          proposedDuration,
+          candidate.scheduledFor,
+          resolveServiceDurationMinutes(candidate.service?.description),
+        ));
+        if (conflict) throw new Error("SERVICE_REQUEST_PROPOSED_TIME_UNAVAILABLE");
+        const transitioned = transitionServiceRequestMetadata({
+          metadataValue: metadata,
+          fallback: { requestedAt: current.createdAt, scheduledFor: current.scheduledFor },
+          state: "COUNTEROFFERED",
+          at: now,
+          actorUserId: member.userId,
+          actorMembershipId: member.membershipId,
+          reason,
+          proposedScheduledFor: proposedAt,
+        });
+        if (requestToken) transitioned.metadata.service_request_action_request_ids = [...processedIds, requestToken].slice(-25);
+        const updated = await tx.booking.update({
+          where: { id: current.id },
+          data: {
+            scheduledFor: proposedAt,
+            date: proposedAt,
+            customerMetadata: serializeServiceRequestMetadata(transitioned.metadata),
+          },
+          select: { id: true, status: true, scheduledFor: true, createdAt: true, customerMetadata: true },
+        });
+        const queued = await enqueueServiceRequestCustomerEvent({
+          db: tx as any,
+          bookingId: current.id,
+          event: "COUNTEROFFER_CUSTOMER",
+          actorUserId: member.userId,
+          baseUrl: notificationBaseUrl,
+          reason,
+          scheduledFor: proposedAt,
+          dedupeKey: `counter-${transitioned.lifecycle.counteroffer_generation}`,
+        });
+        return { booking: updated, lifecycle: transitioned.lifecycle, previousStatus: status, idempotent: false, queued };
+      }, { isolationLevel: "Serializable" });
+
+      let notifications: any[] = [];
+      if (!result.idempotent) {
+        const queued: Array<{ id: string; status?: string }> = Array.isArray((result as any).queued)
+          ? (result as any).queued
+          : [];
+        notifications = queued.map((row: any) => ({ id: row.id, status: row.status || "QUEUED" }));
+        try {
+          notifications = await dispatchServiceRequestNotifications(queued, member.userId, prisma as any);
+        } catch (notificationError) {
+          console.error("[vendors/jobs/actions] service request notification dispatch deferred:", notificationError);
+        }
+        await recordLifecycleAudit({
+          actionType: action.toLowerCase(),
+          entityType: "booking",
+          entityId: jobId,
+          actorUserId: member.userId,
+          previousValue: { status: result.previousStatus },
+          newValue: { status: result.booking.status, serviceRequest: result.lifecycle },
+          metadata: { vendorId, membershipId: member.membershipId, requestId: requestId || null },
+        });
+      }
+      const code = action === "ACCEPT_SERVICE_REQUEST"
+        ? "SERVICE_REQUEST_ACCEPTED"
+        : action === "DECLINE_SERVICE_REQUEST"
+          ? "SERVICE_REQUEST_DECLINED"
+          : "SERVICE_REQUEST_COUNTEROFFERED";
+      const message = action === "ACCEPT_SERVICE_REQUEST"
+        ? "Service request accepted. The customer has been notified."
+        : action === "DECLINE_SERVICE_REQUEST"
+          ? "Service request declined. The customer has been notified."
+          : "A new appointment time was proposed to the customer.";
+      return NextResponse.json(apiResponse(true, code, message, {
+        booking: {
+          id: result.booking.id,
+          status: result.booking.status,
+          scheduledFor: result.booking.scheduledFor?.toISOString?.() || result.booking.scheduledFor || null,
+        },
+        requestLifecycle: result.lifecycle,
+        notifications,
+        idempotent: result.idempotent,
+      }));
+    }
+
+    const bookingMetadata = parseCustomerMetadata(booking.customerMetadata);
+    const hasServiceRequestLifecycle = Boolean(
+      bookingMetadata.service_request &&
+      typeof bookingMetadata.service_request === "object" &&
+      !Array.isArray(bookingMetadata.service_request),
+    );
+    if (
+      hasServiceRequestLifecycle &&
+      new Set<JobAction>([
+        "ASSIGN_JOB",
+        "UPDATE_RECORDING_COMPLIANCE",
+        "RELEASE_EMPLOYEE_SERVICE_ORDER",
+        "UPDATE_STATUS",
+        "APPROVE_JOB_COMPLETION",
+      ]).has(action)
+    ) {
+      const requestLifecycle = readServiceRequestLifecycle(bookingMetadata, {
+        requestedAt: booking.createdAt,
+        scheduledFor: booking.scheduledFor,
+      });
+      if (["REQUESTED", "COUNTEROFFERED"].includes(requestLifecycle.state)) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "SERVICE_REQUEST_CONFIRMATION_REQUIRED",
+            requestLifecycle.state === "COUNTEROFFERED"
+              ? "Wait for the customer to accept the proposed appointment time before assigning or starting this work."
+              : "Accept this Service Request before assigning or starting the work.",
+            { requestLifecycle },
+          ),
+          { status: 409 },
+        );
+      }
     }
 
     if (action === "ARCHIVE_JOB") {
@@ -1161,7 +1465,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const canceled = await prisma.$transaction(async (tx) => {
         const current = await tx.booking.findUnique({
           where: { id: booking.id },
-          select: { status: true, customerMetadata: true },
+          select: { status: true, scheduledFor: true, createdAt: true, customerMetadata: true },
         });
         const transactionStatus = normalizeBookingStatus(current?.status);
         if (!new Set(["PENDING", "CONFIRMED"]).has(transactionStatus)) {
@@ -1183,6 +1487,26 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         };
         metadata.vendor_job_employee_access_revoked_at = now.toISOString();
         metadata.vendor_job_employee_access_revocation_reason = "SERVICE_ORDER_CANCELED";
+        const hasStoredRequestLifecycle = Boolean(
+          metadata.service_request &&
+          typeof metadata.service_request === "object" &&
+          !Array.isArray(metadata.service_request),
+        );
+        const persistedMetadata = hasStoredRequestLifecycle
+          ? transitionServiceRequestMetadata({
+              metadataValue: metadata,
+              fallback: {
+                requestedAt: current?.createdAt || booking.createdAt,
+                scheduledFor: current?.scheduledFor || booking.scheduledFor,
+              },
+              state: "CANCELED",
+              at: now,
+              actorUserId: member.userId,
+              actorMembershipId: member.membershipId,
+              reason,
+              scheduledFor: current?.scheduledFor || booking.scheduledFor,
+            }).metadata
+          : metadata;
         if ((tx as any).employeeRecordingCertification?.updateMany) {
           await (tx as any).employeeRecordingCertification.updateMany({
             where: { bookingId: booking.id, status: "ACTIVE", invalidatedAt: null },
@@ -1209,7 +1533,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         }
         return tx.booking.update({
           where: { id: booking.id },
-          data: { status: "CANCELED", customerMetadata: stringifyCustomerMetadata(metadata) },
+          data: { status: "CANCELED", customerMetadata: stringifyCustomerMetadata(persistedMetadata) },
           select: { id: true, status: true, customerMetadata: true, updatedAt: true },
         });
       });
@@ -1692,6 +2016,23 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     if (authorizationResponse) return authorizationResponse as NextResponse;
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    const serviceRequestErrors: Record<string, { status: number; message: string }> = {
+      SERVICE_REQUEST_NOT_FOUND: { status: 404, message: "Service request not found." },
+      SERVICE_REQUEST_STATE_CHANGED: { status: 409, message: "This service request was already answered or changed. Refresh to see its current status." },
+      SERVICE_REQUEST_RESPONSE_NOT_ALLOWED: { status: 409, message: "This service request cannot be answered from its current state." },
+      SERVICE_REQUEST_SCHEDULE_REQUIRED: { status: 409, message: "Propose an appointment date and time before accepting this request." },
+      SERVICE_REQUEST_SCHEDULE_EXPIRED: { status: 409, message: "The requested appointment time has passed. Propose a new time." },
+      SERVICE_REQUEST_SCHEDULE_UNAVAILABLE: { status: 409, message: "The requested appointment time is no longer available. Propose another time." },
+      SERVICE_REQUEST_CUSTOMER_RESPONSE_REQUIRED: { status: 409, message: "The customer must accept or decline the proposed time before the request can be scheduled." },
+      SERVICE_REQUEST_PROPOSED_TIME_UNAVAILABLE: { status: 409, message: "That appointment time is no longer available. Choose another time." },
+    };
+    const serviceRequestError = serviceRequestErrors[String(error?.message || "")];
+    if (serviceRequestError) {
+      return NextResponse.json(
+        apiResponse(false, String(error.message), serviceRequestError.message),
+        { status: serviceRequestError.status },
+      );
     }
     return NextResponse.json(
       { error: "Failed to process job action", details: error.message },

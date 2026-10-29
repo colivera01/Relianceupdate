@@ -4,10 +4,14 @@ import { POST as availabilityCheckPOST } from './check/route';
 
 const hoisted = vi.hoisted(() => {
   const bookingFindMany = vi.fn();
+  const vendorFindUnique = vi.fn();
+  const serviceFindFirst = vi.fn();
   const prisma = {
     booking: { findMany: bookingFindMany },
+    vendor: { findUnique: vendorFindUnique },
+    service: { findFirst: serviceFindFirst },
   };
-  return { prisma, bookingFindMany };
+  return { prisma, bookingFindMany, vendorFindUnique, serviceFindFirst };
 });
 
 vi.mock('@/server/db', () => ({
@@ -29,6 +33,23 @@ async function readJson(res: Response) {
 describe('POST /api/availability/check', () => {
   beforeEach(() => {
     hoisted.bookingFindMany.mockReset();
+    hoisted.vendorFindUnique.mockReset();
+    hoisted.serviceFindFirst.mockReset();
+    hoisted.vendorFindUnique.mockResolvedValue({
+      businessHoursJson: JSON.stringify({
+        timezone: 'America/New_York',
+        days: [
+          { day: 'mon', enabled: true, open: '09:00', close: '17:00' },
+          { day: 'tue', enabled: true, open: '09:00', close: '17:00' },
+          { day: 'wed', enabled: true, open: '09:00', close: '17:00' },
+          { day: 'thu', enabled: true, open: '09:00', close: '17:00' },
+          { day: 'fri', enabled: true, open: '09:00', close: '17:00' },
+          { day: 'sat', enabled: false, open: '09:00', close: '17:00' },
+          { day: 'sun', enabled: false, open: '09:00', close: '17:00' },
+        ],
+      }),
+    });
+    hoisted.serviceFindFirst.mockResolvedValue({ description: 'Estimated duration: 60 minutes.' });
   });
 
   it('returns 400 when vendorId is missing', async () => {
@@ -62,7 +83,7 @@ describe('POST /api/availability/check', () => {
       postJson({
         vendorId: 'ven-1',
         serviceId: 'svc-1',
-        booking_date: '2024-08-15',
+        booking_date: '2026-11-05',
         booking_time: '11:00:00',
       })
     );
@@ -73,7 +94,7 @@ describe('POST /api/availability/check', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           vendorId: 'ven-1',
-          serviceId: 'svc-1',
+          status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] },
         }),
       })
     );
@@ -81,12 +102,12 @@ describe('POST /api/availability/check', () => {
 
   it('returns 200 with available false when slot is reserved (same HH:mm)', async () => {
     hoisted.bookingFindMany.mockResolvedValue([
-      { scheduledFor: new Date('2024-08-15T11:00:00.000Z') },
+      { scheduledFor: new Date('2026-11-05T16:00:00.000Z'), service: { description: 'Estimated duration: 60 minutes.' } },
     ]);
     const res = await availabilityCheckPOST(
       postJson({
         vendorId: 'ven-1',
-        booking_date: '2024-08-15',
+        booking_date: '2026-11-05',
         booking_time: '11:00:00',
       })
     );
@@ -101,7 +122,7 @@ describe('POST /api/availability/check', () => {
     await availabilityCheckPOST(
       postJson({
         vendorId: 'ven-1',
-        booking_date: '2024-08-20',
+        booking_date: '2026-11-05',
         booking_time: '09:00:00',
       })
     );

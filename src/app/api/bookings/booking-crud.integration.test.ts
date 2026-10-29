@@ -116,8 +116,17 @@ vi.mock('@/lib/auth', () => ({
   getUserIdFromRequest: vi.fn(),
 }));
 
-vi.mock('@/lib/availability-slots', () => ({
-  checkVendorSlotAvailability: vi.fn(),
+vi.mock('@/lib/availability-slots', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/availability-slots')>();
+  return {
+    ...actual,
+    checkVendorSlotAvailability: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/notifications/service-request', () => ({
+  enqueueNewServiceRequestNotifications: vi.fn().mockResolvedValue([]),
+  dispatchServiceRequestNotifications: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/lib/email-verification-enforcement', () => ({
@@ -230,6 +239,18 @@ const vendorWithVerifiedBusinessLocation = {
   latitude: 28.54,
   longitude: -81.38,
   geocodedAt: new Date('2026-08-01T12:00:00.000Z'),
+  businessHoursJson: JSON.stringify({
+    timezone: 'America/New_York',
+    days: [
+      { day: 'mon', enabled: true, open: '09:00', close: '17:00' },
+      { day: 'tue', enabled: true, open: '09:00', close: '17:00' },
+      { day: 'wed', enabled: true, open: '09:00', close: '17:00' },
+      { day: 'thu', enabled: true, open: '09:00', close: '17:00' },
+      { day: 'fri', enabled: true, open: '09:00', close: '17:00' },
+      { day: 'sat', enabled: false, open: '09:00', close: '17:00' },
+      { day: 'sun', enabled: false, open: '09:00', close: '17:00' },
+    ],
+  }),
 };
 
 describe('GET /api/bookings', () => {
@@ -263,10 +284,25 @@ describe('GET /api/bookings', () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
     hoisted.bookingCount.mockResolvedValue(1);
+    const originalRequestedFor = '2024-07-10T15:00:00.000Z';
+    const proposedFor = new Date('2024-07-11T16:00:00.000Z');
     hoisted.bookingFindMany.mockResolvedValue([
       {
         ...baseHydratedBooking(),
         userId: 'other-user',
+        scheduledFor: proposedFor,
+        date: proposedFor,
+        customerMetadata: JSON.stringify({
+          service_time_zone: 'America/New_York',
+          service_request: {
+            state: 'COUNTEROFFERED',
+            schedule_mode: 'CUSTOMER_REQUESTED',
+            requested_at: '2024-07-01T10:00:00.000Z',
+            requested_scheduled_for: originalRequestedFor,
+            proposed_scheduled_for: proposedFor.toISOString(),
+            counteroffer_generation: 1,
+          },
+        }),
       },
     ]);
     const req = new NextRequest('http://localhost/api/bookings?vendorId=ven-1');
@@ -276,8 +312,13 @@ describe('GET /api/bookings', () => {
       where: { vendorId: 'ven-1' },
     });
     const j = await readJson(res);
-    const bookings = j.bookings as unknown[];
+    const bookings = j.bookings as Array<Record<string, unknown>>;
     expect(bookings).toHaveLength(1);
+    expect(bookings[0]).toMatchObject({
+      requestedFor: originalRequestedFor,
+      serviceTimeZone: 'America/New_York',
+      scheduled_for: proposedFor.toISOString(),
+    });
   });
 
   it('rejects a customer query that attempts to select another user', async () => {
@@ -308,7 +349,13 @@ describe('POST /api/bookings', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
     vi.mocked(checkVendorSlotAvailability).mockReset();
-    vi.mocked(checkVendorSlotAvailability).mockResolvedValue({ available: true });
+    vi.mocked(checkVendorSlotAvailability).mockResolvedValue({
+      available: true,
+      schedule_mode: 'CUSTOMER_SELECTS_TIME',
+      scheduled_for: '2026-11-02T14:00:00.000Z',
+      timezone: 'America/New_York',
+      service_duration_minutes: 60,
+    });
     vi.mocked(geocodeAddress).mockReset();
     vi.mocked(geocodeAddress).mockResolvedValue({
       status: 'success',
@@ -352,6 +399,7 @@ describe('POST /api/bookings', () => {
     hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.userCreate.mockResolvedValue({ id: 'placeholder-user-1' });
     hoisted.bookingFindFirst.mockResolvedValue(null);
+    hoisted.bookingFindMany.mockResolvedValue([]);
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
     hoisted.bookingNotificationFindUnique.mockResolvedValue(null);
     hoisted.bookingNotificationFindFirst.mockResolvedValue(null);
@@ -466,10 +514,45 @@ describe('POST /api/bookings', () => {
     expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });
 
+  it('does not allow a customer to request a service from a hidden vendor', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1', isPubliclyListed: false });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({
+      id: 'svc-1',
+      name: 'Outlet installation',
+      description: 'Estimated duration: 60 minutes.',
+      price: 125,
+      isPublished: true,
+    });
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        { vendor_id: 'ven-1', service_id: 'svc-1' },
+        'POST',
+      ),
+    );
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toMatchObject({ code: 'VENDOR_NOT_PUBLIC' });
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+  });
+
   it('returns 409 SLOT_UNAVAILABLE when slot check fails', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
-    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({
+      id: 'svc-1',
+      name: 'Outlet installation',
+      description: 'Estimated duration: 60 minutes.',
+      price: 125,
+      isPublished: true,
+    });
+    hoisted.userFindUnique.mockResolvedValue({
+      name: 'Pat Customer',
+      email: 'pat@example.com',
+      phone: '4075550100',
+    });
     vi.mocked(checkVendorSlotAvailability).mockResolvedValue({
       available: false,
       reason: 'Slot taken',
@@ -482,6 +565,12 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           booking_date: '2024-08-01',
           booking_time: '10:00:00',
+          schedule_mode: 'CUSTOMER_SELECTS_TIME',
+          idempotency_key: 'slot-unavailable-request',
+          client_name: 'Pat Customer',
+          client_email: 'pat@example.com',
+          client_phone: '4075550100',
+          custom_fields: { service_address: '1 Main St, Orlando, FL' },
         },
         'POST'
       )
@@ -492,22 +581,33 @@ describe('POST /api/bookings', () => {
     expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });
 
-  it('persists customerMetadata JSON string and explicit amount on happy path', async () => {
+  it('persists customerMetadata and ignores the browser amount in favor of the service price', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
     hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
-    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({
+      id: 'svc-1',
+      name: 'Office clean',
+      description: 'Estimated duration: 60 minutes.',
+      price: 88,
+      isPublished: true,
+    });
+    hoisted.userFindUnique.mockResolvedValue({
+      name: 'Pat',
+      email: 'pat@example.com',
+      phone: '4075550100',
+    });
     hoisted.bookingCreate.mockResolvedValue({ id: 'new-book' });
     const metaStr = JSON.stringify({
       user_notes: 'Please bring supplies',
       client_name: 'Pat',
       client_email: 'pat@example.com',
-      client_phone: '555-0100',
+      client_phone: '4075550100',
       custom_fields: { service_address: '1 Main St' },
     });
     hoisted.bookingFindUnique.mockResolvedValue(
       baseHydratedBooking({
         id: 'new-book',
-        amount: 150,
+        amount: 88,
         customerMetadata: metaStr,
       })
     );
@@ -520,11 +620,13 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           booking_date: '2024-08-01',
           booking_time: '14:00:00',
+          schedule_mode: 'CUSTOMER_SELECTS_TIME',
+          idempotency_key: 'customer-happy-path',
           title: 'Office clean',
           client_name: 'Pat',
           user_notes: 'Please bring supplies',
           client_email: 'pat@example.com',
-          client_phone: '555-0100',
+          client_phone: '4075550100',
           custom_fields: { service_address: '1 Main St' },
           amount: 150,
         },
@@ -537,7 +639,7 @@ describe('POST /api/bookings', () => {
         vendorId: 'ven-1',
         serviceId: 'svc-1',
         userId: 'customer-1',
-        amount: 150,
+        amount: 88,
         customerMetadata: expect.any(String),
       }),
     });
@@ -548,7 +650,7 @@ describe('POST /api/bookings', () => {
       user_notes: 'Please bring supplies',
       client_name: 'Pat',
       client_email: 'pat@example.com',
-      client_phone: '555-0100',
+      client_phone: '4075550100',
       custom_fields: {
         service_address: '1 Main St',
         recordingLocation: 'business',
@@ -559,15 +661,25 @@ describe('POST /api/bookings', () => {
     const cm = booking.customer_metadata as Record<string, unknown>;
     expect(cm.user_notes).toBe('Please bring supplies');
     expect(cm.client_email).toBe('pat@example.com');
-    expect(booking.total_price).toBe(150);
+    expect(booking.total_price).toBe(88);
     expect((j.meta as { user_notes?: string }).user_notes).toBe('Please bring supplies');
   });
 
   it('resolves amount from service price when amount omitted', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
     hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
-    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
-    hoisted.serviceFindUnique.mockResolvedValue({ price: 88 });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({
+      id: 'svc-1',
+      name: 'Outlet installation',
+      description: 'Estimated duration: 60 minutes.',
+      price: 88,
+      isPublished: true,
+    });
+    hoisted.userFindUnique.mockResolvedValue({
+      name: 'Pat Customer',
+      email: 'pat@example.com',
+      phone: '4075550100',
+    });
     hoisted.bookingCreate.mockResolvedValue({ id: 'book-price' });
     hoisted.bookingFindUnique.mockResolvedValue(
       baseHydratedBooking({ id: 'book-price', amount: 88, serviceId: 'svc-1' })
@@ -576,17 +688,92 @@ describe('POST /api/bookings', () => {
     const res = await bookingsCreatePOST(
       jsonRequest(
         'http://localhost/api/bookings',
-        { vendor_id: 'ven-1', service_id: 'svc-1', booking_date: '2024-09-01', booking_time: '09:00:00' },
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          booking_date: '2024-09-01',
+          booking_time: '09:00:00',
+          schedule_mode: 'CUSTOMER_SELECTS_TIME',
+          idempotency_key: 'customer-price-test',
+          client_name: 'Pat Customer',
+          client_email: 'pat@example.com',
+          client_phone: '4075550100',
+          custom_fields: { service_address: '1 Main St, Orlando, FL' },
+        },
         'POST'
       )
     );
     expect(res.status).toBe(200);
-    expect(hoisted.serviceFindUnique).toHaveBeenCalledWith({
-      where: { id: 'svc-1' },
-      select: { price: true },
-    });
+    expect(hoisted.serviceFindUnique).not.toHaveBeenCalled();
     expect(hoisted.bookingCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ amount: 88 }),
+    });
+  });
+
+  it('creates an honest unscheduled request when the provider has not saved business hours', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.vendorFindUnique.mockResolvedValue({
+      ...vendorWithVerifiedBusinessLocation,
+      businessHoursJson: null,
+    });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({
+      id: 'svc-1',
+      name: 'Outlet installation',
+      description: 'Estimated duration: 60 minutes.',
+      price: 125,
+      isPublished: true,
+    });
+    hoisted.userFindUnique.mockResolvedValue({
+      name: 'Pat Customer',
+      email: 'pat@example.com',
+      phone: '4075550100',
+    });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'provider-proposes-booking' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'provider-proposes-booking',
+        amount: 125,
+        scheduledFor: null,
+        date: null,
+      }),
+    );
+
+    const response = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          schedule_mode: 'VENDOR_TO_PROPOSE',
+          idempotency_key: 'provider-proposes-request',
+          client_name: 'Pat Customer',
+          client_email: 'pat@example.com',
+          client_phone: '4075550100',
+          custom_fields: { service_address: '1 Main St, Orlando, FL' },
+        },
+        'POST',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(checkVendorSlotAvailability).not.toHaveBeenCalled();
+    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        scheduledFor: null,
+        date: null,
+        amount: 125,
+      }),
+    });
+    const metadata = JSON.parse(hoisted.bookingCreate.mock.calls[0][0].data.customerMetadata);
+    expect(metadata).toMatchObject({
+      service_request_schedule_mode: 'VENDOR_TO_PROPOSE',
+      service_request_status: 'REQUESTED',
+      service_address: '1 Main St, Orlando, FL',
+      service_request: {
+        state: 'REQUESTED',
+        schedule_mode: 'VENDOR_TO_PROPOSE',
+        requested_scheduled_for: null,
+      },
     });
   });
 

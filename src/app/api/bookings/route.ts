@@ -9,7 +9,13 @@ import {
   isVendorAccountRestricted,
 } from '@/lib/account-status';
 import { mapBookingToContract } from '@/lib/booking-shape';
-import { checkVendorSlotAvailability } from '@/lib/availability-slots';
+import {
+  bookingIntervalsOverlap,
+  checkVendorSlotAvailability,
+  DEFAULT_BOOKING_TIMEZONE,
+  parseSavedBusinessHours,
+  resolveServiceDurationMinutes,
+} from '@/lib/availability-slots';
 import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
 import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
@@ -33,6 +39,14 @@ import { buildRecordingLocationSnapshot } from '@/lib/recording-location-snapsho
 import type { RecordingLocationType } from '@/lib/recording-location-snapshot';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
 import { EMPLOYEE_RECORDING_PARTICIPATION_CONTRACT_VERSION } from '@/lib/employee-recording-participation';
+import {
+  initializeServiceRequestMetadata,
+  readServiceRequestLifecycle,
+} from '@/lib/service-request-lifecycle';
+import {
+  dispatchServiceRequestNotifications,
+  enqueueNewServiceRequestNotifications,
+} from '@/lib/notifications/service-request';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -132,6 +146,98 @@ function normalizeCreationRequestKey(value: unknown): string | null {
   const normalized = String(value || '').trim();
   if (!normalized) return null;
   return normalized.slice(0, 255);
+}
+
+type CustomerScheduleMode = 'CUSTOMER_SELECTS_TIME' | 'VENDOR_TO_PROPOSE';
+
+function normalizeCustomerScheduleMode(value: unknown): CustomerScheduleMode | null {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'CUSTOMER_SELECTS_TIME' || normalized === 'VENDOR_TO_PROPOSE'
+    ? normalized
+    : null;
+}
+
+function normalizeEmail(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function validEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validPhone(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+function serviceAddressFromCustomFields(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  return String((value as Record<string, unknown>).service_address || '').trim();
+}
+
+function parseCustomerMetadata(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string' || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function serviceRequestListFields(booking: any) {
+  const metadata = parseCustomerMetadata(booking.customerMetadata);
+  const customFields =
+    metadata.custom_fields && typeof metadata.custom_fields === 'object' && !Array.isArray(metadata.custom_fields)
+      ? (metadata.custom_fields as Record<string, unknown>)
+      : {};
+  const explicitSource = String(metadata.booking_source || metadata.source || '').trim().toLowerCase();
+  const vendorCreated =
+    explicitSource === 'vendor_created_job' ||
+    Boolean(String(metadata.claim_status || '').trim()) ||
+    typeof metadata.customer_account_linked === 'boolean';
+  const lifecycle = vendorCreated
+    ? null
+    : readServiceRequestLifecycle(metadata, {
+        requestedAt: booking.createdAt,
+        scheduledFor: booking.scheduledFor,
+      });
+  const storedMode = String(metadata.service_request_schedule_mode || '').trim().toUpperCase();
+  return {
+    requestLifecycle: lifecycle,
+    scheduleMode: lifecycle
+      ? storedMode || (lifecycle.schedule_mode === 'VENDOR_TO_PROPOSE' ? 'VENDOR_TO_PROPOSE' : 'CUSTOMER_SELECTS_TIME')
+      : null,
+    // Counteroffers move Booking.scheduledFor so that the proposed slot is
+    // actually reserved. Keep exposing the customer's original requested
+    // appointment separately for the vendor's decision context.
+    requestedFor:
+      lifecycle?.requested_scheduled_for ||
+      booking.scheduledFor?.toISOString?.() ||
+      null,
+    // This value is written from the server-authoritative availability
+    // schedule during customer creation. Consumers must not infer it from the
+    // browser running the vendor UI.
+    serviceTimeZone:
+      String(metadata.service_time_zone || '').trim() ||
+      DEFAULT_BOOKING_TIMEZONE,
+    serviceAddress:
+      String(
+        metadata.service_address ||
+          customFields.service_address ||
+          customFields.vendor_job_customer_residence_address ||
+          customFields.vendor_job_customer_business_address ||
+          '',
+      ).trim() || null,
+    requestNotes: String(metadata.user_notes || '').trim() || null,
+    customerEmail: String(metadata.client_email || '').trim() || null,
+    customerPhone: String(metadata.client_phone || '').trim() || null,
+  };
 }
 
 function normalizeServiceVideoCustomerEmail(value: unknown): string | null {
@@ -416,6 +522,12 @@ export async function GET(request: NextRequest) {
 
     const bookings = records.map((booking) => {
       const base = mapBookingToContract(booking as any);
+      if (vendorId) {
+        return {
+          ...base,
+          ...serviceRequestListFields(booking),
+        };
+      }
       if (!userId) return base;
       const lifecycle = deriveCustomerBookingLifecycle({
         bookingStatus: booking.status,
@@ -482,6 +594,7 @@ export async function POST(request: NextRequest) {
       client_email,
       client_phone,
       amount,
+      schedule_mode,
       user_id,
       userId: bodyUserIdCamel,
       idempotency_key,
@@ -504,6 +617,7 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         accountStatus: true,
+        isPubliclyListed: true,
         businessName: true,
         name: true,
         address: true,
@@ -513,6 +627,7 @@ export async function POST(request: NextRequest) {
         latitude: true,
         longitude: true,
         geocodedAt: true,
+        businessHoursJson: true,
       },
     });
     if (!vendor) {
@@ -526,24 +641,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
 
+    const staffMembership = await prisma.vendorMembership.findFirst({
+      where: {
+        vendorId,
+        userId: String(authUserId),
+        status: 'ACTIVE',
+        role: 'MANAGER',
+      },
+      select: { id: true },
+    });
+    const isVendorStaffForThisVendor = Boolean(staffMembership);
+
     // Resolve service for required Booking.serviceId FK.
     let serviceId: string | null = null;
+    let selectedService: {
+      id: string;
+      name: string;
+      description: string | null;
+      price: number;
+      isPublished: boolean;
+    } | null = null;
     if (service_id) {
       const existingService = await prisma.service.findFirst({
         where: { id: String(service_id), vendorId },
-        select: { id: true },
+        select: { id: true, name: true, description: true, price: true, isPublished: true },
       });
       serviceId = existingService?.id || null;
+      selectedService = existingService || null;
     }
-    if (!serviceId) {
+    if (!serviceId && isVendorStaffForThisVendor) {
       const firstVendorService = await prisma.service.findFirst({
         where: { vendorId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true },
+        select: { id: true, name: true, description: true, price: true, isPublished: true },
       });
       serviceId = firstVendorService?.id || null;
+      selectedService = firstVendorService || null;
     }
-    if (!serviceId) {
+    if (!serviceId && isVendorStaffForThisVendor) {
       const createdService = await prisma.service.create({
         data: {
           vendorId,
@@ -553,6 +688,13 @@ export async function POST(request: NextRequest) {
         },
       });
       serviceId = createdService.id;
+      selectedService = {
+        id: createdService.id,
+        name: createdService.name,
+        description: createdService.description,
+        price: createdService.price,
+        isPublished: createdService.isPublished,
+      };
     }
 
     const clientEmailCombined =
@@ -564,18 +706,105 @@ export async function POST(request: NextRequest) {
       (typeof body.clientPhone === 'string' && String(body.clientPhone).trim()) ||
       '';
 
-    let isVendorStaffForThisVendor = false;
-    if (authUserId) {
-      const staffMembership = await prisma.vendorMembership.findFirst({
-        where: {
-          vendorId,
-          userId: String(authUserId),
-          status: 'ACTIVE',
-          role: 'MANAGER',
-        },
-        select: { id: true },
+    const requestedScheduleMode = normalizeCustomerScheduleMode(schedule_mode);
+    const vendorSchedule = parseSavedBusinessHours((vendor as any).businessHoursJson);
+    const vendorHasPublishedHours = Boolean(vendorSchedule);
+    const authoritativeServiceTimeZone = vendorSchedule?.timezone || DEFAULT_BOOKING_TIMEZONE;
+    const requiredCustomerScheduleMode: CustomerScheduleMode = vendorHasPublishedHours
+      ? 'CUSTOMER_SELECTS_TIME'
+      : 'VENDOR_TO_PROPOSE';
+    const serviceAddress = serviceAddressFromCustomFields(custom_fields);
+    let authenticatedCustomer: { name: string | null; email: string | null; phone: string | null } | null = null;
+
+    if (!isVendorStaffForThisVendor) {
+      if (vendor.isPubliclyListed === false) {
+        return NextResponse.json(
+          { error: 'This provider is not currently accepting public service requests.', code: 'VENDOR_NOT_PUBLIC' },
+          { status: 404 },
+        );
+      }
+      if (
+        !service_id ||
+        !selectedService ||
+        String(selectedService.id) !== String(service_id) ||
+        selectedService.isPublished === false
+      ) {
+        return NextResponse.json(
+          { error: 'A published service is required for a customer service request.', code: 'PUBLISHED_SERVICE_REQUIRED' },
+          { status: 400 },
+        );
+      }
+      if (!creationRequestKey) {
+        return NextResponse.json(
+          { error: 'A unique request key is required. Refresh and try again.', code: 'IDEMPOTENCY_KEY_REQUIRED' },
+          { status: 400 },
+        );
+      }
+      if (requestedScheduleMode !== requiredCustomerScheduleMode) {
+        return NextResponse.json(
+          {
+            error: vendorHasPublishedHours
+              ? 'Choose a time from the provider’s published availability.'
+              : 'This provider must propose the service time after reviewing your request.',
+            code: 'SCHEDULE_MODE_MISMATCH',
+            requiredScheduleMode: requiredCustomerScheduleMode,
+          },
+          { status: 409 },
+        );
+      }
+      if (requiredCustomerScheduleMode === 'CUSTOMER_SELECTS_TIME' && (!booking_date || !booking_time)) {
+        return NextResponse.json(
+          { error: 'Select an available date and time.', code: 'SCHEDULE_REQUIRED' },
+          { status: 400 },
+        );
+      }
+      if (
+        requiredCustomerScheduleMode === 'VENDOR_TO_PROPOSE' &&
+        (booking_date || booking_time || scheduled_for)
+      ) {
+        return NextResponse.json(
+          { error: 'The provider will propose the service time after reviewing this request.', code: 'SCHEDULE_NOT_YET_AVAILABLE' },
+          { status: 400 },
+        );
+      }
+
+      const normalizedName = String(client_name || '').trim();
+      const normalizedEmail = normalizeEmail(client_email);
+      const normalizedPhone = String(client_phone || '').trim();
+      if (normalizedName.length < 2) {
+        return NextResponse.json({ error: 'Full name is required.', code: 'CLIENT_NAME_REQUIRED' }, { status: 400 });
+      }
+      if (!validEmail(normalizedEmail)) {
+        return NextResponse.json({ error: 'A valid email is required.', code: 'CLIENT_EMAIL_REQUIRED' }, { status: 400 });
+      }
+      if (!validPhone(normalizedPhone)) {
+        return NextResponse.json({ error: 'A valid phone number is required.', code: 'CLIENT_PHONE_REQUIRED' }, { status: 400 });
+      }
+      if (serviceAddress.length < 5) {
+        return NextResponse.json({ error: 'Service address is required.', code: 'SERVICE_ADDRESS_REQUIRED' }, { status: 400 });
+      }
+
+      authenticatedCustomer = await prisma.user.findUnique({
+        where: { id: authUserId },
+        select: { name: true, email: true, phone: true },
       });
-      isVendorStaffForThisVendor = Boolean(staffMembership);
+      const accountEmail = normalizeEmail(authenticatedCustomer?.email);
+      if (!accountEmail || normalizedEmail !== accountEmail) {
+        return NextResponse.json(
+          {
+            error: 'Use the verified email connected to your Reliance customer account.',
+            code: 'CUSTOMER_EMAIL_MISMATCH',
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (!serviceId || !selectedService) {
+      return NextResponse.json(
+        { error: 'A service is required to create this work record.', code: 'SERVICE_REQUIRED' },
+        { status: 400 },
+      );
     }
 
     if (creationRequestKey) {
@@ -618,6 +847,12 @@ export async function POST(request: NextRequest) {
               error: 'This creation request key was already used for another work record.',
             },
             { status: 409 }
+          );
+        }
+        if (!isVendorStaffForThisVendor && String(existingBooking.userId) !== String(authUserId)) {
+          return NextResponse.json(
+            { success: false, code: 'IDEMPOTENCY_KEY_REUSED', error: 'This request key belongs to another customer.' },
+            { status: 409 },
           );
         }
         const [deliveryRecord, consentRecord] = await Promise.all([
@@ -707,13 +942,15 @@ export async function POST(request: NextRequest) {
       await ensureUserAccountCanAct(bookingUserId);
     }
 
-    const scheduledFor = resolveBookingSchedule({
-      scheduledFor: scheduled_for,
-      bookingDate: booking_date,
-      bookingTime: booking_time,
-    });
-
-    if (booking_date && booking_time) {
+    let scheduledFor: Date | null = null;
+    if (isVendorStaffForThisVendor) {
+      scheduledFor = resolveBookingSchedule({
+        scheduledFor: scheduled_for,
+        bookingDate: booking_date,
+        bookingTime: booking_time,
+        timeZone: service_time_zone,
+      }) || new Date();
+    } else if (requiredCustomerScheduleMode === 'CUSTOMER_SELECTS_TIME') {
       const slotCheck = await checkVendorSlotAvailability({
         vendorId,
         serviceId,
@@ -729,6 +966,19 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
+      scheduledFor = slotCheck.scheduled_for
+        ? new Date(slotCheck.scheduled_for)
+        : resolveBookingSchedule({
+            bookingDate: booking_date,
+            bookingTime: booking_time,
+            timeZone: slotCheck.timezone || service_time_zone,
+          });
+      if (!scheduledFor || Number.isNaN(scheduledFor.getTime())) {
+        return NextResponse.json(
+          { error: 'The selected date and time could not be scheduled.', code: 'INVALID_SCHEDULE' },
+          { status: 400 },
+        );
+      }
     }
 
     let customerMetadataPayload = buildCustomerMetadataForCreate({
@@ -736,9 +986,37 @@ export async function POST(request: NextRequest) {
       client_name,
       client_email,
       client_phone,
-      service_time_zone,
+      service_time_zone: isVendorStaffForThisVendor ? service_time_zone : authoritativeServiceTimeZone,
       custom_fields,
     });
+    if (!isVendorStaffForThisVendor) {
+      const nextMeta = customerMetadataPayload || {};
+      const submittedAt = new Date();
+      nextMeta.booking_source = 'customer_booking';
+      nextMeta.service_request_schedule_mode = requiredCustomerScheduleMode;
+      nextMeta.service_request_status = 'REQUESTED';
+      nextMeta.service_request_submitted_at = submittedAt.toISOString();
+      nextMeta.service_time_zone = authoritativeServiceTimeZone;
+      nextMeta.customer_contact_policy = {
+        version: 1,
+        email_source: 'VERIFIED_ACCOUNT',
+        email_override_allowed: false,
+        name_source: 'CUSTOMER_REQUEST',
+        phone_source: 'CUSTOMER_REQUEST',
+        submitted_by_user_id: authUserId,
+      };
+      nextMeta.service_address = serviceAddress;
+      customerMetadataPayload = initializeServiceRequestMetadata({
+        metadataValue: nextMeta,
+        requestedAt: submittedAt,
+        scheduledFor,
+        actorUserId: authUserId,
+        scheduleMode:
+          requiredCustomerScheduleMode === 'VENDOR_TO_PROPOSE'
+            ? 'VENDOR_TO_PROPOSE'
+            : 'CUSTOMER_REQUESTED',
+      }).metadata;
+    }
     if (isVendorStaffForThisVendor) {
       const nextMeta = customerMetadataPayload || {};
       nextMeta.customer_account_linked = linkedToExistingCustomerAccount;
@@ -932,18 +1210,17 @@ export async function POST(request: NextRequest) {
     const customerMetadata =
       customerMetadataPayload !== undefined ? JSON.stringify(customerMetadataPayload) : undefined;
 
+    // Customer-submitted amounts are display data only. The persisted price must
+    // always come from the vendor's current Service Offered record. Vendor-created
+    // work records retain their explicit amount override for backward compatibility.
     let resolvedAmount = 0;
-    if (amount !== undefined && amount !== null && String(amount).trim() !== '') {
-      const n = Number(amount);
-      if (Number.isFinite(n) && n >= 0) resolvedAmount = n;
+    if (isVendorStaffForThisVendor && amount !== undefined && amount !== null && String(amount).trim() !== '') {
+      const submitted = Number(amount);
+      if (Number.isFinite(submitted) && submitted >= 0) resolvedAmount = submitted;
     } else {
-      const priceRow = await prisma.service.findUnique({
-        where: { id: serviceId },
-        select: { price: true },
-      });
-      if (priceRow?.price != null) {
-        const n = Number(priceRow.price);
-        if (Number.isFinite(n) && n >= 0) resolvedAmount = n;
+      const authoritativePrice = Number(selectedService?.price);
+      if (Number.isFinite(authoritativePrice) && authoritativePrice >= 0) {
+        resolvedAmount = authoritativePrice;
       }
     }
 
@@ -968,13 +1245,44 @@ export async function POST(request: NextRequest) {
         throw new Error('Booking customer could not be resolved');
       }
 
+      if (!isVendorStaffForThisVendor && scheduledFor) {
+        const requestedDuration = resolveServiceDurationMinutes(selectedService?.description);
+        const nearby = await tx.booking.findMany({
+          where: {
+            vendorId,
+            status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
+            scheduledFor: {
+              gte: new Date(scheduledFor.getTime() - 8 * 60 * 60 * 1000),
+              lt: new Date(scheduledFor.getTime() + requestedDuration * 60 * 1000),
+            },
+          },
+          select: {
+            scheduledFor: true,
+            service: { select: { description: true } },
+          },
+        });
+        const collision = nearby.some((existing: any) =>
+          existing.scheduledFor
+            ? bookingIntervalsOverlap(
+                scheduledFor!,
+                requestedDuration,
+                existing.scheduledFor,
+                resolveServiceDurationMinutes(existing.service?.description),
+              )
+            : false,
+        );
+        if (collision) throw new Error('SLOT_CONFLICT_AFTER_LOCK');
+      }
+
       const createdBooking = await tx.booking.create({
         data: {
           vendorId,
           serviceId,
           userId: resolvedBookingUserId,
-          title: title ? String(title) : null,
-          clientName: client_name ? String(client_name) : null,
+          title: isVendorStaffForThisVendor
+            ? (title ? String(title) : null)
+            : (selectedService?.name || null),
+          clientName: client_name ? String(client_name).trim() : null,
           status: 'PENDING',
           scheduledFor,
           date: scheduledFor,
@@ -993,6 +1301,15 @@ export async function POST(request: NextRequest) {
           assessment: recordingAssessment,
         })
         : null;
+
+      const serviceRequestNotifications = !isVendorStaffForThisVendor
+        ? await enqueueNewServiceRequestNotifications({
+            db: tx,
+            bookingId: createdBooking.id,
+            actorUserId: authUserId,
+            baseUrl: resolveConsentBaseUrl(request),
+          })
+        : [];
 
       if (!requiresCustomerConsent) {
         const noticeNotification =
@@ -1017,6 +1334,7 @@ export async function POST(request: NextRequest) {
           assessmentScopeHash: createdAssessment?.scopeHash || null,
           assessmentAudioEnabled: createdAssessment?.audioAllowed === true,
           assessmentParticipantPlan: recordingAssessment?.intentionalParticipantPlan || null,
+          serviceRequestNotifications: serviceRequestNotifications.map((row: any) => ({ id: row.id })),
         };
       }
 
@@ -1040,9 +1358,20 @@ export async function POST(request: NextRequest) {
         assessmentScopeHash: createdAssessment?.scopeHash || null,
         assessmentAudioEnabled: createdAssessment?.audioAllowed === true,
         assessmentParticipantPlan: recordingAssessment?.intentionalParticipantPlan || null,
+        serviceRequestNotifications: serviceRequestNotifications.map((row: any) => ({ id: row.id })),
       };
-      });
+      }, { isolationLevel: 'Serializable' as any });
     } catch (transactionError: any) {
+      const transactionErrorCode = String(transactionError?.code || '').toUpperCase();
+      if (
+        String(transactionError?.message || '') === 'SLOT_CONFLICT_AFTER_LOCK' ||
+        (!isVendorStaffForThisVendor && scheduledFor && transactionErrorCode === 'P2034')
+      ) {
+        return NextResponse.json(
+          { error: 'Selected slot is no longer available', code: 'SLOT_UNAVAILABLE' },
+          { status: 409 },
+        );
+      }
       if (creationRequestKey && String(transactionError?.code || '') === 'P2002') {
         const existingBooking = await (prisma as any).booking.findFirst({
           where: { creationRequestKey },
@@ -1051,7 +1380,11 @@ export async function POST(request: NextRequest) {
             vendor: true,
           },
         });
-        if (existingBooking && String(existingBooking.vendorId) === vendorId) {
+        if (
+          existingBooking &&
+          String(existingBooking.vendorId) === vendorId &&
+          (isVendorStaffForThisVendor || String(existingBooking.userId) === String(authUserId))
+        ) {
           return NextResponse.json({
             success: true,
             idempotentReplay: true,
@@ -1067,6 +1400,20 @@ export async function POST(request: NextRequest) {
     const booking = transactionalCreate.booking;
     let automaticConsent: Record<string, unknown> | null = null;
     let recordingNotice: Record<string, unknown> | null = null;
+
+    if (transactionalCreate.serviceRequestNotifications?.length) {
+      try {
+        await dispatchServiceRequestNotifications(
+          transactionalCreate.serviceRequestNotifications,
+          authUserId,
+          prisma,
+        );
+      } catch (notificationError) {
+        // The durable queue was committed with the request. Immediate delivery is
+        // best effort and may be retried without rolling back the service request.
+        console.error('[bookings] service request notification dispatch failed', notificationError);
+      }
+    }
 
     if (transactionalCreate.consentMediaSessionId) {
       try {

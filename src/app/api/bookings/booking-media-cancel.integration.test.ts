@@ -20,6 +20,8 @@ const hoisted = vi.hoisted(() => {
   const tryRecordBookingServiceIssue = vi.fn();
   const tryReconcileBookingCancellationAndScore = vi.fn();
   const recordLifecycleAudit = vi.fn();
+  const enqueueServiceRequestVendorEvent = vi.fn();
+  const dispatchServiceRequestNotifications = vi.fn();
   const prisma = {
     booking: {
       findUnique: bookingFindUnique,
@@ -42,6 +44,8 @@ const hoisted = vi.hoisted(() => {
     tryRecordBookingServiceIssue,
     tryReconcileBookingCancellationAndScore,
     recordLifecycleAudit,
+    enqueueServiceRequestVendorEvent,
+    dispatchServiceRequestNotifications,
   };
 });
 
@@ -69,6 +73,11 @@ vi.mock('@/lib/trust-score-reconciliation', () => ({
 
 vi.mock('@/lib/lifecycle-audit', () => ({
   recordLifecycleAudit: hoisted.recordLifecycleAudit,
+}));
+
+vi.mock('@/lib/notifications/service-request', () => ({
+  enqueueServiceRequestVendorEvent: hoisted.enqueueServiceRequestVendorEvent,
+  dispatchServiceRequestNotifications: hoisted.dispatchServiceRequestNotifications,
 }));
 
 function mediaGetRequest(bookingId: string) {
@@ -253,6 +262,10 @@ describe('POST /api/bookings/[id]/cancel', () => {
     hoisted.tryRecordBookingServiceIssue.mockReset();
     hoisted.tryReconcileBookingCancellationAndScore.mockReset();
     hoisted.recordLifecycleAudit.mockReset();
+    hoisted.enqueueServiceRequestVendorEvent.mockReset();
+    hoisted.dispatchServiceRequestNotifications.mockReset();
+    hoisted.enqueueServiceRequestVendorEvent.mockResolvedValue([]);
+    hoisted.dispatchServiceRequestNotifications.mockResolvedValue([]);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -321,7 +334,15 @@ describe('POST /api/bookings/[id]/cancel', () => {
     };
     hoisted.bookingFindUnique
       .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', vendorId: 'v1', status: 'PENDING' })
-      .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', vendorId: 'v1', status: 'PENDING', customerMetadata: null })
+      .mockResolvedValueOnce({
+        id: 'book-1',
+        userId: 'u1',
+        vendorId: 'v1',
+        status: 'PENDING',
+        scheduledFor: scheduled,
+        createdAt,
+        customerMetadata: null,
+      })
       .mockResolvedValueOnce(hydrated);
     hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
       ...hydrated,

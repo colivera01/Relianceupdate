@@ -25,6 +25,7 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
   const currentProfile = 'customer' as const;
   const { availableRoles, userId } = useAvailableRoles(currentProfile);
   const isPublicServiceRoute = pathname.startsWith('/service/');
+  const isBookingRoute = pathname.startsWith('/booking/');
   const returnPath = `${pathname || '/user-dashboard'}${
     queryString ? `?${queryString}` : ''
   }`;
@@ -184,10 +185,10 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (serviceVideoIntent) {
+  if (serviceVideoIntent || isBookingRoute) {
     return (
       <div className="reliance-operator-shell reliance-grid-lines min-h-screen">
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        <main className="w-full">
           {children}
         </main>
       </div>

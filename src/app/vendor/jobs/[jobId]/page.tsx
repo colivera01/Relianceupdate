@@ -25,6 +25,11 @@ import {
 } from "@/lib/stage-video-guidance";
 import { resolveManagerStageAssetState } from "@/lib/service-video-manager-stage-state";
 import { formatRelianceDateTime } from "@/lib/reliance-date-time";
+import {
+  dateAndTimeInZone,
+  DEFAULT_SERVICE_TIME_ZONE,
+  zonedDateTimeToUtc,
+} from "@/lib/booking-schedule";
 
 type JobLike = {
   id: string;
@@ -32,9 +37,33 @@ type JobLike = {
   client?: string;
   customerEmail?: string | null;
   customerPhone?: string | null;
+  customerNotes?: string | null;
+  requestNotes?: string | null;
   status?: string;
   operationalPhase?: string;
   source?: string;
+  scheduleMode?: 'CUSTOMER_SELECTS_TIME' | 'VENDOR_TO_PROPOSE' | string;
+  serviceTimeZone?: string | null;
+  service_time_zone?: string | null;
+  requestedFor?: string | null;
+  serviceAddress?: string | null;
+  requestLifecycle?: {
+    state?: string | null;
+    requestedAt?: string | null;
+    requested_at?: string | null;
+    requestedScheduledFor?: string | null;
+    requested_scheduled_for?: string | null;
+    respondedAt?: string | null;
+    responded_at?: string | null;
+    responseReason?: string | null;
+    response_reason?: string | null;
+    proposedScheduledFor?: string | null;
+    proposed_scheduled_for?: string | null;
+    customerRespondedAt?: string | null;
+    customer_responded_at?: string | null;
+    customerResponseReason?: string | null;
+    customer_response_reason?: string | null;
+  } | null;
   date?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -161,6 +190,21 @@ function normalizeStatus(value: string | null | undefined) {
   return normalized;
 }
 
+function serviceTimeZoneForJob(job: JobLike | null): string {
+  return String(job?.serviceTimeZone || job?.service_time_zone || DEFAULT_SERVICE_TIME_ZONE).trim()
+    || DEFAULT_SERVICE_TIME_ZONE;
+}
+
+function localDateTimeInputMin(timeZone: string): string {
+  const { date, time } = dateAndTimeInZone(new Date(Date.now() + 60_000), timeZone);
+  return `${date}T${time}`;
+}
+
+function proposedDateTimeToUtc(value: string, timeZone: string): Date | null {
+  const [date = '', time = ''] = String(value || '').split('T');
+  return zonedDateTimeToUtc({ date, time, timeZone });
+}
+
 function lifecycleBadgeClass(tone: string) {
   if (tone === "green") return "bg-emerald-100 text-emerald-800";
   if (tone === "blue") return "bg-blue-100 text-blue-800";
@@ -242,6 +286,11 @@ export default function VendorJobDetailPage() {
   const [playbackCompleted, setPlaybackCompleted] = useState(false);
   const [reviewedStages, setReviewedStages] = useState<ReviewStage[]>([]);
   const [resendingCompletedOrder, setResendingCompletedOrder] = useState(false);
+  const [serviceRequestDialog, setServiceRequestDialog] = useState<'DECLINE' | 'COUNTER' | null>(null);
+  const [serviceRequestReason, setServiceRequestReason] = useState('');
+  const [serviceRequestProposedAt, setServiceRequestProposedAt] = useState('');
+  const [serviceRequestSubmitting, setServiceRequestSubmitting] = useState(false);
+  const serviceRequestIdempotencyRef = useRef<{ action: string; requestId: string } | null>(null);
   const [resolvingPlaybackStage, setResolvingPlaybackStage] = useState<string | null>(null);
   const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
   const effectiveVendorId = String(vendorId || "").trim();
@@ -250,6 +299,17 @@ export default function VendorJobDetailPage() {
   const isEmployee = role === "EMPLOYEE";
   const correctionPending = String(job?.serviceVideoPackage?.status || "").toUpperCase() === "CORRECTION_REQUESTED";
   const lastAutoLoadKeyRef = useRef<string>("");
+  const serviceRequestState = String(
+    job?.requestLifecycle?.state ||
+      (String(job?.source || '').toLowerCase() === 'customer_booking' && normalizedStatus === 'PENDING' ? 'REQUESTED' : '')
+  ).trim().toUpperCase();
+  const serviceRequestResponseReason = String(
+    job?.requestLifecycle?.responseReason || job?.requestLifecycle?.response_reason || ''
+  ).trim();
+  const serviceRequestProposedFor = String(
+    job?.requestLifecycle?.proposedScheduledFor || job?.requestLifecycle?.proposed_scheduled_for || ''
+  ).trim();
+  const serviceRequestTimeZone = serviceTimeZoneForJob(job);
 
   const stageMap = useMemo(() => {
     const out = new Map<string, SessionDetails | null>();
@@ -682,6 +742,61 @@ export default function VendorJobDetailPage() {
     }
   };
 
+  const respondToServiceRequest = async (action: 'ACCEPT_SERVICE_REQUEST' | 'DECLINE_SERVICE_REQUEST' | 'COUNTER_SERVICE_REQUEST') => {
+    if (!effectiveVendorId || !jobId || serviceRequestSubmitting) return;
+    const reason = serviceRequestReason.trim();
+    if (action !== 'ACCEPT_SERVICE_REQUEST' && reason.length < 3) {
+      setActionError('Add a short explanation (at least 3 characters) so the customer understands your response.');
+      return;
+    }
+    let proposedScheduledFor: string | undefined;
+    if (action === 'COUNTER_SERVICE_REQUEST') {
+      const proposed = proposedDateTimeToUtc(serviceRequestProposedAt, serviceRequestTimeZone);
+      if (!serviceRequestProposedAt || !proposed || proposed.getTime() <= Date.now()) {
+        setActionError('Choose a valid future date and time.');
+        return;
+      }
+      proposedScheduledFor = proposed.toISOString();
+    }
+    if (serviceRequestIdempotencyRef.current?.action !== action) {
+      serviceRequestIdempotencyRef.current = {
+        action,
+        requestId: globalThis.crypto?.randomUUID?.() || `service-request-response-${Date.now()}`,
+      };
+    }
+    setServiceRequestSubmitting(true);
+    setActionMessage(null);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/actions`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          reason: action === 'ACCEPT_SERVICE_REQUEST' ? undefined : reason,
+          proposedScheduledFor,
+          requestId: serviceRequestIdempotencyRef.current.requestId,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(body?.message || body?.error || 'Unable to respond to this service request.'));
+      setActionMessage(String(body?.message || (action === 'ACCEPT_SERVICE_REQUEST'
+        ? 'Service request accepted. The customer has been notified.'
+        : action === 'COUNTER_SERVICE_REQUEST'
+          ? 'New appointment time proposed. The customer has been notified.'
+          : 'Service request declined. The customer has been notified.')));
+      setServiceRequestDialog(null);
+      setServiceRequestReason('');
+      setServiceRequestProposedAt('');
+      serviceRequestIdempotencyRef.current = null;
+      await load();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to respond to this service request.');
+    } finally {
+      setServiceRequestSubmitting(false);
+    }
+  };
+
   const activityEvents = useMemo(() => {
     const events: Array<{ key: string; at: number; label: string }> = [];
     const addEvent = (key: string, value: string | null | undefined, label: string) => {
@@ -689,8 +804,24 @@ export default function VendorJobDetailPage() {
       events.push({ key, at: Number.isFinite(at) ? at : Number.MAX_SAFE_INTEGER, label });
     };
     if (job?.createdAt) {
-      addEvent("created", job.createdAt, `Created: ${formatRelianceDateTime(job.createdAt)}`);
+      addEvent(
+        "created",
+        job.createdAt,
+        String(job.source || '').toLowerCase() === 'customer_booking'
+          ? `Customer service request received: ${formatRelianceDateTime(job.createdAt)}`
+          : `Created: ${formatRelianceDateTime(job.createdAt)}`,
+      );
     }
+    const requestLifecycle = job?.requestLifecycle;
+    const requestState = String(requestLifecycle?.state || '').trim().toUpperCase();
+    const respondedAt = requestLifecycle?.respondedAt || requestLifecycle?.responded_at || null;
+    const customerRespondedAt = requestLifecycle?.customerRespondedAt || requestLifecycle?.customer_responded_at || null;
+    const proposedFor = requestLifecycle?.proposedScheduledFor || requestLifecycle?.proposed_scheduled_for || null;
+    if (requestState === 'VENDOR_ACCEPTED') addEvent('request-accepted', respondedAt, 'Service request accepted and customer notified');
+    if (requestState === 'COUNTEROFFERED') addEvent('request-countered', respondedAt, `New appointment time proposed${proposedFor ? `: ${formatRelianceDateTime(proposedFor)}` : ''}`);
+    if (requestState === 'SCHEDULED') addEvent('request-scheduled', customerRespondedAt || respondedAt, `Appointment scheduled${job?.requestedFor ? `: ${formatRelianceDateTime(job?.requestedFor)}` : ''}`);
+    if (requestState === 'VENDOR_DECLINED') addEvent('request-declined', respondedAt, 'Service request declined and customer notified');
+    if (requestState === 'CUSTOMER_DECLINED') addEvent('request-customer-declined', customerRespondedAt, 'Customer declined the proposed appointment time');
     if (job?.assignedEmployees?.length) {
       addEvent("assigned", job.createdAt, `Assigned: ${job.assignedEmployees.join(", ")}`);
     }
@@ -858,6 +989,70 @@ export default function VendorJobDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {String(job.source || '').toLowerCase() === 'customer_booking' ? (
+              <Card className="overflow-hidden border-blue-200">
+                <CardHeader className="border-b border-blue-100 bg-blue-50">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Customer service request</p>
+                      <CardTitle className="mt-1 text-slate-950">
+                        {serviceRequestState === 'REQUESTED' ? 'Your response is needed'
+                          : serviceRequestState === 'COUNTEROFFERED' ? 'Waiting for customer response'
+                            : serviceRequestState === 'VENDOR_ACCEPTED' ? 'Accepted by your business'
+                              : serviceRequestState === 'SCHEDULED' ? 'Appointment scheduled'
+                                : serviceRequestState === 'VENDOR_DECLINED' ? 'Declined by your business'
+                                  : serviceRequestState === 'CUSTOMER_DECLINED' ? 'Customer declined proposed time'
+                                    : 'Service request status'}
+                      </CardTitle>
+                      <p className="mt-2 max-w-3xl text-sm text-slate-700">
+                        {serviceRequestState === 'REQUESTED' ? 'Review the customer details below. Accepting confirms their requested time; proposing a time requires the customer to accept before it is scheduled.'
+                          : serviceRequestState === 'COUNTEROFFERED' ? 'The appointment is not scheduled yet. Reliance notified the customer and is waiting for their decision.'
+                            : serviceRequestState === 'VENDOR_ACCEPTED' || serviceRequestState === 'SCHEDULED' ? 'The customer has been notified that the appointment is scheduled.'
+                              : serviceRequestState === 'VENDOR_DECLINED' ? 'The customer was notified that your business could not accept the request.'
+                                : serviceRequestState === 'CUSTOMER_DECLINED' ? 'The proposed time was not scheduled. Follow up through a new request if another time should be considered.'
+                                  : 'Open request details and activity are shown below.'}
+                      </p>
+                    </div>
+                    <Badge className={serviceRequestState === 'REQUESTED' ? 'bg-blue-600 text-white' : serviceRequestState === 'COUNTEROFFERED' ? 'bg-amber-500 text-amber-950' : 'bg-slate-700 text-white'}>
+                      {serviceRequestState === 'REQUESTED' ? 'Action required' : serviceRequestState.replaceAll('_', ' ') || 'REQUEST'}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5 p-5">
+                  <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <div><dt className="font-medium text-slate-500">Requested appointment</dt><dd className="mt-1 font-semibold text-slate-950">{job.requestedFor ? formatRelianceDateTime(job.requestedFor) : 'Customer asked you to propose a time'}</dd></div>
+                    <div><dt className="font-medium text-slate-500">Service address</dt><dd className="mt-1 font-semibold text-slate-950">{job.serviceAddress || 'Not provided'}</dd></div>
+                    <div><dt className="font-medium text-slate-500">Customer contact</dt><dd className="mt-1 font-semibold text-slate-950">{[job.customerEmail, job.customerPhone].filter(Boolean).join(' · ') || 'Not provided'}</dd></div>
+                    {job.notes?.[0]?.text || job.requestNotes || job.customerNotes ? <div className="sm:col-span-2 lg:col-span-3"><dt className="font-medium text-slate-500">Customer instructions</dt><dd className="mt-1 whitespace-pre-wrap text-slate-950">{job.notes?.[0]?.text || job.requestNotes || job.customerNotes}</dd></div> : null}
+                    {serviceRequestProposedFor ? <div><dt className="font-medium text-slate-500">Time you proposed</dt><dd className="mt-1 font-semibold text-slate-950">{formatRelianceDateTime(serviceRequestProposedFor)}</dd></div> : null}
+                    {serviceRequestResponseReason ? <div className="sm:col-span-2"><dt className="font-medium text-slate-500">Response note</dt><dd className="mt-1 text-slate-950">{serviceRequestResponseReason}</dd></div> : null}
+                  </dl>
+
+                  {isManager && serviceRequestState === 'REQUESTED' ? (
+                    <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:flex-wrap">
+                      {job.requestedFor ? (
+                        <Button className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={serviceRequestSubmitting} onClick={() => void respondToServiceRequest('ACCEPT_SERVICE_REQUEST')}>
+                          {serviceRequestSubmitting ? 'Sending response...' : 'Accept requested time'}
+                        </Button>
+                      ) : null}
+                      <Button variant="outline" disabled={serviceRequestSubmitting} onClick={() => {
+                        setActionError(null);
+                        setServiceRequestReason('');
+                        setServiceRequestProposedAt('');
+                        setServiceRequestDialog('COUNTER');
+                      }}>{job.requestedFor ? 'Propose a new time' : 'Propose an appointment time'}</Button>
+                      <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" disabled={serviceRequestSubmitting} onClick={() => {
+                        setActionError(null);
+                        setServiceRequestReason('');
+                        setServiceRequestDialog('DECLINE');
+                      }}>Decline request</Button>
+                    </div>
+                  ) : null}
+                  {!isManager && serviceRequestState === 'REQUESTED' ? <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">A vendor manager must respond before this request can become a Service Order.</p> : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
@@ -1211,6 +1406,67 @@ export default function VendorJobDetailPage() {
             </div>
           </>
         ) : null}
+
+        <Dialog
+          open={Boolean(serviceRequestDialog)}
+          onOpenChange={(open) => {
+            if (open || serviceRequestSubmitting) return;
+            setServiceRequestDialog(null);
+            setServiceRequestReason('');
+            setServiceRequestProposedAt('');
+          }}
+        >
+          <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{serviceRequestDialog === 'COUNTER' ? 'Propose a new appointment time' : 'Decline service request'}</DialogTitle>
+              <DialogDescription>
+                {serviceRequestDialog === 'COUNTER'
+                  ? 'The customer must accept your proposal before the appointment is scheduled.'
+                  : 'The customer will be notified and will see your explanation in their Service Record.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {serviceRequestDialog === 'COUNTER' ? (
+                <div>
+                  <label htmlFor="detail-proposed-service-time" className="mb-1 block text-sm font-medium text-slate-800">Proposed date and time ({serviceRequestTimeZone})</label>
+                  <input
+                    id="detail-proposed-service-time"
+                    type="datetime-local"
+                    min={localDateTimeInputMin(serviceRequestTimeZone)}
+                    value={serviceRequestProposedAt}
+                    onChange={(event) => setServiceRequestProposedAt(event.target.value)}
+                    disabled={serviceRequestSubmitting}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                  />
+                  <p className="mt-1 text-xs text-slate-600">Times are interpreted in the business service timezone: {serviceRequestTimeZone}.</p>
+                </div>
+              ) : null}
+              <div>
+                <label htmlFor="detail-service-response-reason" className="mb-1 block text-sm font-medium text-slate-800">{serviceRequestDialog === 'COUNTER' ? 'Why this time works better' : 'Reason for declining'}</label>
+                <textarea
+                  id="detail-service-response-reason"
+                  value={serviceRequestReason}
+                  onChange={(event) => setServiceRequestReason(event.target.value)}
+                  rows={4}
+                  disabled={serviceRequestSubmitting}
+                  placeholder={serviceRequestDialog === 'COUNTER' ? 'For example: Our first available technician can arrive at this time.' : 'Give the customer a clear, respectful explanation.'}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <Button type="button" variant="outline" disabled={serviceRequestSubmitting} onClick={() => setServiceRequestDialog(null)}>Cancel</Button>
+              <Button
+                type="button"
+                disabled={serviceRequestSubmitting}
+                className={serviceRequestDialog === 'DECLINE' ? 'bg-red-600 text-white hover:bg-red-700' : ''}
+                onClick={() => void respondToServiceRequest(serviceRequestDialog === 'COUNTER' ? 'COUNTER_SERVICE_REQUEST' : 'DECLINE_SERVICE_REQUEST')}
+              >
+                {serviceRequestSubmitting ? 'Sending response...' : serviceRequestDialog === 'COUNTER' ? 'Send proposed time' : 'Decline and notify customer'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={auditConfirmOpen}

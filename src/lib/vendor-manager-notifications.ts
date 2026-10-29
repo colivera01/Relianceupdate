@@ -5,7 +5,7 @@ const CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND = "VENDOR_CORE_AUDIT_REJECTED
 
 export type VendorManagerNotificationView = {
   id: string;
-  type: "audit";
+  type: "audit" | "job" | "reminder";
   title: string;
   message: string;
   time: string;
@@ -59,16 +59,28 @@ export async function createVendorManagerAuditNotifications(tx: any, input: {
 }
 
 function toDurableView(row: any): VendorManagerNotificationView {
+  const notificationType = String(row.notificationType || "");
+  const type = notificationType.startsWith("VENDOR_SERVICE_REQUEST_") ||
+    notificationType.startsWith("VENDOR_NEW_REQUEST_") ||
+    notificationType.startsWith("VENDOR_COUNTER_") ||
+    notificationType.startsWith("VENDOR_CUSTOMER_CANCELED_")
+    ? "job"
+    : notificationType.startsWith("VENDOR_REMINDER_")
+      ? "reminder"
+      : "audit";
   return {
     id: String(row.id),
-    type: "audit",
+    type,
     title: String(row.title),
     message: String(row.message),
     time: new Date(row.createdAt).toISOString(),
     read: Boolean(row.readAt),
     readAt: row.readAt ? new Date(row.readAt).toISOString() : null,
     viewedAt: row.viewedAt ? new Date(row.viewedAt).toISOString() : null,
-    priority: String(row.notificationType) === CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND ? "high" : "medium",
+    priority: notificationType === CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND ||
+      notificationType.includes("DECLINED") || notificationType.includes("CANCELED")
+      ? "high"
+      : "medium",
     href: String(row.targetUrl),
     historical: false,
   };

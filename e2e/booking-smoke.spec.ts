@@ -88,7 +88,7 @@ test('customer booking: discover → book → confirmation → my-bookings', asy
     .poll(
       async () => {
         const headingVisible = await page
-          .getByRole('heading', { name: /Select Date & Time|Date & Time/i })
+          .getByRole('heading', { name: /Choose a requested appointment time|Date & Time/i })
           .first()
           .isVisible()
           .catch(() => false);
@@ -103,8 +103,9 @@ test('customer booking: discover → book → confirmation → my-bookings', asy
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await page.getByPlaceholder('Enter your full name').fill('Jordan Rivera');
-  await page.getByPlaceholder('Enter your email').fill('jordan.rivera@example.com');
-  await page.getByPlaceholder('Enter your phone number').fill('555-0101');
+  const emailInput = page.getByPlaceholder('Enter your email');
+  if (await emailInput.isEditable()) await emailInput.fill('jordan.rivera@example.com');
+  await page.getByPlaceholder('Enter your phone number').fill('(407) 555-0101');
   await page.getByPlaceholder('Enter the address where you need the service').fill('47-01 Queens Blvd, Queens NY');
   await page.getByRole('button', { name: 'Continue' }).click();
 
@@ -113,7 +114,7 @@ test('customer booking: discover → book → confirmation → my-bookings', asy
       response.request().method() === 'POST' && response.url().includes('/api/bookings'),
     { timeout: 60_000 }
   );
-  await page.getByRole('button', { name: 'Confirm booking' }).click();
+  await page.getByRole('button', { name: 'Send Service Request' }).click();
 
   const bookingPostResponse = await bookingPost;
   const bookingPostJson = (await bookingPostResponse.json().catch(() => ({}))) as {
@@ -126,7 +127,7 @@ test('customer booking: discover → book → confirmation → my-bookings', asy
       async () => {
         if (/\/confirmation\?bookingId=/.test(page.url())) return 'redirected';
         const confirmationVisible = await page
-          .getByRole('heading', { name: 'Booking Confirmed!' })
+          .getByRole('heading', { name: 'Service Request Sent' })
           .isVisible()
           .catch(() => false);
         return confirmationVisible ? 'visible' : 'pending';
@@ -142,14 +143,14 @@ test('customer booking: discover → book → confirmation → my-bookings', asy
   );
   expect(bookingId, 'booking id should be available from URL or booking POST response').toBeTruthy();
 
-  await expect(page.getByRole('heading', { name: 'Booking Confirmed!' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Service Request Sent' })).toBeVisible();
   const ref = page.getByTestId('booking-confirmation-reference');
   await expect(ref).toContainText(bookingId);
 
-  await page.getByRole('button', { name: 'View My Services' }).click();
+  await page.getByRole('button', { name: 'View My Service Records' }).click();
   await page.waitForURL(/\/my-bookings/);
 
   await expect(page.getByTestId(`my-bookings-row-${bookingId}`)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId(`my-bookings-row-${bookingId}`)).toContainText('Booking ID:');
+  await expect(page.getByTestId(`my-bookings-row-${bookingId}`)).toContainText('Reference');
   await expect(page.getByTestId(`my-bookings-row-${bookingId}`)).toContainText(bookingId);
 });

@@ -21,6 +21,18 @@ const E2E_VENDOR_COORDINATES = {
   latitude: 40.7484,
   longitude: -73.9857,
 };
+const E2E_VENDOR_BUSINESS_HOURS = JSON.stringify({
+  timezone: 'America/New_York',
+  days: [
+    { day: 'mon', enabled: true, open: '09:00', close: '17:00' },
+    { day: 'tue', enabled: true, open: '09:00', close: '17:00' },
+    { day: 'wed', enabled: true, open: '09:00', close: '17:00' },
+    { day: 'thu', enabled: true, open: '09:00', close: '17:00' },
+    { day: 'fri', enabled: true, open: '09:00', close: '17:00' },
+    { day: 'sat', enabled: false, open: '09:00', close: '17:00' },
+    { day: 'sun', enabled: false, open: '09:00', close: '17:00' },
+  ],
+});
 const E2E_DISTANCE_ORIGIN = {
   latitude: 40.73061,
   longitude: -73.935242,
@@ -217,6 +229,8 @@ export default async function globalSetup() {
           demo: true,
           seedBatchId: E2E_SEED_BATCH_ID,
           isPubliclyListed: true,
+          accountStatus: 'active',
+          businessHoursJson: E2E_VENDOR_BUSINESS_HOURS,
         },
       });
     } else {
@@ -229,6 +243,8 @@ export default async function globalSetup() {
           geocodedAt: new Date('2026-01-01T00:00:00.000Z'),
           demo: true,
           isPubliclyListed: true,
+          accountStatus: 'active',
+          businessHoursJson: E2E_VENDOR_BUSINESS_HOURS,
         },
       });
     }

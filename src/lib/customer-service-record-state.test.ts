@@ -43,6 +43,40 @@ describe('customer Service Record canonical state', () => {
     expect(state.visibility.state).toBe('PUBLIC');
   });
 
+  it('distinguishes request states without collapsing them into Upcoming', () => {
+    expect(resolve({ bookingStatus: 'PENDING', requestLifecycle: { state: 'REQUESTED' } }).request).toMatchObject({
+      state: 'REQUESTED',
+      label: 'Awaiting business response',
+      needsResponse: false,
+    });
+    expect(resolve({ bookingStatus: 'CONFIRMED', requestLifecycle: { state: 'VENDOR_ACCEPTED' } }).request).toMatchObject({
+      state: 'ACCEPTED',
+      label: 'Accepted by business',
+    });
+    expect(resolve({
+      bookingStatus: 'PENDING',
+      requestLifecycle: {
+        state: 'COUNTEROFFERED',
+        proposed_scheduled_for: '2026-11-03T15:00:00.000Z',
+        response_reason: 'The morning is already booked',
+      },
+    }).request).toMatchObject({
+      state: 'COUNTEROFFERED',
+      label: 'New time proposed',
+      needsResponse: true,
+      proposedScheduledFor: '2026-11-03T15:00:00.000Z',
+      responseReason: 'The morning is already booked',
+    });
+    expect(resolve({ bookingStatus: 'CANCELLED', requestLifecycle: { state: 'VENDOR_DECLINED' } }).request).toMatchObject({
+      state: 'DECLINED',
+      label: 'Declined by business',
+    });
+    expect(resolve({ bookingStatus: 'CANCELLED', requestLifecycle: { state: 'VENDOR_ACCEPTED' } }).request).toMatchObject({
+      state: 'CANCELLED',
+      label: 'Cancelled',
+    });
+  });
+
   it('marks only an actionable current recording request as Needs Attention', () => {
     const state = resolve({
       bookingStatus: 'CONFIRMED',

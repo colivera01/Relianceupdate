@@ -10,6 +10,7 @@ import {
 import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import { readServiceRequestLifecycle } from "@/lib/service-request-lifecycle";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -99,6 +100,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         title: true,
         clientName: true,
         status: true,
+        scheduledFor: true,
         date: true,
         createdAt: true,
         updatedAt: true,
@@ -207,6 +209,27 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
     const packageVisibility = await loadPackageVisibilityView({ bookingId: booking.id });
 
     const metadata = parseCustomerMetadata(booking.customerMetadata || null);
+    const customFields =
+      metadata.custom_fields &&
+      typeof metadata.custom_fields === "object" &&
+      !Array.isArray(metadata.custom_fields)
+        ? (metadata.custom_fields as Record<string, unknown>)
+        : {};
+    const serviceAddress = String(
+      metadata.service_address ||
+        customFields.service_address ||
+        customFields.vendor_job_customer_residence_address ||
+        customFields.vendor_job_customer_business_address ||
+        "",
+    ).trim();
+    const jobSource = resolveJobSourceFromMetadata(booking.customerMetadata);
+    const scheduleMode = String(metadata.service_request_schedule_mode || "").trim().toUpperCase();
+    const requestLifecycle = jobSource === "customer_booking"
+      ? readServiceRequestLifecycle(metadata, {
+          requestedAt: booking.createdAt,
+          scheduledFor: booking.scheduledFor,
+        })
+      : null;
     const rawCancellation =
       metadata.vendor_job_cancellation &&
       typeof metadata.vendor_job_cancellation === "object" &&
@@ -267,8 +290,15 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         customerEmail,
         customerPhone,
         status: normalizeVendorJobStatus(booking.status),
-        source: resolveJobSourceFromMetadata(booking.customerMetadata),
-        date: booking.date?.toISOString() || booking.createdAt.toISOString(),
+        source: jobSource,
+        scheduleMode: requestLifecycle
+          ? scheduleMode || (booking.scheduledFor ? "CUSTOMER_SELECTS_TIME" : "VENDOR_TO_PROPOSE")
+          : null,
+        requestedFor: booking.scheduledFor?.toISOString() || null,
+        serviceAddress: serviceAddress || null,
+        requestNotes: notes || null,
+        requestLifecycle,
+        date: booking.date?.toISOString() || null,
         createdAt: booking.createdAt.toISOString(),
         updatedAt: booking.updatedAt?.toISOString() || booking.createdAt.toISOString(),
         assignedEmployees,

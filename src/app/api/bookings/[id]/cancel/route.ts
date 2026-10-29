@@ -10,6 +10,14 @@ import {
 import { tryReconcileBookingCancellationAndScore } from '@/lib/trust-score-reconciliation';
 import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
 import { recordLifecycleAudit } from '@/lib/lifecycle-audit';
+import {
+  dispatchServiceRequestNotifications,
+  enqueueServiceRequestVendorEvent,
+} from '@/lib/notifications/service-request';
+import {
+  serializeServiceRequestMetadata,
+  transitionServiceRequestMetadata,
+} from '@/lib/service-request-lifecycle';
 
 function parseMetadata(value: unknown): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
@@ -73,10 +81,25 @@ export async function POST(
       );
     }
     const canceledAt = new Date();
+    const notificationBaseUrl = (() => {
+      try {
+        return new URL(request.url).origin;
+      } catch {
+        return process.env.APP_BASE_URL || 'https://beta.relianceonline.org';
+      }
+    })();
     const cancellation = await prisma.$transaction(async (tx) => {
       const current = await tx.booking.findUnique({
         where: { id: bookingId },
-        select: { id: true, userId: true, vendorId: true, status: true, customerMetadata: true },
+        select: {
+          id: true,
+          userId: true,
+          vendorId: true,
+          status: true,
+          scheduledFor: true,
+          createdAt: true,
+          customerMetadata: true,
+        },
       });
       if (!current) throw new Error('BOOKING_STATE_CHANGED');
       if (String(current.userId) !== userId) throw new Error('BOOKING_OWNER_CHANGED');
@@ -86,7 +109,7 @@ export async function POST(
       });
       const normalizedStatus = String(current.status || '').trim().toUpperCase();
       if (normalizedStatus === 'CANCELED' || normalizedStatus === 'CANCELLED') {
-        return { booking: current, previousStatus: normalizedStatus, idempotent: true };
+        return { booking: current, previousStatus: normalizedStatus, idempotent: true, queued: [] as any[] };
       }
       if (!['PENDING', 'CONFIRMED', 'IN_PROGRESS'].includes(normalizedStatus)) {
         throw new Error('CUSTOMER_CANCELLATION_STATE_NOT_ALLOWED');
@@ -101,11 +124,33 @@ export async function POST(
         reason: cancellationReason,
         source: 'CUSTOMER_CANCELLATION',
       };
+      const transitioned = transitionServiceRequestMetadata({
+        metadataValue: metadata,
+        fallback: { requestedAt: current.createdAt, scheduledFor: current.scheduledFor },
+        state: 'CANCELED',
+        at: canceledAt,
+        actorUserId: userId,
+        customerResponse: true,
+        reason: cancellationReason,
+        scheduledFor: current.scheduledFor,
+      });
       const booking = await tx.booking.update({
         where: { id: bookingId },
-        data: { status: 'CANCELED', customerMetadata: JSON.stringify(metadata) },
+        data: { status: 'CANCELED', customerMetadata: serializeServiceRequestMetadata(transitioned.metadata) },
       });
-      return { booking, previousStatus: normalizedStatus, idempotent: false };
+      const queued = current.vendorId
+        ? await enqueueServiceRequestVendorEvent({
+            db: tx as any,
+            bookingId,
+            event: 'CUSTOMER_CANCELED_VENDOR',
+            actorUserId: userId,
+            baseUrl: notificationBaseUrl,
+            reason: cancellationReason,
+            scheduledFor: current.scheduledFor,
+            dedupeKey: 'customer-canceled',
+          })
+        : [];
+      return { booking, previousStatus: normalizedStatus, idempotent: false, queued };
     }, { isolationLevel: 'Serializable' });
 
     if (existing.vendorId && !cancellation.idempotent) {
@@ -143,6 +188,14 @@ export async function POST(
         metadata: { vendorId: existing.vendorId, customerOwnedAction: true },
       });
     }
+    let notifications = cancellation.queued.map((row: any) => ({ id: row.id, status: row.status || 'QUEUED' }));
+    if (!cancellation.idempotent && cancellation.queued.length > 0) {
+      try {
+        notifications = await dispatchServiceRequestNotifications(cancellation.queued, userId, prisma as any);
+      } catch (notificationError) {
+        console.error('[bookings/cancel] vendor cancellation notification dispatch deferred:', notificationError);
+      }
+    }
     const hydrated = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
@@ -171,6 +224,7 @@ export async function POST(
       cancellation_reason: cancellationReason,
       refund_requested,
       idempotent: cancellation.idempotent,
+      notifications,
     });
   } catch (error) {
     console.error('Error cancelling booking:', error);

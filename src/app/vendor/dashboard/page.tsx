@@ -650,18 +650,18 @@ export default function VendorDashboard() {
         </section>
 
         {data.notifications?.length ? (
-          <section aria-labelledby="reliance-audit-updates" className="space-y-3">
+          <section aria-labelledby="vendor-business-updates" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Bell className="h-5 w-5 text-blue-300" />
-                <h2 id="reliance-audit-updates" className="text-lg font-semibold text-white">Reliance Audit updates</h2>
+                <h2 id="vendor-business-updates" className="text-lg font-semibold text-white">Business updates</h2>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => router.push('/vendor/notifications')}>
                 View notification history
               </Button>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
-              {data.notifications.filter((notification) => notification.type === 'audit').map((notification) => (
+              {data.notifications.slice(0, 6).map((notification) => (
                 <Card key={notification.id} className={notification.priority === 'high' ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'}>
                   <CardContent className="flex items-start justify-between gap-4 p-4">
                     <div>

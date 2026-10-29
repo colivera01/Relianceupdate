@@ -10,7 +10,19 @@ const hoisted = vi.hoisted(() => {
   const rotate = vi.fn();
   const deliver = vi.fn();
   const deliverEmployeeDecline = vi.fn();
-  return { findMany, findConsentRecord, update, updateMany, rotate, deliver, deliverEmployeeDecline };
+  const enqueueReminders = vi.fn();
+  const dispatchServiceRequest = vi.fn();
+  return {
+    findMany,
+    findConsentRecord,
+    update,
+    updateMany,
+    rotate,
+    deliver,
+    deliverEmployeeDecline,
+    enqueueReminders,
+    dispatchServiceRequest,
+  };
 });
 
 vi.mock("@/server/db", () => ({
@@ -27,6 +39,11 @@ vi.mock("@/lib/notifications/send-employee-participation-declined", () => ({
     String(kind || "").startsWith("EMPLOYEE_RECORDING_PARTICIPATION_DECLINED:"),
   dispatchEmployeeParticipationDeclinedNotification: hoisted.deliverEmployeeDecline,
 }));
+vi.mock("@/lib/notifications/service-request", () => ({
+  SERVICE_REQUEST_NOTIFICATION_PREFIX: "SERVICE_REQUEST_",
+  enqueueServiceRequestAppointmentReminders: hoisted.enqueueReminders,
+  dispatchServiceRequestNotification: hoisted.dispatchServiceRequest,
+}));
 
 function workerRequest(secret = "worker-secret") {
   return new Request("http://localhost/api/internal/notifications/process", {
@@ -41,6 +58,9 @@ describe("permission notification worker", () => {
     process.env.INTERNAL_NOTIFICATION_WORKER_SECRET = "worker-secret";
     hoisted.update.mockResolvedValue({});
     hoisted.updateMany.mockResolvedValue({ count: 1 });
+    hoisted.findMany.mockResolvedValue([]);
+    hoisted.enqueueReminders.mockResolvedValue([]);
+    hoisted.dispatchServiceRequest.mockResolvedValue({ status: "SENT" });
     hoisted.findConsentRecord.mockResolvedValue({ id: "permission-1", generation: 7 });
     hoisted.rotate.mockResolvedValue({
       consentRecordId: "permission-1",
@@ -62,12 +82,12 @@ describe("permission notification worker", () => {
   });
 
   it("rotates the action link before retrying delivery", async () => {
-    hoisted.findMany.mockResolvedValue([{
+    hoisted.findMany.mockResolvedValueOnce([{
       id: "notification-old",
       consentRecordId: "permission-1",
       attemptCount: 1,
       maxAttempts: 4,
-    }]);
+    }]).mockResolvedValueOnce([]);
     const response = await POST(workerRequest());
     const json = await response.json();
 
@@ -78,12 +98,12 @@ describe("permission notification worker", () => {
   });
 
   it("dead-letters based on delivery attempts, not link generation", async () => {
-    hoisted.findMany.mockResolvedValue([{
+    hoisted.findMany.mockResolvedValueOnce([{
       id: "notification-old",
       consentRecordId: "permission-1",
       attemptCount: 4,
       maxAttempts: 4,
-    }]);
+    }]).mockResolvedValueOnce([]);
     const response = await POST(workerRequest());
     const json = await response.json();
 
@@ -96,12 +116,12 @@ describe("permission notification worker", () => {
   });
 
   it("skips notifications whose permission request is no longer retryable", async () => {
-    hoisted.findMany.mockResolvedValue([{
+    hoisted.findMany.mockResolvedValueOnce([{
       id: "notification-old",
       consentRecordId: "permission-1",
       attemptCount: 1,
       maxAttempts: 4,
-    }]);
+    }]).mockResolvedValueOnce([]);
     hoisted.findConsentRecord.mockResolvedValue(null);
 
     const response = await POST(workerRequest());
@@ -114,13 +134,13 @@ describe("permission notification worker", () => {
   });
 
   it("retries the existing idempotent Employee participation DECLINE delivery", async () => {
-    hoisted.findMany.mockResolvedValue([{
+    hoisted.findMany.mockResolvedValueOnce([{
       id: "notification-decline",
       kind: "EMPLOYEE_RECORDING_PARTICIPATION_DECLINED:membership-1:1",
       consentRecordId: null,
       attemptCount: 1,
       maxAttempts: 4,
-    }]);
+    }]).mockResolvedValueOnce([]);
 
     const response = await POST(workerRequest());
     const json = await response.json();
@@ -131,5 +151,65 @@ describe("permission notification worker", () => {
       actorUserId: "employee-participation-notification-worker",
     });
     expect(hoisted.rotate).not.toHaveBeenCalled();
+  });
+
+  it("enqueues 24-hour reminders and retries queued service-request delivery", async () => {
+    hoisted.enqueueReminders.mockResolvedValue([{ id: "reminder-customer" }, { id: "reminder-vendor" }]);
+    hoisted.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        id: "service-notification-1",
+        kind: "SERVICE_REQUEST_ACCEPTED_CUSTOMER_V1:accepted_customer:customer-1",
+        attemptCount: 0,
+        maxAttempts: 4,
+      }]);
+
+    const response = await POST(workerRequest());
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.reminders).toEqual({ queued: 2, error: null });
+    expect(hoisted.enqueueReminders).toHaveBeenCalledWith(expect.objectContaining({
+      db: expect.any(Object),
+      now: expect.any(Date),
+      baseUrl: "http://localhost",
+    }));
+    expect(hoisted.dispatchServiceRequest).toHaveBeenCalledWith({
+      notificationId: "service-notification-1",
+      actorUserId: "service-request-notification-worker",
+      db: expect.any(Object),
+    });
+    expect(json.results).toContainEqual(expect.objectContaining({
+      notificationId: "service-notification-1",
+      status: "SENT",
+    }));
+  });
+
+  it("dead-letters service-request deliveries at their retry limit", async () => {
+    hoisted.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        id: "service-notification-1",
+        kind: "SERVICE_REQUEST_DECLINED_CUSTOMER_V1:declined_customer:customer-1",
+        attemptCount: 4,
+        maxAttempts: 4,
+      }]);
+
+    const response = await POST(workerRequest());
+    const json = await response.json();
+
+    expect(json.results).toContainEqual(expect.objectContaining({
+      notificationId: "service-notification-1",
+      status: "dead_lettered",
+    }));
+    expect(hoisted.dispatchServiceRequest).not.toHaveBeenCalled();
+    expect(hoisted.update).toHaveBeenCalledWith({
+      where: { id: "service-notification-1" },
+      data: {
+        deadLetteredAt: expect.any(Date),
+        leaseExpiresAt: null,
+        lastError: "service_request_delivery_retry_limit_reached",
+      },
+    });
   });
 });

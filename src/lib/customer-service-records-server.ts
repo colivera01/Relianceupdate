@@ -348,6 +348,8 @@ export async function loadCustomerServiceRecords(input: {
       booking,
       outcome: cancellationByBooking.get(id),
     });
+    const customerMetadata = parseJsonRecord(booking.customerMetadata);
+    const requestLifecycle = parseJsonRecord(customerMetadata.service_request);
     const state = deriveCustomerServiceRecordState({
       bookingStatus: booking.status,
       hasExplicitCompletedEvidence: Boolean(pkg),
@@ -364,6 +366,7 @@ export async function loadCustomerServiceRecords(input: {
       publicationStatus: proposal?.status || null,
       publicRestrictionActive: restrictedBookings.has(id),
       cancellation,
+      requestLifecycle,
     });
     return {
       source: booking,

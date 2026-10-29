@@ -13,6 +13,8 @@ const hoisted = vi.hoisted(() => {
   const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
   const bookingDelete = vi.fn();
+  const txBookingFindFirst = vi.fn();
+  const txBookingFindMany = vi.fn();
   const vendorMembershipFindMany = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const mediaSessionUpdateMany = vi.fn();
@@ -38,7 +40,13 @@ const hoisted = vi.hoisted(() => {
       employeeRecordingCertification: { updateMany: txEmployeeCertificationUpdateMany },
       consentRequestLink: { updateMany: txConsentRequestLinkUpdateMany },
       bookingNotification: { updateMany: txBookingNotificationUpdateMany },
-      booking: { findUnique: bookingFindUnique, delete: txBookingDelete, update: bookingUpdate },
+      booking: {
+        findFirst: txBookingFindFirst,
+        findMany: txBookingFindMany,
+        findUnique: bookingFindUnique,
+        delete: txBookingDelete,
+        update: bookingUpdate,
+      },
     })
   );
 
@@ -76,6 +84,8 @@ const hoisted = vi.hoisted(() => {
     bookingFindFirst,
     bookingFindUnique,
     bookingUpdate,
+    txBookingFindFirst,
+    txBookingFindMany,
     vendorMembershipFindMany,
     mediaSessionFindMany,
     mediaSessionUpdateMany,
@@ -95,6 +105,8 @@ const hoisted = vi.hoisted(() => {
     txMediaAssetUpdateMany,
     txBookingDelete,
     transaction,
+    enqueueServiceRequestCustomerEvent: vi.fn(),
+    dispatchServiceRequestNotifications: vi.fn(),
   };
 });
 
@@ -121,6 +133,11 @@ vi.mock("@/lib/notifications/send-video-ready", () => ({
 
 vi.mock("@/lib/lifecycle-audit", () => ({
   recordLifecycleAudit: vi.fn(),
+}));
+
+vi.mock("@/lib/notifications/service-request", () => ({
+  enqueueServiceRequestCustomerEvent: hoisted.enqueueServiceRequestCustomerEvent,
+  dispatchServiceRequestNotifications: hoisted.dispatchServiceRequestNotifications,
 }));
 
 vi.mock("@/lib/service-video-publication", () => ({
@@ -175,6 +192,67 @@ async function toJson(res: Response) {
   return res.json() as Promise<Record<string, unknown>>;
 }
 
+const serviceRequestCreatedAt = new Date("2026-10-29T12:00:00.000Z");
+const serviceRequestScheduledFor = new Date("2099-11-05T14:00:00.000Z");
+
+function serviceRequestMetadata(
+  state: "REQUESTED" | "COUNTEROFFERED" | "VENDOR_ACCEPTED" = "REQUESTED",
+  extra: Record<string, unknown> = {},
+) {
+  return JSON.stringify({
+    service_request: {
+      version: 1,
+      state,
+      schedule_mode: "CUSTOMER_REQUESTED",
+      requested_at: serviceRequestCreatedAt.toISOString(),
+      requested_scheduled_for: serviceRequestScheduledFor.toISOString(),
+      responded_at: state === "REQUESTED" ? null : "2026-10-29T12:05:00.000Z",
+      responded_by_user_id: state === "REQUESTED" ? null : "manager-1",
+      responded_by_membership_id: state === "REQUESTED" ? null : "manager-membership-1",
+      response_reason: null,
+      proposed_scheduled_for: state === "COUNTEROFFERED" ? "2099-11-06T15:00:00.000Z" : null,
+      counteroffer_generation: state === "COUNTEROFFERED" ? 1 : 0,
+      customer_responded_at: null,
+      customer_response_reason: null,
+      history: [],
+    },
+    ...extra,
+  });
+}
+
+function serviceRequestOuterBooking(customerMetadata = serviceRequestMetadata()) {
+  return {
+    id: "job1",
+    vendorId: "v1",
+    status: "PENDING",
+    customerMetadata,
+    title: "Outlet Installation",
+    clientName: "Customer One",
+    scheduledFor: serviceRequestScheduledFor,
+    date: serviceRequestScheduledFor,
+    createdAt: serviceRequestCreatedAt,
+    service: { id: "service-1", name: "Outlet Installation" },
+    vendor: { businessName: "Electro LLC", name: "Electro" },
+    user: { id: "customer-1", name: "Customer One", email: "customer@example.com", phone: "4075550101" },
+  };
+}
+
+function serviceRequestTransactionBooking(
+  customerMetadata = serviceRequestMetadata(),
+  status = "PENDING",
+) {
+  return {
+    id: "job1",
+    userId: "customer-1",
+    vendorId: "v1",
+    status,
+    scheduledFor: serviceRequestScheduledFor,
+    createdAt: serviceRequestCreatedAt,
+    customerMetadata,
+    service: { description: "Estimated duration: 60 minutes." },
+  };
+}
+
 describe("vendor job actions integration", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
@@ -212,6 +290,9 @@ describe("vendor job actions integration", () => {
     hoisted.bookingFindFirst.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.txBookingFindFirst.mockReset();
+    hoisted.txBookingFindMany.mockReset();
+    hoisted.txBookingFindMany.mockResolvedValue([]);
     hoisted.vendorMembershipFindMany.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.mediaSessionUpdateMany.mockReset();
@@ -235,6 +316,10 @@ describe("vendor job actions integration", () => {
     hoisted.txMediaAssetUpdateMany.mockReset();
     hoisted.txBookingDelete.mockReset();
     hoisted.transaction.mockClear();
+    hoisted.enqueueServiceRequestCustomerEvent.mockReset();
+    hoisted.enqueueServiceRequestCustomerEvent.mockResolvedValue([{ id: "notice-1", status: "QUEUED" }]);
+    hoisted.dispatchServiceRequestNotifications.mockReset();
+    hoisted.dispatchServiceRequestNotifications.mockResolvedValue([{ id: "notice-1", status: "SENT" }]);
   });
 
   it("PATCH returns 403 when vendor auth is forbidden", async () => {
@@ -287,6 +372,9 @@ describe("vendor job actions integration", () => {
     "UPDATE_RECORDING_COMPLIANCE",
     "RELEASE_EMPLOYEE_SERVICE_ORDER",
     "CANCEL_SERVICE_ORDER",
+    "ACCEPT_SERVICE_REQUEST",
+    "DECLINE_SERVICE_REQUEST",
+    "COUNTER_SERVICE_REQUEST",
     "RESEND_COMPLETED_WORK_ORDER",
     "UPDATE_STATUS",
     "APPROVE_JOB_COMPLETION",
@@ -313,6 +401,189 @@ describe("vendor job actions integration", () => {
       expect(hoisted.transaction).not.toHaveBeenCalled();
     },
   );
+
+  it("PATCH ACCEPT_SERVICE_REQUEST confirms an available request and queues the customer notification", async () => {
+    const metadata = serviceRequestMetadata();
+    hoisted.bookingFindFirst.mockResolvedValue(serviceRequestOuterBooking(metadata));
+    hoisted.txBookingFindFirst.mockResolvedValue(serviceRequestTransactionBooking(metadata));
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: args.data.status,
+      scheduledFor: serviceRequestScheduledFor,
+      createdAt: serviceRequestCreatedAt,
+      customerMetadata: args.data.customerMetadata,
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "ACCEPT_SERVICE_REQUEST",
+      requestId: "accept-1",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      success: true,
+      code: "SERVICE_REQUEST_ACCEPTED",
+      details: {
+        booking: { id: "job1", status: "CONFIRMED" },
+        requestLifecycle: { state: "VENDOR_ACCEPTED" },
+        idempotent: false,
+      },
+    });
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "CONFIRMED",
+        customerMetadata: expect.stringContaining('"service_request_action_request_ids":["ACCEPT_SERVICE_REQUEST:accept-1"]'),
+      }),
+    }));
+    expect(hoisted.enqueueServiceRequestCustomerEvent).toHaveBeenCalledWith(expect.objectContaining({
+      bookingId: "job1",
+      event: "ACCEPTED_CUSTOMER",
+    }));
+    expect(hoisted.dispatchServiceRequestNotifications).toHaveBeenCalledTimes(1);
+    expect(recordLifecycleAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actionType: "accept_service_request",
+      entityId: "job1",
+    }));
+  });
+
+  it("PATCH ACCEPT_SERVICE_REQUEST rejects a slot that became unavailable before acceptance", async () => {
+    const metadata = serviceRequestMetadata();
+    hoisted.bookingFindFirst.mockResolvedValue(serviceRequestOuterBooking(metadata));
+    hoisted.txBookingFindFirst.mockResolvedValue(serviceRequestTransactionBooking(metadata));
+    hoisted.txBookingFindMany.mockResolvedValue([
+      {
+        scheduledFor: new Date(serviceRequestScheduledFor.getTime() + 30 * 60 * 1000),
+        service: { description: "Estimated duration: 60 minutes." },
+      },
+    ]);
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "ACCEPT_SERVICE_REQUEST",
+      requestId: "accept-conflict",
+    });
+    const res = await PATCH(req, ctx as any);
+
+    expect(res.status).toBe(409);
+    expect(await toJson(res)).toMatchObject({ code: "SERVICE_REQUEST_SCHEDULE_UNAVAILABLE" });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.enqueueServiceRequestCustomerEvent).not.toHaveBeenCalled();
+  });
+
+  it("PATCH DECLINE_SERVICE_REQUEST cancels the request and queues the customer notification", async () => {
+    const metadata = serviceRequestMetadata();
+    hoisted.bookingFindFirst.mockResolvedValue(serviceRequestOuterBooking(metadata));
+    hoisted.txBookingFindFirst.mockResolvedValue(serviceRequestTransactionBooking(metadata));
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: args.data.status,
+      scheduledFor: serviceRequestScheduledFor,
+      createdAt: serviceRequestCreatedAt,
+      customerMetadata: args.data.customerMetadata,
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "DECLINE_SERVICE_REQUEST",
+      reason: "Outside our current service area.",
+      requestId: "decline-1",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      code: "SERVICE_REQUEST_DECLINED",
+      details: { booking: { status: "CANCELED" }, requestLifecycle: { state: "VENDOR_DECLINED" } },
+    });
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "CANCELED",
+        rejectionReason: "Outside our current service area.",
+      }),
+    }));
+    expect(hoisted.enqueueServiceRequestCustomerEvent).toHaveBeenCalledWith(expect.objectContaining({
+      event: "DECLINED_CUSTOMER",
+      reason: "Outside our current service area.",
+    }));
+  });
+
+  it("PATCH COUNTER_SERVICE_REQUEST reserves the proposed slot while waiting for the customer", async () => {
+    const metadata = serviceRequestMetadata();
+    const proposedAt = new Date("2099-11-06T15:00:00.000Z");
+    hoisted.bookingFindFirst.mockResolvedValue(serviceRequestOuterBooking(metadata));
+    hoisted.txBookingFindFirst.mockResolvedValue(serviceRequestTransactionBooking(metadata));
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: "PENDING",
+      scheduledFor: args.data.scheduledFor,
+      createdAt: serviceRequestCreatedAt,
+      customerMetadata: args.data.customerMetadata,
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "COUNTER_SERVICE_REQUEST",
+      proposedScheduledFor: proposedAt.toISOString(),
+      reason: "This time works for our technician.",
+      requestId: "counter-1",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      code: "SERVICE_REQUEST_COUNTEROFFERED",
+      details: { booking: { status: "PENDING" }, requestLifecycle: { state: "COUNTEROFFERED" } },
+    });
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ scheduledFor: proposedAt, date: proposedAt }),
+    }));
+    expect(hoisted.enqueueServiceRequestCustomerEvent).toHaveBeenCalledWith(expect.objectContaining({
+      event: "COUNTEROFFER_CUSTOMER",
+      scheduledFor: proposedAt,
+    }));
+  });
+
+  it("replays an action-bound service request requestId without a second mutation or notification", async () => {
+    const metadata = serviceRequestMetadata("VENDOR_ACCEPTED", {
+      service_request_action_request_ids: ["ACCEPT_SERVICE_REQUEST:retry-safe-1"],
+    });
+    const outer = serviceRequestOuterBooking(metadata);
+    outer.status = "CONFIRMED";
+    hoisted.bookingFindFirst.mockResolvedValue(outer);
+    hoisted.txBookingFindFirst.mockResolvedValue(serviceRequestTransactionBooking(metadata, "CONFIRMED"));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "ACCEPT_SERVICE_REQUEST",
+      requestId: "retry-safe-1",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ code: "SERVICE_REQUEST_ACCEPTED", details: { idempotent: true } });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.enqueueServiceRequestCustomerEvent).not.toHaveBeenCalled();
+    expect(hoisted.dispatchServiceRequestNotifications).not.toHaveBeenCalled();
+    expect(recordLifecycleAudit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale service request lifecycle before mutation", async () => {
+    const metadata = serviceRequestMetadata("VENDOR_ACCEPTED");
+    hoisted.bookingFindFirst.mockResolvedValue(serviceRequestOuterBooking(metadata));
+    hoisted.txBookingFindFirst.mockResolvedValue(serviceRequestTransactionBooking(metadata));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "DECLINE_SERVICE_REQUEST",
+      reason: "No longer available.",
+      requestId: "stale-1",
+    });
+    const res = await PATCH(req, ctx as any);
+
+    expect(res.status).toBe(409);
+    expect(await toJson(res)).toMatchObject({ code: "SERVICE_REQUEST_RESPONSE_NOT_ALLOWED" });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
 
   it("PATCH UPDATE_STATUS cannot be used by an employee as an alternate archive path", async () => {
     vi.mocked(requireVendorMembership).mockResolvedValue({

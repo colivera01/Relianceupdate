@@ -48,6 +48,36 @@ export type CustomerRecordCancellationLike = {
   cancelledAt?: Date | string | null;
 };
 
+export type CustomerServiceRequestLifecycleLike = {
+  state?: string | null;
+  requested_at?: Date | string | null;
+  requested_scheduled_for?: Date | string | null;
+  responded_at?: Date | string | null;
+  response_reason?: string | null;
+  proposed_scheduled_for?: Date | string | null;
+  customer_responded_at?: Date | string | null;
+  customer_response_reason?: string | null;
+};
+
+export type CustomerServiceRequestPresentation = {
+  state:
+    | 'REQUESTED'
+    | 'ACCEPTED'
+    | 'COUNTEROFFERED'
+    | 'SCHEDULED'
+    | 'DECLINED'
+    | 'CANCELLED'
+    | 'IN_PROGRESS'
+    | 'COMPLETED'
+    | 'UNKNOWN';
+  label: string;
+  detail: string;
+  needsResponse: boolean;
+  responseReason: string | null;
+  proposedScheduledFor: string | null;
+  requestedScheduledFor: string | null;
+};
+
 export type CustomerServiceRecordState = {
   lifecycle: CustomerRecordLifecycle;
   lifecycleLabel: string;
@@ -80,6 +110,7 @@ export type CustomerServiceRecordState = {
     reason: string | null;
     cancelledAt: string | null;
   } | null;
+  request: CustomerServiceRequestPresentation;
 };
 
 function normalize(value: unknown): string {
@@ -124,8 +155,10 @@ export function deriveCustomerServiceRecordState(input: {
   publicationStatus?: string | null;
   publicRestrictionActive?: boolean;
   cancellation?: CustomerRecordCancellationLike | null;
+  requestLifecycle?: CustomerServiceRequestLifecycleLike | null;
 }): CustomerServiceRecordState {
   const bookingStatus = normalize(input.bookingStatus);
+  const requestLifecycleState = normalize(input.requestLifecycle?.state);
   const legacyArchived = bookingStatus === 'ARCHIVED';
   const completedEvidence = input.hasExplicitCompletedEvidence === true;
   const cancelled = bookingStatus === 'CANCELED' || bookingStatus === 'CANCELLED';
@@ -183,8 +216,125 @@ export function deriveCustomerServiceRecordState(input: {
     lifecycle === CUSTOMER_RECORD_LIFECYCLES.COMPLETED ||
     lifecycle === CUSTOMER_RECORD_LIFECYCLES.CANCELLED;
 
+  let request: CustomerServiceRequestPresentation;
+  if (requestLifecycleState === 'CANCELED' || requestLifecycleState === 'CANCELLED') {
+    request = {
+      state: 'CANCELLED',
+      label: 'Cancelled',
+      detail: 'This service request is no longer active.',
+      needsResponse: false,
+      responseReason: String(input.requestLifecycle?.response_reason || input.cancellation?.reason || '').trim() || null,
+      proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (requestLifecycleState === 'VENDOR_DECLINED' || requestLifecycleState === 'CUSTOMER_DECLINED') {
+    request = {
+      state: 'DECLINED',
+      label: requestLifecycleState === 'VENDOR_DECLINED' ? 'Declined by business' : 'Proposed time declined',
+      detail: requestLifecycleState === 'VENDOR_DECLINED'
+        ? 'The business could not accept this service request.'
+        : 'You declined the proposed appointment time.',
+      needsResponse: false,
+      responseReason: String(
+        input.requestLifecycle?.customer_response_reason || input.requestLifecycle?.response_reason || ''
+      ).trim() || null,
+      proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (cancelled) {
+    request = {
+      state: 'CANCELLED',
+      label: 'Cancelled',
+      detail: 'This service request is no longer active.',
+      needsResponse: false,
+      responseReason: String(input.requestLifecycle?.response_reason || input.cancellation?.reason || '').trim() || null,
+      proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (requestLifecycleState === 'COUNTEROFFERED') {
+    request = {
+      state: 'COUNTEROFFERED',
+      label: 'New time proposed',
+      detail: 'The business proposed a different appointment time. Review it before the request can be scheduled.',
+      needsResponse: true,
+      responseReason: String(input.requestLifecycle?.response_reason || '').trim() || null,
+      proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (requestLifecycleState === 'VENDOR_ACCEPTED') {
+    request = {
+      state: 'ACCEPTED',
+      label: 'Accepted by business',
+      detail: 'The business accepted your request. Your appointment details are now confirmed.',
+      needsResponse: false,
+      responseReason: String(input.requestLifecycle?.response_reason || '').trim() || null,
+      proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (requestLifecycleState === 'SCHEDULED') {
+    request = {
+      state: 'SCHEDULED',
+      label: 'Scheduled',
+      detail: 'The appointment time is confirmed with the business.',
+      needsResponse: false,
+      responseReason: String(input.requestLifecycle?.response_reason || '').trim() || null,
+      proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (requestLifecycleState === 'REQUESTED' || bookingStatus === 'PENDING') {
+    request = {
+      state: 'REQUESTED',
+      label: 'Awaiting business response',
+      detail: 'Your request was sent. The business still needs to accept it or propose a different time.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (bookingStatus === 'CONFIRMED') {
+    request = {
+      state: 'ACCEPTED',
+      label: 'Accepted by business',
+      detail: 'The business accepted your request. Your appointment details are now confirmed.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (bookingStatus === 'IN_PROGRESS') {
+    request = {
+      state: 'IN_PROGRESS',
+      label: 'Service in progress',
+      detail: 'The business marked this service as in progress.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (lifecycle === CUSTOMER_RECORD_LIFECYCLES.COMPLETED) {
+    request = {
+      state: 'COMPLETED',
+      label: 'Completed',
+      detail: 'This service is complete.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else {
+    request = {
+      state: 'UNKNOWN',
+      label: legacyArchived ? 'Archived historical record' : 'Status unavailable',
+      detail: 'The current service request status is unavailable.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  }
+
   const lifecycleLabel = lifecycle === CUSTOMER_RECORD_LIFECYCLES.UPCOMING
-    ? 'Upcoming'
+    ? request.label
     : lifecycle === CUSTOMER_RECORD_LIFECYCLES.COMPLETED
       ? 'Completed'
       : lifecycle === CUSTOMER_RECORD_LIFECYCLES.CANCELLED
@@ -230,6 +380,7 @@ export function deriveCustomerServiceRecordState(input: {
           cancelledAt: asIso(input.cancellation?.cancelledAt),
         }
       : null,
+    request,
   };
 }
 

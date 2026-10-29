@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVendorAvailabilitySlots } from '@/lib/availability-slots';
 import { requireVendorManager } from '@/lib/membership-auth';
+import { countableServiceWhere, countableVendorWhere } from '@/lib/metrics-exclusion';
+import { prisma } from '@/server/db';
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +23,22 @@ export async function GET(
       );
     }
 
-    await requireVendorManager(request, vendorId);
+    const publicVendor = await prisma.vendor.findFirst({
+      where: countableVendorWhere({ id: vendorId, isPubliclyListed: true, accountStatus: 'active' }),
+      select: { id: true },
+    });
+    if (!publicVendor) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
+    }
+    if (serviceId) {
+      const publicService = await prisma.service.findFirst({
+        where: countableServiceWhere({ id: serviceId, vendorId, isPublished: true }),
+        select: { id: true },
+      });
+      if (!publicService) {
+        return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+      }
+    }
 
     const payload = await getVendorAvailabilitySlots({
       vendorId,
@@ -46,8 +63,6 @@ export async function PUT(
   try {
     const { vendorId: vendorIdParam } = await params;
     const vendorId = String(vendorIdParam);
-    const body = await request.json();
-    const { availability_schedule, blocked_dates } = body;
 
     if (!vendorId) {
       return NextResponse.json(
@@ -55,6 +70,10 @@ export async function PUT(
         { status: 400 }
       );
     }
+
+    await requireVendorManager(request, vendorId);
+    const body = await request.json();
+    const { availability_schedule, blocked_dates } = body;
 
     // TODO: Update availability in database
     // await AvailabilityModel.update(vendorId, {
