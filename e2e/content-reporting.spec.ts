@@ -113,7 +113,7 @@ test("customer and Public viewer reports identify the exact stage and return saf
   await page.goto("/test-fixtures/content-reporting");
 
   await page.getByRole("button", { name: "Report private video" }).click();
-  const privateDialog = page.getByRole("dialog", { name: "Report this Private Proof stage" });
+  const privateDialog = page.getByRole("dialog", { name: "Report this Private Service Record stage" });
   await expect(privateDialog.getByRole("option", { name: "Person or voice shown without permission" })).toBeAttached();
   await expect(privateDialog.getByText("Having trouble playing this video?")).toBeVisible();
   await privateDialog.getByRole("button", { name: "Submit report" }).click();
@@ -127,13 +127,13 @@ test("customer and Public viewer reports identify the exact stage and return saf
   expect(observed.submittedTargets).toEqual(["asset-private", "asset-public"]);
 });
 
-test("customer sees a distinct Reliance Public hold while Private Proof stays preserved", async ({ page }) => {
+test("customer sees a distinct Reliance Public hold while Private Service Record access stays preserved", async ({ page }) => {
   await installReportingApis(page);
   await page.goto("/test-fixtures/content-reporting");
 
   const visibility = page.getByTestId("package-visibility-customer");
   await expect(visibility).toContainText("Public visibility temporarily paused");
-  await expect(visibility).toContainText("Public authorization and Private Proof remain preserved");
+  await expect(visibility).toContainText("Public authorization and Private Service Record access remain preserved");
   await expect(visibility.getByRole("button", { name: "Make Private" })).toHaveCount(0);
 });
 

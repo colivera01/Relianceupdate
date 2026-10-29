@@ -1067,7 +1067,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Customer email is required for a Service Video work record so the customer can securely claim and view Private proof.',
+            'Customer email is required for a Service Video work record so the customer can securely claim and view the Private Service Record.',
           code: 'CUSTOMER_EMAIL_REQUIRED_FOR_SERVICE_VIDEO',
           responsibleParticipant: 'VENDOR_MANAGER',
           resolution: 'Enter the customer email that should receive and claim the completed Private Service Video.',

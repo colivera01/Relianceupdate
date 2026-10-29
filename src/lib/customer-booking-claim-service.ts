@@ -39,7 +39,7 @@ async function validateActiveGrantBinding(
   if (grants.length > 1) {
     claimError(
       "PRIVATE_PROOF_GRANT_CONFLICT",
-      "This Private Proof has conflicting active access evidence.",
+      "This Private Service Record has conflicting active video-access evidence.",
     );
   }
   const grant = grants[0] || null;
@@ -50,7 +50,7 @@ async function validateActiveGrantBinding(
     if (String(currentPackage?.status || "").toUpperCase() === "PRIVATE_APPROVED") {
       claimError(
         "PRIVATE_PROOF_GRANT_MISSING",
-        "This approved Private Proof has no active access grant.",
+        "This approved Service Video Package has no active Private Service Record access grant.",
       );
     }
     return null;
@@ -70,7 +70,7 @@ async function validateActiveGrantBinding(
     if (!isUnclaimedBookingUserEmail(staleGrantOwner?.email)) {
       claimError(
         "PRIVATE_PROOF_GRANT_OWNER_CONFLICT",
-        "This Private Proof is already connected to another customer account.",
+        "This Private Service Record is already connected to another customer account.",
         403,
       );
     }
@@ -88,7 +88,7 @@ async function validateActiveGrantBinding(
   if (!pkg || currentPackage?.id !== pkg.id) {
     claimError(
       "PRIVATE_PROOF_PACKAGE_BINDING_INVALID",
-      "The Private Proof grant does not match the current approved package.",
+      "The Private Service Record access grant does not match the current approved Service Video Package.",
     );
   }
   if (grant.adminAuditDecisionId || pkg.adminAuditDecisionId) {
@@ -98,7 +98,7 @@ async function validateActiveGrantBinding(
     ) {
       claimError(
         "PRIVATE_PROOF_ADMIN_BINDING_INVALID",
-        "The Private Proof grant does not match its Reliance Audit decision.",
+        "The Private Service Record access grant does not match its Reliance Audit decision.",
       );
     }
     const auditDecision = await tx.serviceVideoAdminAuditDecisionEvidence.findFirst({
@@ -117,7 +117,7 @@ async function validateActiveGrantBinding(
     if (!auditDecision) {
       claimError(
         "PRIVATE_PROOF_ADMIN_BINDING_INVALID",
-        "The Private Proof grant does not match its Reliance Audit decision.",
+        "The Private Service Record access grant does not match its Reliance Audit decision.",
       );
     }
   }
@@ -156,14 +156,14 @@ export async function claimCustomerBookingWithinTransaction(input: {
   if (!account?.email || String(account.accountStatus || "active").toLowerCase() !== "active") {
     claimError(
       "CLAIM_ACCOUNT_UNAVAILABLE",
-      "The customer account is not available for this Private Proof.",
+      "The customer account is not available for this Private Service Record.",
       403,
     );
   }
   if (account.memberships?.length || account.platformRoleGrants?.length) {
     claimError(
       "CLAIM_CUSTOMER_ACCOUNT_REQUIRED",
-      "Sign in with the customer account that received this Private Proof.",
+      "Sign in with the customer account that received this Private Service Record.",
       403,
     );
   }
@@ -175,7 +175,7 @@ export async function claimCustomerBookingWithinTransaction(input: {
   ) {
     claimError(
       "CLAIM_ACCOUNT_EMAIL_UNVERIFIED",
-      "Verify the customer account email before opening this Private Proof.",
+      "Verify the customer account email before opening this Private Service Record.",
       403,
     );
   }
@@ -211,7 +211,7 @@ export async function claimCustomerBookingWithinTransaction(input: {
   ) {
     claimError(
       "CLAIM_TOKEN_REQUIRED",
-      "Open the Private Proof link from the email that Reliance sent you.",
+      "Open the Private Service Record link from the email that Reliance sent you.",
       403,
     );
   }
@@ -276,7 +276,7 @@ export async function claimCustomerBookingWithinTransaction(input: {
     if (rebound.count !== 1) {
       claimError(
         "PRIVATE_PROOF_GRANT_REBIND_CONFLICT",
-        "This Private Proof changed while it was being connected. Refresh and try again.",
+        "This Private Service Record changed while it was being connected. Refresh and try again.",
       );
     }
     grantChanged = true;

@@ -79,7 +79,7 @@ function notificationDisplay(notification: AdminNotification) {
   if (notification.type === 'MEDIA_MODERATION_REQUIRED') {
     return {
       title: 'Service Video package requires Reliance Audit',
-      message: 'Reliance Audit is required before the exact package can be released as customer Private Proof. Public visibility requires separate customer and participant decisions.',
+      message: 'Reliance Audit is required before the exact package can be made available through the customer’s Private Service Record. Public visibility requires separate customer and participant decisions.',
     };
   }
   if (notification.type === 'REVIEW_MODERATION_REQUIRED' && notification.countsInCanonicalMetrics === false) {
@@ -653,7 +653,7 @@ export default function AdminNotificationsPage() {
                                   href="/admin/promoted-listings"
                                   className="inline-flex text-[#204080] font-medium hover:underline"
                                 >
-                  Open featured proof
+                  Open Featured Listing
                                 </Link>
                               </div>
                             )}

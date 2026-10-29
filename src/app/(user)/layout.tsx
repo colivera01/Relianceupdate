@@ -121,7 +121,7 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
                 <p className="mt-1">
                   The work order will be saved in My Service Records, where you
                   can watch approved videos and leave a review. You can also
-                  browse Reliance&apos;s network and public service proof.
+                  browse Reliance&apos;s network and published work.
                 </p>
               </div>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">

@@ -431,7 +431,7 @@ export default function PublicBrowsePage() {
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">What you can compare</div>
                 <div className="mt-3 text-lg font-semibold">Reviews, videos, and provider details</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Featured placements stay clearly labeled while regular proof results continue below.</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">Featured placements stay clearly labeled while organic service results continue below.</p>
               </div>
             </div>
           </div>
@@ -582,7 +582,7 @@ export default function PublicBrowsePage() {
                     ? 'Showing providers near your current location'
                     : savedLocationAssistActive
                     ? 'Showing results near your saved address'
-                    : 'See nearby proof when location is available'}
+                    : 'See nearby work when location is available'}
                 </h2>
                 <p className="mt-1 text-sm text-gray-600">
                   {browserLocationActive
@@ -648,7 +648,7 @@ export default function PublicBrowsePage() {
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="mb-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                  Featured proof placement
+                  Featured listing
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">{PROMOTION_BROWSE_SECTION_TITLE}</h2>
                 <p className="text-sm text-gray-700">
@@ -691,7 +691,7 @@ export default function PublicBrowsePage() {
             </div>
           ) : categoriesError && !hasCategoryData ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              We could not load work-type counts right now. You can still explore available proof and search Services Offered.
+              We could not load work-type counts right now. You can still explore available work and search Services Offered.
             </div>
           ) : categories.length === 0 ? (
             <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
@@ -759,12 +759,12 @@ export default function PublicBrowsePage() {
                 <Card key={i} className="rounded-[28px] border-slate-200 bg-white">
                   <div className="h-48 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)] rounded-t-[28px]" />
                   <CardContent className="p-4">
-                    <div className="text-sm font-semibold text-slate-900">Loading proof results</div>
+                    <div className="text-sm font-semibold text-slate-900">Loading service results</div>
                     <div className="mt-2 text-sm leading-6 text-slate-600">
                       Reliance is refreshing live service cards, customer reviews, and public service video availability.
                     </div>
                     <div className="mt-3 text-xs font-medium text-blue-700">
-                      Reliance is active. Proof results are still loading.
+                      Reliance is active. Service results are still loading.
                     </div>
                   </CardContent>
                 </Card>
@@ -772,7 +772,7 @@ export default function PublicBrowsePage() {
             </div>
           ) : isError && !hasBrowseResults ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
-              We could not load proof results right now.
+              We could not load service results right now.
               {error instanceof Error ? ` ${error.message}` : ''}
             </div>
           ) : displayResults.length === 0 ? (
@@ -780,7 +780,7 @@ export default function PublicBrowsePage() {
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="w-8 h-8 text-gray-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching proof results</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching service results</h3>
               <p className="text-gray-600 mb-4">
                 {hasActiveFilters
                   ? 'Try changing your search or category filter to broaden results.'
@@ -799,8 +799,8 @@ export default function PublicBrowsePage() {
                 <ProofFirstCard
                   key={item.serviceId}
                   item={item}
-                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
-                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
+                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Work`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Work`}
                   secondaryAction={
                     <Button
                       size="sm"
@@ -848,7 +848,7 @@ export default function PublicBrowsePage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-blue-900 mb-2">Ready for your next step?</h3>
-                <p className="text-blue-700 text-sm">Create a free account to save proof examples, contact providers, and manage your Service Records.</p>
+                <p className="text-blue-700 text-sm">Create a free account to save work examples, contact providers, and manage your Service Records.</p>
               </div>
               <Link href="/auth/register?type=user" className="w-full sm:w-auto">
                 <Button className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto">Sign Up Now</Button>

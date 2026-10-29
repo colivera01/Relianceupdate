@@ -365,7 +365,7 @@ test.describe("Vendor review metrics", () => {
     await expect(page.getByText("50.0 MB used of 1.00 GB.", { exact: false })).toBeVisible();
     await expect(page.getByText("4.9%", { exact: true })).toBeVisible();
     await expect(page.getByText("1 pending Reliance Audit", { exact: true }).last()).toBeVisible();
-    await expect(page.getByText("3 approved Private Proof", { exact: true })).toBeVisible();
+    await expect(page.getByText("3 approved Private Service Records", { exact: true })).toBeVisible();
     await expect(page.getByText("1 shared publicly", { exact: true })).toBeVisible();
     await expect(page.getByText("8 of 8 Work Records are represented", { exact: false })).toBeVisible();
 
@@ -392,7 +392,7 @@ test.describe("Vendor review metrics", () => {
 
     await expect(page.getByRole("button", { name: "Refresh dashboard" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Active work" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Trust and public proof" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Trust and public visibility" })).toBeVisible();
     await expect(page.getByTestId("dashboard-metric-card")).toHaveCount(8);
     await expect(page.getByTestId("business-visibility-metric-card")).toHaveCount(4);
     const visibilityCardSurfaces = await page

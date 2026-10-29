@@ -8,13 +8,13 @@ export default function ContentReportingFixture() {
   return (
     <main className="mx-auto max-w-6xl space-y-8 p-6">
       <section aria-labelledby="private-report-heading" className="space-y-3">
-        <h1 id="private-report-heading" className="text-2xl font-semibold">Customer Private Proof</h1>
+        <h1 id="private-report-heading" className="text-2xl font-semibold">Customer Private Service Record</h1>
         <ReportContentDialog
           targetType="media_asset"
           targetId="asset-private"
           isSignedIn
           triggerLabel="Report private video"
-          title="Report this Private Proof stage"
+          title="Report this Private Service Record stage"
         />
       </section>
 

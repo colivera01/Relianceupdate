@@ -30,7 +30,7 @@ export function PublicHeroArtwork(_props: PublicHeroArtworkProps) {
             playsInline
             preload="metadata"
             src={HOMEPAGE_EXPLAINER_SRC}
-            title="How Reliance helps customers compare service proof"
+            title="How Reliance helps customers compare completed work"
           >
             Your browser does not support embedded video playback.
           </video>
@@ -46,7 +46,7 @@ export function PublicHeroArtwork(_props: PublicHeroArtworkProps) {
             A short guide to Reliance
           </div>
           <div className="mt-1 text-base text-white/60">
-            Service proof, reviews, and Trust Score
+            Completed work, reviews, and Trust Score
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center text-xs font-semibold text-white/76 sm:w-[260px]">

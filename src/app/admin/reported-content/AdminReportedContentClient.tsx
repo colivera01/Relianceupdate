@@ -393,7 +393,7 @@ export default function AdminReportedContentClient({
               Admin moderation
             </div>
             <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-          Reported content review stays inside the same proof-of-service trust system
+          Reported content review stays inside the same service-documentation trust system
             </h1>
             <p className="text-sm leading-7 text-white/72 sm:text-base">
               Review persisted content reports and jump into the existing review or media moderation tools.
@@ -603,7 +603,7 @@ export default function AdminReportedContentClient({
                       ) : null}
                       {report.publicHoldActive ? (
                         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                          Public visibility is temporarily paused. Private Proof and original evidence remain preserved.
+                          Public visibility is temporarily paused. Private Service Record access and original evidence remain preserved.
                         </div>
                       ) : null}
                       {report.events?.length ? (
@@ -825,7 +825,7 @@ export default function AdminReportedContentClient({
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <p>
             Reports are allegations. Case status and generic resolution do not change Trust Score or customer ratings.
-            Public holds preserve the exact package and Private Proof while Reliance investigates.
+            Public holds preserve the exact package and Private Service Record access while Reliance investigates.
           </p>
         </CardContent>
       </Card>

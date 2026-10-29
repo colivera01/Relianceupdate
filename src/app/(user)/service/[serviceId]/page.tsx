@@ -38,7 +38,7 @@ function sanitizeReturnPath(value: string | null): string | null {
 function sanitizeReturnLabel(value: string | null): string | null {
   if (!value) return null;
   const trimmed = value.trim();
-  return trimmed || null;
+  return trimmed ? trimmed.replace(/Explore Proof/gi, 'Explore Work') : null;
 }
 
 const SERVICE_DETAIL_TIMEOUT_MS = 30_000;
@@ -71,7 +71,7 @@ function ServiceDetailLoadingState() {
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
   const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
   const resolvedBackHref = returnTo || (user?.id ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Explore Proof' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Explore Work' : 'Back to Home Page');
 
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
@@ -392,7 +392,7 @@ function ServiceDetailPageContent() {
     }
   };
   const resolvedBackHref = returnTo || (isSignedIn ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Explore Proof' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Explore Work' : 'Back to Home Page');
   const handleBack = () => {
     router.push(resolvedBackHref);
   };
@@ -411,7 +411,7 @@ function ServiceDetailPageContent() {
           <h1 className="font-display text-3xl font-semibold text-slate-950">This service page is not ready yet</h1>
           <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">{error}</p>
           <p className="mt-2 text-sm text-slate-500">
-            The service details could not load right now. The Service Offered may still be available. Try again or return to Explore Proof.
+            The service details could not load right now. The Service Offered may still be available. Try again or return to Explore Work.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <button
@@ -1076,7 +1076,7 @@ function ServiceDetailPageContent() {
                     </p>
                   </>
                 )}
-                <p className="mt-3 text-xs text-slate-500">Review proof before you choose, then use Reliance to request service securely.</p>
+                <p className="mt-3 text-xs text-slate-500">Explore completed work, reviews, and service details before choosing a provider.</p>
               </div>
 
               <div className="space-y-4 mb-6">

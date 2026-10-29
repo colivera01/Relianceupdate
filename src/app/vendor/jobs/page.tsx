@@ -2771,7 +2771,7 @@ export default function VendorJobs() {
     { value: 'manager_review', label: 'Manager Review' },
     { value: 'moderator_review', label: 'Reliance Audit' },
     { value: 'canceled', label: 'Canceled' },
-    { value: 'private_complete', label: 'Private Proof' },
+    { value: 'private_complete', label: 'Private Service Record' },
     { value: 'public_approved', label: 'Public / Approved' },
     { value: 'rejected', label: 'Rejected' },
     { value: 'archived', label: 'Archived' },
@@ -5356,7 +5356,7 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>How a work record becomes customer-visible proof</DialogTitle>
+            <DialogTitle>How a Service Video package becomes available to the customer</DialogTitle>
             <DialogDescription>
               Create the work record, assign the employee, handle consent and location rules, then complete
               the three service video stages.
@@ -5375,7 +5375,7 @@ export default function VendorJobs() {
               <li><strong>Send the employee service order link</strong> so the employee can open it on the phone they will use to record.</li>
               <li><strong>If location is required, the employee verifies location</strong> from that phone before recording unlocks.</li>
               <li><strong>The employee records all three stages</strong>: Starting Condition, Work in Progress, and Final Result. Each stage can be previewed, saved, or retaken.</li>
-              <li><strong>The employee sends the finished package to the manager</strong>. Manager review and Reliance Audit PASS release the exact package as customer Private Proof. Public visibility still requires the customer to Share Publicly and active standing Public Media Consent from each Service Professional who appears or is heard.</li>
+              <li><strong>The employee sends the finished package to the manager</strong>. Manager review and Reliance Audit PASS make the exact package available to the customer as a Private Service Record. Public visibility still requires the customer to Share Publicly and active standing Public Media Consent from each Service Professional who appears or is heard.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               Each work card shows its current <strong>Next step</strong>: assign employee, wait for recording permission,
@@ -6300,7 +6300,7 @@ export default function VendorJobs() {
                   {
                     value: 'residence',
                     title: 'Customer residence',
-                    detail: 'Customer receives consent and chooses whether the completed proof can be public or private.',
+                    detail: 'The customer receives the recording request and later chooses whether the approved Service Video package stays private or may be shared publicly.',
                   },
                   {
                     value: 'customer-business',
@@ -7367,7 +7367,7 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>Submit Service Videos for Reliance Audit?</DialogTitle>
             <DialogDescription>
-              This attests to the exact three-stage package and sends it to Reliance Audit. The customer receives no Private Proof unless Admin records PASS. Admin REJECT is terminal for this Service Order.
+              This attests to the exact three-stage package and sends it to Reliance Audit. The Private Service Record is not available to the customer unless Admin records PASS. Admin REJECT is terminal for this Service Order.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-gray-700">
@@ -7878,7 +7878,7 @@ export default function VendorJobs() {
                     )}
                     {customerConsentStatus === CONSENT_STATE.DECLINED && (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        The customer declined recording. The service may continue without Reliance recording when the vendor can perform it without video proof.
+                        The customer declined recording. The service may continue without a Reliance Service Video when the vendor can perform it without recording.
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE && (
@@ -7998,7 +7998,7 @@ export default function VendorJobs() {
                     )}
                     {customerConsentStatus === CONSENT_STATE.DECLINED && (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        The customer declined recording. The service may continue without Reliance recording when the vendor can perform it without video proof.
+                        The customer declined recording. The service may continue without a Reliance Service Video when the vendor can perform it without recording.
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE && (

@@ -119,7 +119,7 @@ export function buildVendorGrowthSummary(
     detail:
       promotionsEnabled
         ? "Promotions become useful after your business is public and at least one service is published."
-        : "Reliance has not opened promotion requests. Keep strengthening published services, verified ratings, and eligible public proof.",
+        : "Reliance has not opened promotion requests. Keep strengthening published services, verified ratings, and eligible Published Work.",
     tone: promotionsEnabled ? "warning" : "neutral",
   };
 
@@ -136,7 +136,7 @@ export function buildVendorGrowthSummary(
       promotionStatus = {
         label: "Publish a service before requesting promotion",
         detail:
-          "Featured placements only help once customers can open a published Service Offered from Explore Proof.",
+          "Featured Listings only help once customers can open a published Service Offered from Explore Work.",
         tone: "warning",
       };
     } else if (input.promotionBrowseReadiness && !input.promotionBrowseReadiness.desktopBrowseEligible) {

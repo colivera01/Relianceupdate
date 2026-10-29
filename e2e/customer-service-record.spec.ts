@@ -749,7 +749,7 @@ test('customer mobile navigation uses short visible labels with full accessible 
     const navigation = page.getByRole('navigation', { name: 'Customer mobile navigation' });
     await expect(navigation.getByText('Explore', { exact: true })).toBeVisible();
     await expect(navigation.getByText('Records', { exact: true })).toBeVisible();
-    await expect(navigation.getByRole('link', { name: 'Explore Proof' })).toBeVisible();
+    await expect(navigation.getByRole('link', { name: 'Explore Work' })).toBeVisible();
     await expect(navigation.getByRole('link', { name: 'My Service Records' })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
@@ -792,7 +792,7 @@ test('cancelled Service Record detail stays accessible without false approved-vi
     });
   });
   await page.route(new RegExp(`/api/bookings/${bookingId}/media$`), async (route) => {
-    await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'No active Private Proof grant' }) });
+    await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'No active Private Service Record access grant' }) });
   });
 
   await page.goto(`/test-fixtures/customer-service-record/${bookingId}`);

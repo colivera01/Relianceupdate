@@ -20,7 +20,7 @@ export function getReviewsHubUnavailableMessage(
   >
 ): string {
   if (lifecycle.reviewSubmittedWithoutEligibleVideo) {
-    return "A review is already on file for this completed service, but an approved Private Proof package is not currently available.";
+    return "A review is already on file for this completed service, but an approved Service Video Package is not currently available through the Private Service Record.";
   }
 
   if (lifecycle.videoState === "pending_approval" || lifecycle.videoPendingApproval) {
@@ -28,7 +28,7 @@ export function getReviewsHubUnavailableMessage(
   }
 
   if (lifecycle.videoState === "approved_not_customer_visible") {
-    return "Service completed. The Service Video package is not available as Private Proof right now.";
+    return "Service completed. The Service Video Package is not available through the Private Service Record right now.";
   }
 
   if (lifecycle.videoState === "rejected") {
@@ -36,10 +36,10 @@ export function getReviewsHubUnavailableMessage(
   }
 
   if (lifecycle.videoSubmitted) {
-    return "Service completed. The Service Video package is not available as Private Proof right now.";
+    return "Service completed. The Service Video Package is not available through the Private Service Record right now.";
   }
 
-  return "Service completed, but an approved Private Proof package is not currently available.";
+  return "Service completed, but an approved Service Video Package is not currently available through the Private Service Record.";
 }
 
 export type SubmittedReviewMediaState =

@@ -20,7 +20,7 @@ describe("getCustomerReviewGateMessage", () => {
         canShowInlineReview: false,
         consentAllowsInlineReview: false,
       })
-    ).toContain("approved Private Proof package is not available");
+    ).toContain("approved Service Video Package is not available through the Private Service Record");
   });
 
   it("directs the customer to the completed Service Record when inline review is unavailable", () => {
@@ -40,7 +40,7 @@ describe("getCustomerReviewGateMessage", () => {
         canShowInlineReview: true,
         consentAllowsInlineReview: false,
       })
-    ).toBe("Private Proof access is required before a review can be submitted.");
+    ).toBe("Private Service Record access is required before a review can be submitted.");
   });
 
   it("returns null when review can proceed", () => {

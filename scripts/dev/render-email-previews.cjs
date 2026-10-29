@@ -175,7 +175,7 @@ const previews = [
     file: "04-customer-service-video-ready.png",
     title: "Customer service video ready",
     eyebrow: "Service videos ready",
-    headline: `${vendorName} shared your service video proof`,
+    headline: `${vendorName} shared your Service Video`,
     greeting: `Hello ${customerName},`,
     bodyHtml: `
       <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeHtml(vendorName)}</strong> completed the service-video package for your recent service.</p>

@@ -53,7 +53,7 @@ export async function sendVideoReadyNotification(
     fallback: 'your service visit',
   });
   const subject = `Your service video from ${vendorName} is ready`;
-  const message = `${vendorName} has completed and shared your Reliance service video proof for ${serviceLabel}.`;
+  const message = `${vendorName} has completed and shared your Reliance Service Videos for ${serviceLabel}.`;
   const completedAt = formatCustomerFacingServiceDateTime({
     value: input.completedAt,
     timeZone: input.serviceTimeZone,
@@ -63,7 +63,7 @@ export async function sendVideoReadyNotification(
   if (env.emailEnabled && customerEmail) {
     const html = buildRelianceEmailHtml({
       eyebrow: 'Service videos ready',
-      headline: `${vendorName} shared your service video proof`,
+      headline: `${vendorName} shared your Service Videos`,
       greeting: `Hello${customerName ? ` ${customerName}` : ''},`,
       bodyHtml: `
         <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> completed the service-video package for your recent service.</p>

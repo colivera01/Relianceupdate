@@ -371,7 +371,7 @@ async function installVendorFixture(
 
 async function openVendorJobs(page: Page) {
   await page.goto("/test-fixtures/rv8-vendor-jobs");
-  const workflowGuide = page.getByRole("dialog", { name: "How a work record becomes customer-visible proof" });
+  const workflowGuide = page.getByRole("dialog", { name: "How a Service Video package becomes available to the customer" });
   const guideOpened = await workflowGuide
     .waitFor({ state: "visible", timeout: 5_000 })
     .then(() => true)
@@ -422,7 +422,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(passDialog).toBeVisible();
     expect(decisionRequests).toBe(0);
     await passDialog.getByLabel("Eligible for Public display").check();
-    await passDialog.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
+    await passDialog.getByRole("button", { name: "Confirm PASS and Enable Private Service Record" }).click();
     expect(decisionRequests).toBe(1);
     expect(passRequest).toMatchObject({
       action: "pass",
@@ -457,11 +457,11 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.goto("/test-fixtures/rv8-admin-audit");
     await page.getByRole("button", { name: "PASS Audit" }).click();
     const dialog = page.getByRole("dialog", { name: "Confirm Reliance Audit PASS" });
-    await dialog.getByLabel("Private Proof only").check();
+    await dialog.getByLabel("Private Service Record only").check();
     await dialog.getByLabel("Private-only explanation").fill(
       "Customer-visible evidence contains details unsuitable for Public display.",
     );
-    await dialog.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
+    await dialog.getByRole("button", { name: "Confirm PASS and Enable Private Service Record" }).click();
 
     expect(requestBody).toMatchObject({
       action: "pass",
@@ -602,7 +602,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(page.getByRole("menu").getByRole("button", { name: "View Details" })).toBeVisible();
     await expect(page.getByRole("menu").getByRole("button", { name: "Archive Job" })).toHaveCount(0);
 
-    await selectWorkflowFilter(page, "private_complete", /Private Proof/);
+    await selectWorkflowFilter(page, "private_complete", /Private Service Record/);
     await expect(page.getByText(passedAuditJob.title, { exact: true })).toBeVisible();
     await expect(page.getByText(genericCompletedJob.title, { exact: true })).toHaveCount(0);
 

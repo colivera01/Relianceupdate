@@ -111,7 +111,7 @@ for (const device of [
       await expect(page.getByText('Saved Service', { exact: true })).toBeVisible();
       await expect(page.getByText('Saved Business')).toBeVisible();
       await expect(page.getByText(/completed work remains in/i)).toBeVisible();
-      await expect(page.getByText('This saved Service is not currently available in Explore Proof.')).toBeVisible();
+      await expect(page.getByText('This saved Service is not currently available in Explore Work.')).toBeVisible();
       await expect(page.getByRole('link', { name: 'View Service' })).toHaveCount(0);
       await expect(page.getByRole('link', { name: 'View Business' })).toHaveCount(2);
       await expect(page.getByText('videos, reviews, or vendors')).toHaveCount(0);

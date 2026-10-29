@@ -2006,7 +2006,7 @@ function RegisterPageInner() {
                       </p>
                       <p className="mt-2 text-sm font-medium text-blue-800">
                         Registration is free. Your account also lets you browse
-                        providers and public service proof.
+                        providers and published work.
                       </p>
                     </div>
                   </div>

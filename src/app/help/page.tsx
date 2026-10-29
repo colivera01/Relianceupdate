@@ -86,9 +86,9 @@ function buildHelpContext(
       backLabel: 'Back to Reliance',
       intro:
         'Reliance helps customers compare provider services and helps approved vendors turn completed work into customer-visible credibility.',
-      bookingHeading: 'Requesting or saving service proof',
+      bookingHeading: 'Requesting or saving services',
       bookingDescription:
-        'Create a customer account or sign in before saving proof examples, contacting vendors, or managing service records.',
+        'Create a customer account or sign in before saving work examples, contacting vendors, or managing service records.',
       bookingLabel: 'Create a customer account',
       bookingHref: '/auth/register?type=user',
       vendorHeading: 'Vendor access',
@@ -132,7 +132,7 @@ function buildHelpContext(
         'Reliance helps approved vendors manage jobs, customer reviews, business profile settings, and support workflows.',
       bookingHeading: 'Active vendor work',
       bookingDescription:
-        'Open your job workspace to manage customer requests, work progress, and the proof that may support future customer confidence.',
+        'Open your job workspace to manage customer requests, work progress, and the service documentation that may support future customer confidence.',
       bookingLabel: 'Open Manage Jobs',
       bookingHref: '/vendor/jobs',
       vendorHeading: 'Vendor support',
@@ -203,10 +203,10 @@ export default async function PublicHelpPage({
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-            { href: '/browse', label: 'Explore Proof' },
+            { href: '/browse', label: 'Explore Work' },
             ]}
             ctaHref="/browse"
-          ctaLabel="Explore Proof"
+          ctaLabel="Explore Work"
           />
 
           <Link href={backHref} className="inline-flex text-sm font-medium text-[var(--reliance-blue-soft)] hover:text-white">
@@ -278,9 +278,9 @@ export default async function PublicHelpPage({
                 {
                   heading: 'Browsing vendor services',
                   description:
-            'Use Explore Proof to review completed work, provider details, Public Service Videos, reviews, and Trust Score context.',
+            'Use Explore Work to review completed work, provider details, Public Service Videos, reviews, and Trust Score context.',
                   href: '/browse',
-          label: 'Explore proof',
+          label: 'Explore Work',
                 },
                 {
                   heading: helpContext.bookingHeading,

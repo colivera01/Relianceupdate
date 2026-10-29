@@ -9,8 +9,9 @@ import { normalizePrismaSqlServerUrl } from './prisma-sqlserver-url';
 // Opt-in release check only. Never seeds, authenticates, or invokes mutations.
 const artifact = process.env.RELIANCE_ARTIFACT_READONLY_ROOT;
 const customerUserId = process.env.RELIANCE_READONLY_CUSTOMER_ID;
-const expectedAppliedMigrationCount = 57;
-const expectedLatestMigration = '20260910014500_add_employee_public_media_consent';
+const expectedDatabaseName = 'reliance-beta-recovery-v2-1caa43e';
+const expectedAppliedMigrationCount = 60;
+const expectedLatestMigration = '20261015143000_allow_reused_governed_content_hash';
 it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta contracts and the actual customer loader without adapters', async () => {
   const root = resolve(artifact!);
   const packagedRequire = createRequire(resolve(root, 'package.json'));
@@ -22,7 +23,7 @@ it.skipIf(!artifact || !customerUserId)('extracted candidate client reads beta c
   const db = new PrismaClient({ datasources: { db: { url: normalizePrismaSqlServerUrl(process.env.DATABASE_URL) || process.env.DATABASE_URL } } });
   try {
     const database = await db.$queryRaw`SELECT DB_NAME() AS name`;
-    expect(database[0].name).toBe('reliance-beta-db');
+    expect(database[0].name).toBe(expectedDatabaseName);
     const migrations = await db.$queryRaw`SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations`;
     const appliedMigrations = migrations.filter((row: any) => row.finished_at && !row.rolled_back_at);
     expect(appliedMigrations).toHaveLength(expectedAppliedMigrationCount);

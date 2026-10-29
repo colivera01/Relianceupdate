@@ -263,7 +263,7 @@ export async function sendCoreAdminAuditVendorResultNotification(input: {
     : `Reliance Audit failed: ${serviceName}`;
   const headline = passed ? "Reliance Audit passed" : "Reliance Audit failed";
   const body = passed
-    ? "Reliance approved the submitted Service Videos and released the Private Proof to the customer. This does not make any video Public."
+    ? "Reliance approved the submitted Service Videos and enabled the customer’s Private Service Record access. This does not make any video Public."
     : "Reliance did not approve the submitted Service Videos. The Reliance work record is permanently closed, and rerecording, correction, retry, or resubmission is not available. This audit outcome does not mean the underlying real-world service failed.";
   const env = readNotificationEnv();
   const channels: DeliveryChannel[] = [];

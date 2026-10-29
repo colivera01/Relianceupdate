@@ -480,7 +480,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             error.code === "ADMIN_AUDIT_IN_PROGRESS"
               ? "This Service Video package is read-only while Reliance Audit is in progress."
               : error.code === "ADMIN_AUDIT_PASSED_TERMINAL"
-                ? "Reliance Audit passed and released this exact Private Proof package. The evidence is terminal and read-only."
+                ? "Reliance Audit passed and enabled Private Service Record access to this exact Service Video Package. The evidence is terminal and read-only."
                 : "Reliance Audit rejected this Service Video package. The evidence is terminal and read-only.",
           ),
           { status: 409 },
@@ -1767,7 +1767,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           apiResponse(
             false,
             "CUSTOMER_VISIBLE_PACKAGE_NOT_READY",
-            "Private Proof access cannot be resent until Reliance Audit passes and releases the exact three-stage package.",
+            "Private Service Record access cannot be resent until Reliance Audit passes the exact three-stage Service Video Package.",
             {
               hasAllRequiredStages: packageState.hasAllRequiredStages,
               hasAllRequiredStagesApproved: packageState.hasAllRequiredStagesApproved,
@@ -1850,8 +1850,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         action,
         notifications: result,
         message: result.ok
-          ? "Private Proof access resent to the customer."
-          : result.errorMessage || "Reliance could not resend Private Proof access.",
+          ? "Private Service Record access resent to the customer."
+          : result.errorMessage || "Reliance could not resend Private Service Record access.",
       }, { status: result.ok ? 200 : 502 });
     }
 
@@ -2075,7 +2075,7 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
             error.code === "ADMIN_AUDIT_IN_PROGRESS"
               ? "This Service Video package is read-only while Reliance Audit is in progress."
               : error.code === "ADMIN_AUDIT_PASSED_TERMINAL"
-                ? "Reliance Audit passed and released this exact Private Proof package. The evidence is terminal and cannot be deleted."
+                ? "Reliance Audit passed and enabled Private Service Record access to this exact Service Video Package. The evidence is terminal and cannot be deleted."
                 : "Reliance Audit rejected this Service Video package. The evidence is terminal and cannot be deleted.",
           ),
           { status: 409 },

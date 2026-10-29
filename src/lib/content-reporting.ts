@@ -164,13 +164,13 @@ export async function resolveReportableMediaEvidence(input: {
       throw new ContentReportError("REPORT_MEDIA_ACCESS_DENIED", "You do not have access to report this video.", 403);
     }
     if (!["customer_only", "public"].includes(String(asset.visibilityStatus || "").toLowerCase())) {
-      throw new ContentReportError("REPORT_MEDIA_ACCESS_DENIED", "This video is not available through Private Proof.", 403);
+      throw new ContentReportError("REPORT_MEDIA_ACCESS_DENIED", "This video is not available through the Private Service Record.", 403);
     }
     const grant = await (prisma as any).privateProofAccessGrant.findFirst({
       where: { bookingId, customerUserId: input.reporterUserId, status: "ACTIVE", revokedAt: null },
       orderBy: { grantedAt: "desc" },
     });
-    if (!grant) throw new ContentReportError("REPORT_PRIVATE_PROOF_REQUIRED", "Active Private Proof access is required.", 403);
+    if (!grant) throw new ContentReportError("REPORT_PRIVATE_PROOF_REQUIRED", "Active Private Service Record access is required.", 403);
     pkg = await (prisma as any).serviceVideoPackageEvidence.findFirst({
       where: {
         id: grant.packageId,

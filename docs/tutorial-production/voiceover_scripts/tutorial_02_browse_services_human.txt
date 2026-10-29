@@ -6,6 +6,6 @@ Use search to compare services offered, provider details, customer reviews, publ
 
 Nearby results only appear when Reliance has a real location or saved address to use. If there is no location, Reliance should not pretend something is nearby.
 
-Some providers may already have public service video evidence. Others may still be building trust signals. Service offered cards show what the provider can do, while proof-backed cards show completed work customers can review.
+Some providers may already have Public Service Videos. Others may still be building trust signals. Service Offered cards show what the provider can do, while completed-work cards show service results customers can review.
 
 Use all of these signals together before choosing who to contact.

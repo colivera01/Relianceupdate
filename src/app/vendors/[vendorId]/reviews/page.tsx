@@ -142,7 +142,7 @@ export default function VendorPublicReviewsPage() {
           secondaryHref={accountHref}
           secondaryLabel={accountLabel}
           ctaHref="/browse"
-          ctaLabel="Explore Proof"
+          ctaLabel="Explore Work"
         />
       </div>
 

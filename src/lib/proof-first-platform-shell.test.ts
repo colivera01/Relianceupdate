@@ -39,8 +39,8 @@ describe('proof-first platform shell', () => {
     const publicHeader = read('src/components/public/PublicSiteHeader.tsx');
     const customerSidebar = read('src/components/UserSidebar.tsx');
 
-    expect(publicHeader).toContain('{ href: "/browse", label: "Explore Proof" }');
-    expect(customerSidebar).toContain("{ label: 'Explore Proof', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover'");
+    expect(publicHeader).toContain('{ href: "/browse", label: "Explore Work" }');
+    expect(customerSidebar).toContain("{ label: 'Explore Work', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover'");
     expect(publicHeader).not.toContain('Browse Services');
     expect(customerSidebar).not.toContain('Browse Services');
   });
@@ -60,7 +60,7 @@ describe('proof-first platform shell', () => {
   it('keeps service requests supporting proof review rather than replacing it', () => {
     const servicePage = read('src/app/(user)/service/[serviceId]/page.tsx');
 
-    expect(servicePage).toContain('Review proof before you choose');
+    expect(servicePage).toContain('Explore completed work, reviews, and service details before choosing a provider.');
     expect(servicePage).toContain('/booking/${serviceId}');
     expect(servicePage).toContain('Public profile');
     expect(servicePage).not.toContain('Reliance Listing');
@@ -78,7 +78,7 @@ describe('proof-first platform shell', () => {
     expect(employeePage).toContain('Work in Progress');
     expect(employeePage).toContain('Final Result');
     expect(adminLayout).toContain("label: 'Permission Audit'");
-    expect(adminLayout).toContain("label: 'Featured Proof'");
+    expect(adminLayout).toContain("label: 'Featured Listings'");
   });
 
   it('retires the mock dashboard and delegates signed-in routing to the canonical resolver', () => {

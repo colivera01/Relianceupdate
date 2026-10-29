@@ -26,7 +26,7 @@ export function getCustomerReviewGateMessage({
   consentAllowsInlineReview: boolean;
 }): string | null {
   if (!hasReviewableCompletedVideo) {
-    return "This service record is not ready for review because an approved Private Proof package is not available.";
+    return "This service record is not ready for review because an approved Service Video Package is not available through the Private Service Record.";
   }
 
   if (!canShowInlineReview) {
@@ -34,7 +34,7 @@ export function getCustomerReviewGateMessage({
   }
 
   if (!consentAllowsInlineReview) {
-    return "Private Proof access is required before a review can be submitted.";
+    return "Private Service Record access is required before a review can be submitted.";
   }
 
   return null;

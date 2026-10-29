@@ -1072,7 +1072,7 @@ export async function decideCoreServiceVideoAdminAudit(input: {
           : CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND,
         title: decision === "PASS" ? "Reliance Audit Passed" : "Reliance Audit Failed",
         message: decision === "PASS"
-          ? `${serviceName}: Private Proof was released to the customer. No video was made Public.`
+          ? `${serviceName}: Private Service Record access was enabled for the customer. No video was made Public.`
           : `${serviceName}: ${rejectionCategory}. ${reason}`,
       });
     }

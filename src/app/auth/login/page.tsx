@@ -379,7 +379,7 @@ function LoginPageContent() {
       backLabel={entryBackLabel}
       title="Welcome Back"
       description={entryDescription || 'Sign in to your Reliance account and pick up right where you left off.'}
-      heroTitle="Return to a proof-of-service platform where trust signals stay separate."
+      heroTitle="Return to a service documentation platform where trust signals stay separate."
       heroDescription="Reliance keeps Customer Reviews, Verified Service Videos, and the Reliance Trust Score visible as distinct systems so every service record, approval, and follow-up feels grounded in real evidence."
       heroBadge="Built for transparent service decisions."
     >
@@ -572,7 +572,7 @@ function LoginPageFallback() {
       backLabel="Back to Home"
       title="Welcome Back"
       description="Preparing your Reliance sign-in experience."
-      heroTitle="Return to a proof-of-service platform where trust signals stay separate."
+      heroTitle="Return to a service documentation platform where trust signals stay separate."
       heroDescription="Reliance keeps Customer Reviews, Verified Service Videos, and the Reliance Trust Score visible as distinct systems so every service record, approval, and follow-up feels grounded in real evidence."
       heroBadge="Built for transparent service decisions."
     >

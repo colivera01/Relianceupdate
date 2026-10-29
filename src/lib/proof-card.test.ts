@@ -54,7 +54,7 @@ describe("buildProofCard", () => {
     });
 
     expect(card.kind).toBe("partial_proof");
-    expect(card.statusLabel).toBe("Proof Building");
+    expect(card.statusLabel).toBe("Service Record Building");
     expect(card.primaryCta).toBe("View Service Details");
     expect(card.trustLabel).toBe("Emerging Trust Score: 88%");
   });

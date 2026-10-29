@@ -52,7 +52,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_SUBMITTED_WITHOUT_ELIGIBLE_VIDEO",
       lifecycleNote:
-        "A historical review is on file, but an approved Private Proof package is not currently available.",
+        "A historical review is on file, but an approved Service Video Package is not currently available through the Private Service Record.",
       customerLifecycle,
     };
   }
@@ -70,7 +70,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_OPEN",
       lifecycleNote:
-        "An approved Private Proof package is available, so an optional customer review is open.",
+        "An approved Service Video Package is available through the Private Service Record, so an optional customer review is open.",
       customerLifecycle,
     };
   }
@@ -87,7 +87,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
       return {
         effectiveStatus: "VIDEO_APPROVED_NOT_CUSTOMER_VISIBLE",
         lifecycleNote:
-          "The Service Video package is approved internally, but Private Proof is not currently available.",
+          "The Service Video Package is approved internally, but Private Service Record access is not currently available.",
         customerLifecycle,
       };
     case "rejected":
@@ -101,7 +101,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
       return {
         effectiveStatus: "NO_COMPLETED_VIDEO_SUBMITTED",
         lifecycleNote:
-          "The service is complete, but an approved Private Proof package is not available.",
+          "The service is complete, but an approved Service Video Package is not available through the Private Service Record.",
         customerLifecycle,
       };
   }

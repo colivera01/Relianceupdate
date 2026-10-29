@@ -168,7 +168,7 @@ export default function PublicVendorServicesPage() {
             tone="dark"
             className="mb-10"
             ctaHref="/browse"
-            ctaLabel="Explore Proof"
+            ctaLabel="Explore Work"
             secondaryHref={accountHref}
             secondaryLabel={accountLabel}
           />

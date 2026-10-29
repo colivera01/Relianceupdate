@@ -53,7 +53,7 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
         : pathname.startsWith('/favorites')
           ? 'Back to My Favorites'
         : pathname.startsWith('/discover')
-          ? 'Back to Explore Proof'
+          ? 'Back to Explore Work'
         : pathname.startsWith('/service/')
           ? 'Back to Service Detail'
           : 'Back to Customer Dashboard';
@@ -63,7 +63,7 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
 
 const navLinks = [
   { label: 'Home', mobileLabel: 'Home', icon: Home, href: '/user-dashboard', iconClassName: 'text-blue-200' },
-  { label: 'Explore Proof', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover', iconClassName: 'text-cyan-200' },
+  { label: 'Explore Work', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover', iconClassName: 'text-cyan-200' },
   { label: 'My Service Records', mobileLabel: 'Records', icon: Calendar, href: '/my-bookings', iconClassName: 'text-sky-200' },
   { label: 'Favorites', mobileLabel: 'Favorites', icon: Heart, href: '/favorites', iconClassName: 'text-rose-200' },
   { label: 'Reviews', mobileLabel: 'Reviews', icon: Star, href: '/reviews', iconClassName: 'text-amber-200' },

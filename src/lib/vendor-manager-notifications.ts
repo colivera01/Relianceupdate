@@ -151,7 +151,7 @@ export async function listVendorManagerNotificationHistory(
         type: "audit" as const,
         title: passed ? "Reliance Audit Passed" : "Reliance Audit Failed",
         message: passed
-          ? `${serviceName}: Private Proof was released to the customer. No video was made Public.`
+          ? `${serviceName}: Private Service Record access was enabled for the customer. No video was made Public.`
           : `${serviceName}: ${coreAdminAuditRejectionCategoryLabel(decision.rejectionCategory)}. ${decision.reason || "The Reliance work record is permanently closed."}`,
         time: new Date(decision.decidedAt || row.createdAt).toISOString(),
         read: true,

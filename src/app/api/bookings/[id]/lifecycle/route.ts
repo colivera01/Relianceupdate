@@ -262,7 +262,7 @@ export async function POST(request: Request, context: Context) {
           success: true,
           message:
             lifecycleCase.status === "RESTRICTED"
-              ? "Your concern was received. Public access to the affected proof is restricted while Reliance reviews it."
+              ? "Your concern was received. Public access to the affected Published Work is restricted while Reliance reviews it."
               : "Your concern was received and is under review.",
           case: lifecycleCase,
         },

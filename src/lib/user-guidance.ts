@@ -50,7 +50,7 @@ const EMPLOYEE_SERVICE_ORDER_TUTORIAL: TutorialGuide["video"] = {
 
 const ADMIN_PROMOTED_LISTINGS_TUTORIAL: TutorialGuide["video"] = {
   src: `/tutorials/admin-promoted-listings.mp4?v=${APPROVED_TUTORIAL_VERSION}`,
-  title: "How Featured Proof Placements Work",
+  title: "How Featured Listings Work",
 };
 
 export const tutorialGuides = {
@@ -115,10 +115,10 @@ export const tutorialGuides = {
     futureVideoNote: "Tutorial video placeholder: Vendor registration and launch checklist",
   },
   browseMarketplace: {
-    badge: "Explore proof",
+    badge: "Explore work",
     title: "How to compare providers on Reliance",
     summary:
-      "Explore Proof shows completed work, public vendor pages, customer reviews, Public Service Videos, and the Reliance Trust Score side by side so customers can compare distinct trust signals before choosing who to contact.",
+      "Explore Work shows completed work, public vendor pages, customer reviews, Public Service Videos, and the Reliance Trust Score side by side so customers can compare distinct trust signals before choosing who to contact.",
     video: BROWSE_AND_CHOOSE_SERVICES_TUTORIAL,
 
     steps: [
@@ -136,7 +136,7 @@ export const tutorialGuides = {
       },
     ],
     reminders: [
-      "Featured proof placements are clearly labeled and can still be suppressed when public inventory is too thin.",
+      "Featured Listings are clearly labeled and can still be suppressed when public inventory is too thin.",
       "Public videos are visible here only when approved for public viewing.",
     ],
     futureVideoNote: "Tutorial video placeholder: How to compare providers on browse",
@@ -177,11 +177,11 @@ export const tutorialGuides = {
     steps: [
       {
         title: "Check the service-record state row",
-        detail: "Use the lifecycle panel to see whether work is complete, whether the Service Video package passed Reliance Audit, and whether Private Proof is available.",
+        detail: "Use the lifecycle panel to see whether work is complete, whether the Service Video Package passed Reliance Audit, and whether Private Service Record access is available.",
       },
       {
         title: "Wait for approved customer access",
-        detail: "Customers can watch the complete Service Video package and leave a review after approved Private Proof access is available.",
+        detail: "Customers can watch the complete Service Video Package and leave a review after approved Private Service Record access is available.",
       },
       {
         title: "Use Help when the state looks unexpected",
@@ -201,17 +201,17 @@ export const tutorialGuides = {
     badge: "Customer reviews",
     title: "How review eligibility works",
     summary:
-      "Reliance opens the review flow after the completed service has an approved Private Proof package for the owning customer.",
+      "Reliance opens the review flow after the completed service has an approved Private Service Record for the owning customer.",
     video: SERVICE_VIDEOS_AND_REVIEWS_TUTORIAL,
 
     steps: [
       {
         title: "Use Ready to Review first",
-        detail: "These completed service records have active approved Private Proof access and are ready for an optional review.",
+        detail: "These completed service records have active approved Private Service Record access and are ready for an optional review.",
       },
       {
         title: "Open Review Not Open Yet for the why",
-        detail: "A completed service can still be waiting for Reliance Audit or Private Proof release.",
+        detail: "A completed service can still be waiting for Reliance Audit or Private Service Record access.",
       },
       {
         title: "Track submitted reviews here",
@@ -408,7 +408,7 @@ export const tutorialGuides = {
   },
   adminPromotedListings: {
     badge: "Admin promotions",
-    title: "How featured proof placements go live",
+    title: "How Featured Listings go live",
     summary:
       "Promotions need vendor eligibility, service eligibility, payment readiness, and enough organic browse inventory before they can render publicly.",
     video: ADMIN_PROMOTED_LISTINGS_TUTORIAL,
@@ -429,7 +429,7 @@ export const tutorialGuides = {
     reminders: [
       "Suppressed browse rendering does not always mean the campaign is invalid.",
     ],
-    futureVideoNote: "Tutorial video placeholder: Featured proof placement readiness and activation",
+    futureVideoNote: "Tutorial video placeholder: Featured Listing readiness and activation",
   },
 } satisfies Record<string, TutorialGuide>;
 

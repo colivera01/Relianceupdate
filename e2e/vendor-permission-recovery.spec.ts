@@ -186,7 +186,7 @@ async function installVendorRecoveryFixture(page: Page) {
 async function openRecovery(page: Page) {
   await page.goto("/vendor/jobs");
   await expect(page.getByText("Controlled residence service", { exact: true })).toBeVisible();
-  const workflowGuide = page.getByRole("dialog", { name: "How a work record becomes customer-visible proof" });
+  const workflowGuide = page.getByRole("dialog", { name: "How a Service Video package becomes available to the customer" });
   if (await workflowGuide.isVisible().catch(() => false)) {
     await workflowGuide.getByRole("button", { name: "Got it" }).click();
   }

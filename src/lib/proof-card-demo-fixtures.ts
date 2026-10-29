@@ -137,9 +137,9 @@ export function buildProofCardDemoDiscoverResponse(input: DemoInput = {}): Disco
       serviceId: "dev-proof-service-offered-only",
       serviceName: "Lighting Installation",
       serviceDescription:
-        "A public work type customers can understand before proof, reviews, or completed-service video are available.",
+        "A public work type customers can understand before reviews or completed-service video are available.",
       vendorId: "dev-proof-vendor-service-only",
-      vendorName: "Reliance Proof Demo Lighting",
+      vendorName: "Reliance Work Demo Lighting",
       vendorCategory: "Electrician",
       location: "Sanford, Florida",
       price: 95,

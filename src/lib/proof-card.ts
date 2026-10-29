@@ -167,7 +167,7 @@ export function buildProofCard(input: BuildProofCardInput): ProofCard {
       kind === "public_proof"
         ? "Completed Service"
         : kind === "partial_proof"
-          ? "Proof Building"
+          ? "Service Record Building"
           : "Service Offered",
     stageAvailability,
     reviewLabel,

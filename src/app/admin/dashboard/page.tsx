@@ -73,7 +73,7 @@ const quickLinks: AdminQuickLink[] = [
   {
     href: "/admin/media-moderation",
     label: "Reliance Audit",
-    description: "Audit exact Service Video packages before releasing approved packages as customer Private Proof.",
+    description: "Audit exact Service Video Packages before making approved videos available through the customer’s Private Service Record.",
     icon: ShieldCheck,
     accentClass: "bg-[rgba(53,214,165,0.16)] text-[var(--reliance-emerald)]",
   },
@@ -269,7 +269,7 @@ export default function AdminDashboardPage() {
           Admin Overview
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-              Launch-facing control surface for vendor approvals, featured proof placements, moderation,
+              Launch-facing control surface for vendor approvals, Featured Listings, moderation,
           AI activity, trust review, and audit visibility. The workflows stay the same, while this
           overview keeps public trust signals and internal launch controls in one place.
         </p>

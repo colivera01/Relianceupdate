@@ -1410,7 +1410,7 @@ vi.mock('@/lib/customer-service-records-server', () => ({
     expect(res.status).toBe(400);
     const json = await readJson(res);
     expect(json.code).toBe('CUSTOMER_EMAIL_REQUIRED_FOR_SERVICE_VIDEO');
-    expect(json.error).toContain('securely claim and view Private proof');
+    expect(json.error).toContain('securely claim and view the Private Service Record');
     expect(hoisted.userCreate).not.toHaveBeenCalled();
     expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });

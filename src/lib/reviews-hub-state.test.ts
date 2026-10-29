@@ -48,7 +48,7 @@ describe("reviews-hub-state", () => {
         videoSubmitted: true,
         videoPendingApproval: false,
       })
-    ).toContain("not available as Private Proof");
+    ).toContain("not available through the Private Service Record");
 
     expect(
       getReviewsHubUnavailableMessage({

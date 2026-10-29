@@ -40,12 +40,12 @@ type VisibilityResponse = {
 
 const COPY: Record<VisibilityState, { title: string; detail: string }> = {
   AUDIT_PENDING: {
-    title: "Private Proof locked",
+    title: "Private Service Record Locked",
     detail: "The complete Service Video remains locked until Reliance Audit passes.",
   },
   AUDIT_FAILED: {
     title: "Reliance Audit failed",
-    detail: "No Private Proof or Public-sharing decision is available for this closed work record.",
+    detail: "No Private Service Record video access or Public-sharing decision is available for this closed work record.",
   },
   PRIVATE_DEFAULT: {
     title: "Private",
@@ -57,11 +57,11 @@ const COPY: Record<VisibilityState, { title: string; detail: string }> = {
   },
   PRIVATE_ONLY: {
     title: "Private",
-    detail: "This Service Video is available as Private Proof but is not eligible for Public display.",
+    detail: "This Service Video is available through the Private Service Record but is not eligible for Public display.",
   },
   PUBLIC_VISIBILITY_HOLD: {
     title: "Public visibility temporarily paused",
-    detail: "Reliance is investigating a reported concern. Your Public authorization and Private Proof remain preserved.",
+    detail: "Reliance is investigating a reported concern. Your Public authorization and Private Service Record access remain preserved.",
   },
   PUBLIC_WAITING_PERMISSION: {
     title: "Public Sharing Pending",
@@ -123,7 +123,7 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.success === false) throw new Error(body?.error || "The visibility decision could not be saved");
       setMessage(decision === "KEEP_PRIVATE"
-        ? "Your Service Video is now Private. Your Private Proof remains available."
+        ? "Your Service Video is now Private. Your Private Service Record access remains available."
         : body?.proposal?.status === "PUBLIC"
           ? "Your complete Service Video is now Public."
           : "Your Share Publicly request was saved. Your Service Video is still Private until all required Public-sharing requirements are complete.");

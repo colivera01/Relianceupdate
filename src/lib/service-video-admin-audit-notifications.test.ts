@@ -167,7 +167,7 @@ describe("core Admin Audit notifications", () => {
 
     expect(result).toMatchObject({ claimed: true, status: "SENT", recipientCount: 1 });
     const email = hoisted.sendEmail.mock.calls[0][0];
-    expect(email.text).toContain("Private Proof");
+    expect(email.text).toContain("Private Service Record");
     expect(email.text).toContain("does not make any video Public");
     expect(email.text).toContain("/vendor/jobs/booking-1");
   });

@@ -66,7 +66,7 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(panel).not.toContain("public-media-consent");
     expect(page.match(/public-media-consent/g)).toHaveLength(2);
     expect(page).toContain("Optional: Public Service Video participation");
-    expect(page).toContain("not required for Private Proof recording");
+    expect(page).toContain("not required to record the customer-private Service Video package");
     expect(page).toContain("does not replace your job-specific recording choice");
   });
 

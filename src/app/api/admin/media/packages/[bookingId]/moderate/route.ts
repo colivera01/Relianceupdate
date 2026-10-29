@@ -88,7 +88,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       !publicDisplayReason
     ) {
       return NextResponse.json(
-        { success: false, error: "Explain why this package is available only as Private Proof." },
+        { success: false, error: "Explain why this package is available only through the Private Service Record." },
         { status: 422 },
       );
     }

@@ -553,7 +553,7 @@ export default function ProfileSettingsPage() {
               onClick={() => router.push('/discover')}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-                Explore Proof
+                Explore Work
             </button>
           </div>
         </div>
@@ -881,7 +881,7 @@ export default function ProfileSettingsPage() {
                   <div>
                     <h3 className="font-medium text-blue-900 mb-1">How this works</h3>
                     <p className="text-blue-800 text-sm">
-                      If browser location is unavailable, Reliance can use your saved address on supported customer proof views to calculate nearby services offered when providers have usable coordinates.
+                      If browser location is unavailable, Reliance can use your saved address on supported customer discovery views to calculate nearby services offered when providers have usable coordinates.
                     </p>
                   </div>
                 </div>

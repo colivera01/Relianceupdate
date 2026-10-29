@@ -107,7 +107,7 @@ export default function HomePage() {
                 <div className="relative overflow-hidden rounded-[22px] bg-[#05101d] sm:rounded-[28px]">
                   <img
                     src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v12.png"
-                    alt="Reliance proof platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
+                    alt="Reliance service discovery platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
                     className="block w-full"
                   />
                 </div>
@@ -195,7 +195,7 @@ export default function HomePage() {
               ))
             ) : marketplaceError && !hasMarketplaceResults ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
-                We could not load Public Service Videos right now. You can still explore provider proof and Services Offered.
+                We could not load Public Service Videos right now. You can still explore provider profiles and Services Offered.
               </div>
             ) : marketplaceResults.length === 0 ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-white/10 bg-white/6 px-5 py-6 text-lg leading-8 text-white/76 sm:rounded-[30px] sm:px-8 sm:py-7 sm:text-2xl sm:leading-9">
@@ -216,7 +216,7 @@ export default function HomePage() {
                     <div className="font-display text-xl font-semibold text-slate-950">{item.serviceName}</div>
                     <div className="text-sm text-slate-500">{item.vendorName}</div>
                     <p className="line-clamp-2 text-sm leading-6 text-slate-600">
-                      {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Service offered with proof context pending'}
+                      {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Service details are being prepared'}
                     </p>
                     <div className="flex flex-wrap gap-2 text-xs font-semibold">
                       {typeof item.distanceMiles === 'number' ? (
@@ -298,7 +298,7 @@ export default function HomePage() {
               For Vendors
             </div>
             <h3 className="mt-7 font-display text-5xl font-semibold leading-tight text-white">
-              Turn completed work into proof customers can trust
+              Showcase completed work. Build customer confidence.
             </h3>
             <ul className="mt-8 space-y-5 text-2xl leading-9 text-white/76">
               {[

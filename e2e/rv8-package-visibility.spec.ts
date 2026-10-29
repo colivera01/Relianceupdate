@@ -98,7 +98,7 @@ test("vendor visibility is read-only and audit pending does not imply completed 
 
   await page.goto("/test-fixtures/rv8-package-visibility?role=vendor");
   const card = page.getByTestId("package-visibility-vendor");
-  await expect(card.getByText("Private Proof locked", { exact: true })).toBeVisible();
+  await expect(card.getByText("Private Service Record Locked", { exact: true })).toBeVisible();
   await expect(card).toContainText("until Reliance Audit passes");
   await expect(card.getByRole("button", { name: "Keep Private" })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Share Publicly" })).toHaveCount(0);
@@ -196,8 +196,9 @@ test("missing participant permission keeps the package Private without review te
 
   await page.goto("/test-fixtures/rv8-package-visibility?role=customer");
   const card = page.getByTestId("package-visibility-customer");
-  await expect(card).toContainText("Waiting for Public-sharing permission");
-  await expect(card).toContainText("remains Private");
+  await expect(card).toContainText("Waiting for permission");
+  await expect(card).toContainText("Public Sharing Pending");
+  await expect(card).toContainText("still Private");
   await expect(card.getByText(/Public Review/i)).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Share Publicly" })).toHaveCount(0);
 });

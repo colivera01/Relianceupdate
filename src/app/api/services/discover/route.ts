@@ -586,7 +586,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ranking:
           proofFirstRankingRequested
             ? "Public discovery only returns completed Public Service Videos, then prioritizes Service Videos, reviews, Trust Score maturity, and provider credibility."
-            : "Explicit sort and location filters preserve the selected ordering while cards still show proof context.",
+            : "Explicit sort and location filters preserve the selected ordering while cards still show completed-work context.",
       },
     });
   } catch (error: any) {

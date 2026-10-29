@@ -263,12 +263,12 @@ export default function VendorAnalyticsPage() {
                 <Badge variant={derived.pendingServiceOrders > 0 ? "warning" : "secondary"}>
                   {derived.pendingServiceOrders} pending Reliance Audit
                 </Badge>
-                <Badge variant="success">{derived.approvedServiceOrders} approved Private Proof</Badge>
+                <Badge variant="success">{derived.approvedServiceOrders} approved Private Service Records</Badge>
                 <Badge variant="outline">{derived.publicServiceOrders} shared publicly</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 Counts complete three-stage Service Orders, not individual video files. Public
-                sharing remains separate from Private Proof approval.
+                sharing remains separate from Private Service Record approval.
               </p>
             </div>
             <div className="rounded-lg border bg-slate-50/90 p-4">

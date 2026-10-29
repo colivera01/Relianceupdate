@@ -385,11 +385,11 @@ export default function UserDashboardPage() {
 
   const quickActions = [
     {
-      title: 'Explore Proof',
+      title: 'Explore Work',
       description: 'Compare vendor services, service videos, reviews, and provider details before choosing who to contact.',
       href: '/discover',
       icon: Search,
-      buttonLabel: 'Explore Proof',
+      buttonLabel: 'Explore Work',
       iconClassName: quickActionIconStyles[0],
     },
     {
@@ -540,7 +540,7 @@ export default function UserDashboardPage() {
                 href="/discover"
                 className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a58db]"
               >
-                  Explore Proof
+                  Explore Work
               </Link>
             </div>
 
@@ -579,7 +579,7 @@ export default function UserDashboardPage() {
                 <MessageSquare className="h-5 w-5 text-amber-600" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Leave a Review</h3>
-              <p className="mb-3 flex-1 text-sm text-gray-600">Reviews open after a completed service has an approved Private Proof package.</p>
+              <p className="mb-3 flex-1 text-sm text-gray-600">Reviews open after a completed service has an approved Service Video Package.</p>
               <Link
                 href="/reviews"
                 className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"

@@ -121,10 +121,10 @@ export const PROMOTION_PACKAGES = [
     name: "30-day local spotlight",
     publicSummary: "Month-long browse feature for broader local coverage.",
     adminDescription:
-      "Best for vendors ready for a longer local campaign while Reliance is still validating early proof-exploration traffic.",
+      "Best for vendors ready for a longer local campaign while Reliance is still validating early service-discovery traffic.",
     bestFor: "Sustained local visibility and stronger package-popularity signal.",
     placementExplanation: "Appears in browse with up to 30 miles of radius targeting.",
-    audience: "Established local vendors who want a longer featured proof placement.",
+    audience: "Established local vendors who want a longer Featured Listing.",
     placementType: "BROWSE_FEATURED",
     durationDays: 30,
     defaultRadiusMiles: 20,

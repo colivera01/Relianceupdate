@@ -112,7 +112,7 @@ function sanitizeReturnPath(value: string | null): string | null {
 function sanitizeReturnLabel(value: string | null): string | null {
   if (!value) return null;
   const trimmed = value.trim();
-  return trimmed || null;
+  return trimmed ? trimmed.replace(/Explore Proof/gi, 'Explore Work') : null;
 }
 
 export default function PublicVendorProfilePage() {
@@ -125,7 +125,7 @@ export default function PublicVendorProfilePage() {
   const requestedVendorPreview = searchParams?.get('preview') === 'vendor';
   const [isVendorPreview, setIsVendorPreview] = useState(false);
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Proof';
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Work';
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
   const signedInAccountHref =
     user?.userType === 'admin' ? '/admin/dashboard' : isVendorAccount ? '/vendor/dashboard' : '/user-dashboard';
@@ -280,11 +280,11 @@ export default function PublicVendorProfilePage() {
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Explore Proof' },
+              { href: '/browse', label: 'Explore Work' },
               { href: '/help', label: 'Help' },
             ]}
             ctaHref="/browse"
-            ctaLabel="Explore Proof"
+            ctaLabel="Explore Work"
             secondaryHref={headerAccountHref}
             secondaryLabel={headerAccountLabel}
           />
@@ -757,7 +757,7 @@ export default function PublicVendorProfilePage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                      Customer-shared proof
+                      Customer-shared work
                     </div>
                     <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Completed public work</h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">

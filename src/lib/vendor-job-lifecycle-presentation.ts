@@ -111,7 +111,7 @@ export function resolveVendorJobLifecyclePresentation(
   if (auditDecision === "PASS") {
     return result(
       "Reliance Audit Passed",
-      `Reliance approved the exact submitted Service Video package and released the Private Proof to the customer.${auditDate ? ` Audit completed ${auditDate}.` : ""} This does not make any video Public.`,
+      `Reliance approved the exact submitted Service Video Package and enabled the customer’s Private Service Record access.${auditDate ? ` Audit completed ${auditDate}.` : ""} This does not make any video Public.`,
       "View Job",
       "green",
       "No participant needs to act",
@@ -142,7 +142,7 @@ export function resolveVendorJobLifecyclePresentation(
   if (phase === "AWAITING_ADMIN_REVIEW") {
     return result(
       "Reliance Audit pending",
-      "The vendor manager submitted the exact Service Video package for Reliance Audit. Customer Private Proof remains locked until PASS.",
+      "The vendor manager submitted the exact Service Video Package for Reliance Audit. Customer Private Service Record access remains locked until PASS.",
       "View Job",
       "blue",
       "Reliance admin",

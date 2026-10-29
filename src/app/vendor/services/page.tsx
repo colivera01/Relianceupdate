@@ -634,7 +634,7 @@ export default function VendorServicesPage() {
                       : 'border-amber-200 bg-amber-50 text-amber-900'
                   }`}>
                     {isArchived
-                      ? 'This service is no longer offered. Existing work records, approved proof, and saved customer history remain intact.'
+                      ? 'This service is no longer offered. Existing work records, approved Service Video packages, and saved customer history remain intact.'
                       : 'New service pending admin approval. Once approved, this service will be activated for customers.'}
                   </div>
                 ) : null}

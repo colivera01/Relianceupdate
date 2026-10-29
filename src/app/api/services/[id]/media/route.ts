@@ -100,7 +100,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       });
       if (!privateProof) {
         return NextResponse.json(
-          { success: false, error: "Active Private Proof access is required" },
+          { success: false, error: "Active Private Service Record access is required" },
           { status: 403 }
         );
       }

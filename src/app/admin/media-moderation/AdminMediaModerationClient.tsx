@@ -1022,7 +1022,7 @@ export default function AdminMediaModerationClient({
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Reliance Audit</h1>
           <p className="text-gray-600 mt-1">
-            Review the exact manager-attested Starting Condition, Work in Progress, and Final Result package before releasing customer Private Proof.
+            Review the exact manager-attested Starting Condition, Work in Progress, and Final Result package before enabling the customer’s Private Service Record access.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1036,7 +1036,7 @@ export default function AdminMediaModerationClient({
 
       <GuidanceCallout
         title="What a Reliance Audit decision changes"
-        description="PASS releases this exact package as customer Private Proof. REJECT permanently closes this Reliance work record without judging the underlying real-world service."
+        description="PASS makes this exact package available through the customer’s Private Service Record. REJECT permanently closes this Reliance work record without judging the underlying real-world service."
         bullets={[
           'Confirm all three submitted stages and the manager attestation before deciding.',
           'For PASS, also decide whether this exact unchanged package is eligible for later customer-controlled Public display.',
@@ -1075,7 +1075,7 @@ export default function AdminMediaModerationClient({
             <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
               <p>1. Confirm the Starting Condition, Work in Progress, and Final Result videos belong to the same finished job.</p>
               <p>2. Verify the vendor, service, manager attestation, and exact submitted package version.</p>
-              <p>3. PASS releases customer Private Proof. REJECT permanently closes this Reliance work record.</p>
+              <p>3. PASS enables customer Private Service Record access. REJECT permanently closes this Reliance work record.</p>
             </div>
           </div>
         </CardContent>
@@ -1327,7 +1327,7 @@ export default function AdminMediaModerationClient({
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
                       <div className="text-sm font-medium text-white">Reliance Audit decision</div>
                       <p className="text-xs text-slate-300">
-                        Review the exact manager-submitted Starting Condition, Work in Progress, and Final Result package. PASS releases Private Proof and records Public-display eligibility. REJECT is terminal for this Service Order.
+                        Review the exact manager-submitted Starting Condition, Work in Progress, and Final Result package. PASS enables Private Service Record access and records Public-display eligibility. REJECT is terminal for this Service Order.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -1671,7 +1671,7 @@ export default function AdminMediaModerationClient({
             </DialogTitle>
             <DialogDescription>
               {auditConfirmationAction === 'pass'
-                ? 'This releases the exact manager-attested package as customer Private Proof and records its Public-display eligibility. It does not make any video Public.'
+                ? 'This makes the exact manager-attested package available through the customer’s Private Service Record and records its Public-display eligibility. It does not make any video Public.'
                 : 'This permanently closes the Reliance work record. Rerecording, correction, retry, and resubmission will not be available. This does not mean the underlying real-world service failed.'}
             </DialogDescription>
           </DialogHeader>
@@ -1714,7 +1714,7 @@ export default function AdminMediaModerationClient({
                   onChange={() => setAuditPublicEligibility('PRIVATE_ONLY')}
                 />
                 <span>
-                  <span className="block font-semibold text-slate-950">Private Proof only</span>
+                  <span className="block font-semibold text-slate-950">Private Service Record only</span>
                   <span className="block text-sm text-slate-600">The package passes Reliance Audit for the customer but cannot be made Public.</span>
                 </span>
               </label>
@@ -1748,7 +1748,7 @@ export default function AdminMediaModerationClient({
               disabled={Boolean(packageActionLoadingId) || (auditConfirmationAction === 'pass' && (!auditPublicEligibility || (auditPublicEligibility === 'PRIVATE_ONLY' && !auditPublicEligibilityReason.trim())))}
               onClick={confirmAuditDecision}
             >
-              {auditConfirmationAction === 'pass' ? 'Confirm PASS and Release Private Proof' : 'Confirm Terminal REJECT'}
+              {auditConfirmationAction === 'pass' ? 'Confirm PASS and Enable Private Service Record' : 'Confirm Terminal REJECT'}
             </Button>
           </DialogFooter>
         </DialogContent>

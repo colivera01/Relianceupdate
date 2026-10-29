@@ -1856,7 +1856,7 @@ export default function EmployeeJobsPage() {
           <section className="mt-4 border-y border-blue-300/25 py-4 text-blue-50" aria-label="Required Service Order steps">
             <p className="text-xs font-semibold uppercase text-blue-200">Required Service Order steps</p>
             <p className="mt-1 text-sm leading-5 text-blue-50/75">
-              Complete these in order. Public Service Video participation is optional and is not required for Private Proof recording.
+              Complete these in order. Public Service Video participation is optional and is not required to record the customer-private Service Video package.
             </p>
             <ol className="mt-3">
               {requiredServiceOrderSteps.map((step, index) => (
@@ -2748,7 +2748,7 @@ export default function EmployeeJobsPage() {
                   Optional: Public Service Video participation
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-blue-50/70">
-                  This standing Public choice is separate from the required Service Order steps. It is not required for Private Proof recording and does not replace your job-specific recording choice.
+                  This standing Public choice is separate from the required Service Order steps. It is not required to record the customer-private Service Video package and does not replace your job-specific recording choice.
                 </p>
                 <Link
                   href={`/employee/public-media-consent?ct=${encodeURIComponent(captureToken)}`}

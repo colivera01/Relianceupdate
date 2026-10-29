@@ -330,7 +330,7 @@ export default function UserDiscoverPage() {
     }
   };
   const serviceReturnHref = '/discover';
-  const serviceReturnLabel = 'Back to Explore Proof';
+  const serviceReturnLabel = 'Back to Explore Work';
 
   const renderServiceCard = (item: DiscoverServiceResult) => {
     return (
@@ -365,7 +365,7 @@ export default function UserDiscoverPage() {
     <div className="pt-4 sm:pt-6">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="mb-3 text-3xl font-semibold text-gray-900">Explore Proof</h1>
+          <h1 className="mb-3 text-3xl font-semibold text-gray-900">Explore Work</h1>
           <p className="max-w-3xl text-gray-600">See completed work, Public Service Videos, customer reviews, Reliance Trust Score, and Services Offered before choosing who to contact.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -461,8 +461,8 @@ export default function UserDiscoverPage() {
       <section className="mb-10 rounded-2xl border border-blue-100 bg-blue-50 p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Local proof</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-950">Providers with proof near you</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Local work</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">Explore Local Service Providers</h2>
             <p className="mt-2 text-sm leading-6 text-blue-900">{nearbyDescription}</p>
             {browserLocationMessage ? (
               <p className="mt-2 text-sm font-medium text-amber-800">{browserLocationMessage}</p>
@@ -534,12 +534,12 @@ export default function UserDiscoverPage() {
         </div>
       ) : isError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-10 text-red-700">
-          We could not load proof results.
+          We could not load service results.
           {error instanceof Error ? ` ${error.message}` : ''}
         </div>
       ) : displayResults.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border mb-10">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching proof results</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching service results</h3>
           <p className="text-gray-600 mb-4">Try adjusting your search terms or filters.</p>
           <Button variant="outline" onClick={clearFilters}>
             Clear Filters

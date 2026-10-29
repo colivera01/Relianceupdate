@@ -732,11 +732,11 @@ export default function VendorJobDetailPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) {
-        throw new Error(String(json?.message || json?.error || "Failed to resend Private Proof access"));
+        throw new Error(String(json?.message || json?.error || "Failed to resend Private Service Record access"));
       }
-      setActionMessage(json?.message || "Private Proof access resent to the customer.");
+      setActionMessage(json?.message || "Private Service Record access resent to the customer.");
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Failed to resend Private Proof access");
+      setActionError(e instanceof Error ? e.message : "Failed to resend Private Service Record access");
     } finally {
       setResendingCompletedOrder(false);
     }
@@ -870,7 +870,7 @@ export default function VendorJobDetailPage() {
     if (job?.adminAuditDecision?.decision === "PASS") {
       addEvent("audit-pass", job.adminAuditDecision.decidedAt, `Reliance Audit passed: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
       if (job.packageVisibility?.privateProofReleased) {
-        addEvent("private-proof", job.adminAuditDecision.decidedAt, `Customer Private Proof released: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
+        addEvent("private-proof", job.adminAuditDecision.decidedAt, `Private Service Record available to customer: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
       }
     } else if (job?.adminAuditDecision?.decision === "REJECT") {
       addEvent("audit-reject", job.adminAuditDecision.decidedAt, `Reliance Audit failed: ${formatRelianceDateTime(job.adminAuditDecision.decidedAt)}`);
@@ -977,8 +977,9 @@ export default function VendorJobDetailPage() {
                       variant="outline"
                       onClick={resendCompletedWorkOrder}
                       disabled={resendingCompletedOrder}
+                      className="h-auto min-h-10 whitespace-normal text-center"
                     >
-                      {resendingCompletedOrder ? "Resending..." : "Resend Private Proof Access"}
+                      {resendingCompletedOrder ? "Resending..." : "Resend Private Service Record Access"}
                     </Button>
                   ) : null}
                   {canManagerReview ? (
@@ -1138,7 +1139,7 @@ export default function VendorJobDetailPage() {
                 <CardContent className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                   <p className="text-sm font-semibold text-emerald-950">Reliance Audit Passed</p>
                   <p className="mt-1 text-sm text-emerald-900">
-                    Reliance approved the exact submitted Service Video package and released the Private Proof to the customer. No video was made Public.
+                    Reliance approved the exact submitted Service Video package and made the Private Service Record available to the customer. No video was published.
                   </p>
                   <p className="mt-2 text-xs text-emerald-800">
                     Audit completed: {formatRelianceDateTime(job.adminAuditDecision.decidedAt)}. This record is read-only.

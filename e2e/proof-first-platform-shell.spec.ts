@@ -15,13 +15,10 @@ async function loadPublicProofResult(page: import('@playwright/test').Page): Pro
   return result;
 }
 
-test('homepage explains the proof-first product before asking for an account', async ({ page }) => {
+test('homepage explains the service marketplace before asking for an account', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Reliance', exact: true })).toBeVisible();
-  await expect(
-    page.getByText('See real completed work before you decide who to trust.', { exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'See what matters before you choose', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Customer Reviews', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Public Service Videos', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Reliance Trust Score', exact: true })).toBeVisible();
@@ -29,7 +26,7 @@ test('homepage explains the proof-first product before asking for an account', a
   await expect(page.locator('a[href="/browse"]')).not.toHaveCount(0);
 });
 
-test('Explore Proof keeps proof signals distinct and preserves the supporting request route', async ({ page }) => {
+test('Explore Work keeps trust signals distinct and preserves the supporting request route', async ({ page }) => {
   const proofResult = await loadPublicProofResult(page);
 
   await page.goto('/browse');
@@ -51,7 +48,7 @@ test('Explore Proof keeps proof signals distinct and preserves the supporting re
   await expect(page.locator('body')).not.toContainText('Promoted Listings');
 
   await page.goto(`/service/${proofResult.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`);
-  await expect(page.getByText('Review proof before you choose', { exact: true })).toBeVisible({
+  await expect(page.getByText('Explore completed work, reviews, and service details before choosing a provider.', { exact: true })).toBeVisible({
     timeout: 30_000,
   });
   await expect(
@@ -101,14 +98,14 @@ test('primary public pages fit a narrow mobile viewport without horizontal overf
   expect(signUpBox!.width).toBeGreaterThan(300);
 });
 
-test('public header keeps Explore Proof readable at 1280px', async ({ page }) => {
+test('public header keeps Explore Work readable at 1280px', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
 
-  const exploreProof = page.getByRole('link', { name: 'Explore Proof', exact: true }).first();
-  await expect(exploreProof).toBeVisible();
-  await expect.poll(() => exploreProof.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  const box = await exploreProof.boundingBox();
+  const exploreWork = page.getByRole('link', { name: 'Explore Work', exact: true }).first();
+  await expect(exploreWork).toBeVisible();
+  await expect.poll(() => exploreWork.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const box = await exploreWork.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
 });
