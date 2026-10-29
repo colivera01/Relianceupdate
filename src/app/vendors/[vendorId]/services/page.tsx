@@ -241,28 +241,28 @@ export default function PublicVendorServicesPage() {
                 Public media previews could not be loaded right now. The service list and prices are current, but media availability cannot be confirmed until the temporary connection issue clears.
               </div>
             ) : null}
-            <section className="reliance-light-card rounded-[30px] px-5 py-5 sm:px-6" aria-label="Filter services">
+            <section className="rounded-[30px] border border-white/10 bg-white/6 px-5 py-5 text-white backdrop-blur-xl sm:px-6" aria-label="Filter services">
               <div className="grid gap-4 lg:grid-cols-[1fr_0.72fr_0.72fr]">
                 <label className="block">
-                  <span className="text-sm font-semibold text-slate-800">Search services</span>
-                  <span className="mt-2 flex items-center rounded-2xl border border-slate-300 bg-white px-4 py-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-200">
-                    <Search className="mr-3 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+                  <span className="text-sm font-semibold text-white/78">Search services</span>
+                  <span className="mt-2 flex items-center rounded-2xl border border-white/12 bg-[#0d1828] px-4 py-3 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-400/25">
+                    <Search className="mr-3 h-4 w-4 shrink-0 text-white/45" aria-hidden="true" />
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Search by service or description"
-                      className="min-w-0 flex-1 bg-transparent text-sm text-slate-950 outline-none placeholder:text-slate-500"
+                      className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-white outline-none placeholder:text-white/42 focus:ring-0"
                     />
                   </span>
                 </label>
 
                 <label className="block">
-                  <span className="text-sm font-semibold text-slate-800">Public media</span>
+                  <span className="text-sm font-semibold text-white/78">Public media</span>
                   <select
                     value={mediaFilter}
                     disabled={publicMediaTemporarilyUnavailable}
                     onChange={(event) => setMediaFilter(event.target.value as MediaFilter)}
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-2 w-full rounded-2xl border border-white/12 bg-[#0d1828] px-4 py-3 text-sm text-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/25 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="all">All services</option>
                     <option value="with-media">With public media</option>
@@ -271,14 +271,14 @@ export default function PublicVendorServicesPage() {
                 </label>
 
                 <label className="block">
-                  <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <span className="inline-flex items-center gap-2 text-sm font-semibold text-white/78">
                     <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                     Sort
                   </span>
                   <select
                     value={sortOrder}
                     onChange={(event) => setSortOrder(event.target.value as SortOrder)}
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    className="mt-2 w-full rounded-2xl border border-white/12 bg-[#0d1828] px-4 py-3 text-sm text-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/25"
                   >
                     <option value="name">Name A-Z</option>
                     <option value="price-low">Price: low to high</option>
@@ -286,7 +286,7 @@ export default function PublicVendorServicesPage() {
                   </select>
                 </label>
               </div>
-              <p className="mt-4 text-sm text-slate-600" aria-live="polite">
+              <p className="mt-4 text-sm text-white/62" aria-live="polite">
                 Showing {visibleServices.length} of {services.length} public service{services.length === 1 ? '' : 's'}.
               </p>
             </section>

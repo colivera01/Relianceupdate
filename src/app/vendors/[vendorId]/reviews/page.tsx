@@ -221,8 +221,14 @@ export default function VendorPublicReviewsPage() {
           ) : reviews.length === 0 ? (
             <div className="rounded-[28px] border border-white/10 bg-white/6 p-8 text-center">
               <CalendarDays className="mx-auto h-8 w-8 text-white/44" />
-              <h2 className="mt-4 text-2xl font-semibold">No published reviews match these filters</h2>
-              <p className="mt-2 text-white/62">Try a different service, date range, or rating.</p>
+              <h2 className="mt-4 text-2xl font-semibold">
+                {hasFilters ? 'No published reviews match these filters' : 'No published written reviews yet'}
+              </h2>
+              <p className="mt-2 text-white/62">
+                {hasFilters
+                  ? 'Try a different service, date range, or rating.'
+                  : 'This provider has no approved written comments yet. Verified star ratings are tracked separately.'}
+              </p>
               {hasFilters ? <button type="button" onClick={clearFilters} className="mt-5 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">Clear filters</button> : null}
             </div>
           ) : (
