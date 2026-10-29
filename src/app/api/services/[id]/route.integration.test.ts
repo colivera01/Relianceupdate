@@ -63,7 +63,7 @@ describe('GET /api/services/[id]', () => {
     hoisted.serviceFindFirst.mockResolvedValue({
       id: 'svc-1',
       name: 'Metro Apartment Deep Clean',
-      description: 'Detailed apartment and move-out cleaning with video-backed service updates.',
+      description: 'Detailed apartment and move-out cleaning. Estimated duration: 90 minutes.',
       price: 49.99,
       isPublished: true,
       vendor: {
@@ -134,6 +134,11 @@ describe('GET /api/services/[id]', () => {
     expect(res.status).toBe(200);
     const json = await readJson(res);
     expect(json.service.publicReviewCount).toBe(5);
+    expect(json.service.description).toBe('Detailed apartment and move-out cleaning');
+    expect(json.service.duration).toBe('90 minutes');
+    expect(json.service.publicMediaStatus).toBe('available');
+    expect(json.service.vendor).not.toHaveProperty('phone');
+    expect(json.service.vendor).not.toHaveProperty('email');
     expect(json.service.primaryProofVideoUrl).toBe('/api/public/media/asset-featured');
     expect(json.service.videoItems).toHaveLength(4);
     expect(json.service.videoItems.filter((item: any) => item.isPrimaryProofVideo)).toEqual([
@@ -201,6 +206,7 @@ describe('GET /api/services/[id]', () => {
       primaryProofVideoUrl: null,
       hasPrimaryProofVideo: false,
       mediaCount: 0,
+      publicMediaStatus: 'available',
     });
     expect(hoisted.serviceFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -212,6 +218,51 @@ describe('GET /api/services/[id]', () => {
       }),
     );
   });
+
+  it('marks public media as temporarily unavailable instead of reporting a false empty gallery', async () => {
+    hoisted.serviceFindFirst.mockResolvedValue({
+      id: 'svc-media-unavailable',
+      name: 'Outlet Installation',
+      description: 'Install or replace a standard residential outlet.',
+      price: 125,
+      isPublished: true,
+      vendor: {
+        id: 'ven-1',
+        name: 'Electro LLC',
+        businessName: 'Electro LLC',
+        category: 'Electrical',
+        city: 'Orlando',
+        state: 'FL',
+        phone: '407-555-0110',
+        email: 'private@electro.example',
+        isPubliclyListed: true,
+        accountStatus: 'active',
+        insuranceStatus: null,
+        bondingStatus: null,
+      },
+    });
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-public']);
+    hoisted.mediaAssetFindMany.mockRejectedValue(Object.assign(new Error("Can't reach database server"), { code: 'P1001' }));
+    hoisted.reviewCount.mockResolvedValue(0);
+    vi.mocked(getVendorReviewAggregatesForPublic).mockResolvedValue(new Map());
+
+    const res = await GET(
+      new NextRequest('http://localhost/api/services/svc-media-unavailable'),
+      { params: Promise.resolve({ id: 'svc-media-unavailable' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const json = await readJson(res);
+    expect(json.service).toMatchObject({
+      id: 'svc-media-unavailable',
+      images: [],
+      videos: [],
+      mediaCount: 0,
+      publicMediaStatus: 'temporarily_unavailable',
+    });
+    expect(json.service.vendor).not.toHaveProperty('phone');
+    expect(json.service.vendor).not.toHaveProperty('email');
+  }, 10_000);
 
   it('returns 404 when the vendor is not publicly eligible', async () => {
     hoisted.serviceFindFirst.mockResolvedValue({

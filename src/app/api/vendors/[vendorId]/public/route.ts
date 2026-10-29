@@ -13,9 +13,9 @@ import {
 } from "@/lib/metrics-exclusion";
 import {
   cleanPublicMediaTitle,
-  cleanPublicServiceDescription,
   cleanPublicServiceName,
   cleanPublicServicePrice,
+  getPublicServiceDescriptionPresentation,
 } from "@/lib/launch-content-cleanup";
 import {
   VENDOR_JOB_VIDEO_STAGE_LABELS,
@@ -35,10 +35,46 @@ interface RouteContext {
 }
 
 function parsePublicList(value: string | null | undefined): string[] {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+      }
+    } catch {
+      // Fall through to the legacy delimiter parser.
+    }
+  }
+
+  const explicitRows = raw.split(/[;|\n]+/).map((item) => item.trim()).filter(Boolean);
+  if (explicitRows.length > 1) return explicitRows;
+
+  const commaParts = raw.split(",").map((item) => item.trim()).filter(Boolean);
+  if (
+    commaParts.length >= 2 &&
+    commaParts.length % 2 === 0 &&
+    commaParts.every((item, index) => index % 2 === 0 || /^[A-Z]{2}$/i.test(item))
+  ) {
+    return commaParts.reduce<string[]>((rows, item, index) => {
+      if (index % 2 === 0) rows.push(`${item}, ${commaParts[index + 1].toUpperCase()}`);
+      return rows;
+    }, []);
+  }
+
+  return commaParts;
+}
+
+function uniquePublicList(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const normalized = value.trim().toLocaleLowerCase();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
 }
 
 function normalizePublicWebsite(value: string | null | undefined): string | null {
@@ -103,6 +139,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
 
     const serviceIds = services.map((service) => service.id);
     let publicAssets: any[] = [];
+    let publicMediaStatus: "available" | "temporarily_unavailable" = "available";
     try {
       const canonicalPublicAssetIds = await resolveCanonicalPublicAssetIds({ vendorId: vendor.id });
       publicAssets = await withTransientDbRetry<any[]>(() =>
@@ -123,6 +160,8 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
             createdAt: true,
             mediaSession: {
               select: {
+                id: true,
+                bookingId: true,
                 serviceId: true,
                 title: true,
                 vendorJobVideoStage: true,
@@ -135,6 +174,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     } catch (publicAssetError) {
       if (!isTransientDbConnectivityError(publicAssetError)) throw publicAssetError;
       console.warn("[vendors/:vendorId/public] public media enrichment temporarily unavailable");
+      publicMediaStatus = "temporarily_unavailable";
     }
 
     const proofSafePublicAssets = publicAssets.filter((asset: any) =>
@@ -165,10 +205,12 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     const publicServices = services.map((service) => {
       const previewMedia =
         primaryProofPreviewByServiceId.get(service.id) || previewByServiceId.get(service.id) || null;
+      const presentation = getPublicServiceDescriptionPresentation(service.description, publicVendorName);
       return {
         serviceId: service.id,
         serviceName: cleanPublicServiceName(service.name, publicVendorName),
-        serviceDescription: cleanPublicServiceDescription(service.description, publicVendorName),
+        serviceDescription: presentation.description,
+        durationLabel: presentation.durationLabel,
         price: cleanPublicServicePrice(service.price, service.name, service.description),
         previewMediaUrl: previewMedia?.url || null,
         previewMediaType: previewMedia?.type || null,
@@ -179,7 +221,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       publicServices.map((service) => [service.serviceId, service.serviceName] as const)
     );
 
-    const latestGalleryAssetByStageKey = new Map<
+    const completedPublicWorkByRecord = new Map<
       string,
       {
         mediaId: string;
@@ -200,16 +242,19 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       const url = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!url) continue;
 
+      if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
+
       const serviceId = asset?.mediaSession?.serviceId ? String(asset.mediaSession.serviceId) : null;
       const stageKey = String(asset?.mediaSession?.vendorJobVideoStage || "").trim().toUpperCase() || null;
-      const normalizedStageKey = stageKey || "GENERAL";
-      const dedupeKey = `${serviceId || "vendor"}:${normalizedStageKey}`;
-      if (latestGalleryAssetByStageKey.has(dedupeKey)) continue;
+      const bookingId = String(asset?.mediaSession?.bookingId || "").trim();
+      const mediaSessionId = String(asset?.mediaSession?.id || "").trim();
+      const recordKey = bookingId || mediaSessionId || String(asset.id);
+      if (completedPublicWorkByRecord.has(recordKey)) continue;
 
       const normalizedStage = normalizeVendorJobVideoStage(stageKey);
       const stageLabel = normalizedStage ? VENDOR_JOB_VIDEO_STAGE_LABELS[normalizedStage] : null;
 
-      latestGalleryAssetByStageKey.set(dedupeKey, {
+      completedPublicWorkByRecord.set(recordKey, {
         mediaId: String(asset.id),
         serviceId,
         serviceName: serviceId ? serviceNameById.get(serviceId) || null : null,
@@ -231,26 +276,30 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       GENERAL: 3,
     };
 
-    const publicMedia = Array.from(latestGalleryAssetByStageKey.values()).sort((left, right) => {
+    const publicMedia = Array.from(completedPublicWorkByRecord.values()).sort((left, right) => {
       const leftRank = stageSortRank[left.stageKey || "GENERAL"] ?? 99;
       const rightRank = stageSortRank[right.stageKey || "GENERAL"] ?? 99;
       if (leftRank !== rightRank) return leftRank - rightRank;
       return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
     });
 
-    const completedPublicWork = proofSafePublicAssets.filter((asset) =>
-      isCompletedStageProofVideo(asset?.mediaSession || null)
-    );
     const servicesWithPublicProof = new Set(
-      proofSafePublicAssets
-        .map((asset) => String(asset?.mediaSession?.serviceId || "").trim())
+      publicMedia
+        .map((asset) => String(asset.serviceId || "").trim())
         .filter(Boolean)
     );
 
     const serviceAreas = parsePublicList(vendor.serviceAreas);
-    const specialties = Array.from(
-      new Set([...parsePublicList(vendor.serviceTypes), ...parsePublicList(vendor.specializations)])
+    const broadLabels = new Set(
+      [vendor.category, vendor.businessType]
+        .map((value) => String(value || "").trim().toLocaleLowerCase())
+        .filter(Boolean)
     );
+    const specialties = uniquePublicList([
+      ...parsePublicList(vendor.serviceTypes),
+      ...parsePublicList(vendor.specializations),
+    ]).filter((value) => !broadLabels.has(value.toLocaleLowerCase()));
+    let reviewMetricsStatus: "available" | "temporarily_unavailable" = "available";
     let vendorReviewAgg:
       | {
           rating: number | null;
@@ -263,6 +312,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       if (!isTransientDbConnectivityError(vendorReviewError)) throw vendorReviewError;
       console.warn("[vendors/:vendorId/public] public review aggregate enrichment temporarily unavailable");
       vendorReviewAgg = undefined;
+      reviewMetricsStatus = "temporarily_unavailable";
     }
 
     return NextResponse.json({
@@ -286,9 +336,13 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       publicServices,
       publicMedia,
       publicProofSummary: {
-        completedWorkCount: completedPublicWork.length,
-        publicMediaCount: proofSafePublicAssets.length,
+        completedWorkCount: publicMedia.length,
+        publicMediaCount: publicMedia.length,
         servicesWithPublicProof: servicesWithPublicProof.size,
+      },
+      dataStatus: {
+        publicMedia: publicMediaStatus,
+        reviewMetrics: reviewMetricsStatus,
       },
       meta: {
         serviceEligibilityRule:

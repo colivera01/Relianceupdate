@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { cleanPublicMediaTitle } from "@/lib/launch-content-cleanup";
+import {
+  cleanPublicMediaTitle,
+  cleanPublicServiceName,
+  getPublicServiceDescriptionPresentation,
+} from "@/lib/launch-content-cleanup";
 
 describe("cleanPublicMediaTitle", () => {
   it("removes internal e2e proof wording from completed media titles", () => {
@@ -15,5 +19,22 @@ describe("cleanPublicMediaTitle", () => {
 
   it("replaces generic proof wording with service-video wording for public labels", () => {
     expect(cleanPublicMediaTitle("Customer proof video")).toBe("Customer service video");
+  });
+});
+
+describe("public service presentation cleanup", () => {
+  it("corrects the known wire-stripping typo before public display", () => {
+    expect(cleanPublicServiceName("Wire Stipping")).toBe("Wire Stripping");
+  });
+
+  it("separates estimated duration from the public description", () => {
+    expect(
+      getPublicServiceDescriptionPresentation(
+        "Wire strip 2 bedrooms Estimated duration: 60 minutes."
+      )
+    ).toEqual({
+      description: "Wire strip 2 bedrooms",
+      durationLabel: "60 minutes",
+    });
   });
 });

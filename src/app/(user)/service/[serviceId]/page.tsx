@@ -18,8 +18,6 @@ import {
   MapPin, 
   Star, 
   Clock, 
-  Phone, 
-  Mail, 
   Calendar, 
   Heart, 
   Share2, 
@@ -29,13 +27,6 @@ import {
   Shield,
   Clock as TimeIcon
 } from 'lucide-react';
-
-function getPublicVendorEmail(value: unknown): string | null {
-  const email = typeof value === 'string' ? value.trim() : '';
-  if (!email) return null;
-  if (/@(?:example\.(?:com|org|net)|reliance\.test)$/i.test(email)) return null;
-  return email;
-}
 
 function sanitizeReturnPath(value: string | null): string | null {
   if (!value) return null;
@@ -162,12 +153,42 @@ function ServiceDetailPageContent() {
   const [mediaFilter, setMediaFilter] = useState<'all' | 'images' | 'videos'>('all');
   const [service, setService] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<any>(null);
   const [favoriteId, setFavoriteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [favoriteResolved, setFavoriteResolved] = useState(false);
+
+  const loadPublicReviews = async (isMounted: () => boolean) => {
+    if (!isMounted()) return;
+    setReviewsLoading(true);
+    setReviewsError(null);
+
+    try {
+      const reviewsResponse = await fetch(`/api/services/${serviceId}/reviews/public`, {
+        cache: 'no-store',
+      });
+      if (!reviewsResponse.ok) {
+        throw new Error('Customer reviews are temporarily unavailable.');
+      }
+      const reviewsData = await reviewsResponse.json();
+      if (isMounted()) {
+        setReviews(Array.isArray(reviewsData.reviews) ? reviewsData.reviews : []);
+      }
+    } catch (reviewError) {
+      console.error('Error fetching service reviews:', reviewError);
+      if (isMounted()) {
+        setReviewsError('Customer reviews could not load right now. Try again in a moment.');
+      }
+    } finally {
+      if (isMounted()) {
+        setReviewsLoading(false);
+      }
+    }
+  };
 
   const loadServiceData = async (isMounted: () => boolean) => {
     const fetchServiceResponse = async () => {
@@ -225,19 +246,7 @@ function ServiceDetailPageContent() {
       setService(serviceData.service);
       setLoading(false);
 
-      fetch(`/api/services/${serviceId}/reviews/public`, {
-        cache: 'no-store',
-      })
-        .then(async (reviewsResponse) => {
-          if (!reviewsResponse.ok || !isMounted()) return;
-          const reviewsData = await reviewsResponse.json();
-          if (isMounted()) {
-            setReviews(reviewsData.reviews || []);
-          }
-        })
-        .catch((err) => {
-          console.error('Error fetching service reviews:', err);
-        });
+      void loadPublicReviews(isMounted);
 
       if (serviceData.service.vendor?.id) {
         fetch(`/api/availability/vendor/${serviceData.service.vendor.id}?serviceId=${encodeURIComponent(serviceId)}`)
@@ -450,21 +459,10 @@ function ServiceDetailPageContent() {
     typeof service?.vendor?.reviewCount === 'number' ? service.vendor.reviewCount : 0;
   const servicePublicReviewCount =
     typeof service?.publicReviewCount === 'number' ? service.publicReviewCount : 0;
-  const headerReviewCount = servicePublicReviewCount || vendorReviewCount;
   const vendorRatingLabel = vendorRating == null ? 'New' : vendorRating.toFixed(1);
-  const publicVendorEmail = getPublicVendorEmail(service?.vendor?.email);
-  const publicContactHref = publicVendorEmail
-    ? `mailto:${publicVendorEmail}`
-    : service?.vendor?.phone
-    ? `tel:${service.vendor.phone}`
-    : null;
-  const publicContactLabel = publicVendorEmail
-    ? 'Email Vendor'
-    : service?.vendor?.phone
-    ? 'Call Vendor'
-    : null;
   const servicePrice = Number(service?.price);
   const hasPublicPrice = Number.isFinite(servicePrice) && servicePrice > 0;
+  const publicMediaTemporarilyUnavailable = service?.publicMediaStatus === 'temporarily_unavailable';
   const favoriteStatusPending = isSignedIn && !favoriteResolved;
   const vendorResponseTime =
     typeof service?.vendor?.response_time === 'string' && service.vendor.response_time.trim()
@@ -616,7 +614,7 @@ function ServiceDetailPageContent() {
                     fallbackClassName="h-96 w-full"
                   />
                 )}
-                {isSignedIn && service.original_price && service.price < service.original_price && (
+                {service.original_price && service.price < service.original_price && (
                   <div className="absolute top-4 left-4">
                     <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
                       {Math.round(((service.original_price - service.price) / service.original_price) * 100)}% OFF
@@ -657,7 +655,9 @@ function ServiceDetailPageContent() {
                 </div>
               ) : (
                 <div className="border-t border-slate-100 px-5 py-3 text-sm text-slate-600">
-                  This Service Offered does not yet include a Public Service Video.
+                  {publicMediaTemporarilyUnavailable
+                    ? 'Public service media is temporarily unavailable. Refresh this page to try again.'
+                    : 'This Service Offered does not yet include a Public Service Video.'}
                 </div>
               )}
               
@@ -743,7 +743,7 @@ function ServiceDetailPageContent() {
                       <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                       <span className="font-medium">{vendorRatingLabel}</span>
                       <span>
-                        ({headerReviewCount} public review{headerReviewCount === 1 ? '' : 's'})
+                        ({vendorReviewCount} verified customer rating{vendorReviewCount === 1 ? '' : 's'})
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -757,30 +757,24 @@ function ServiceDetailPageContent() {
                   </div>
                 </div>
                 
-                {isSignedIn ? (
-                  <div className="text-right">
-                    {hasPublicPrice ? (
+                <div className="text-right">
+                  {hasPublicPrice ? (
+                    <>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Reference price</div>
                       <div className="text-3xl font-bold text-[var(--reliance-blue)]">${servicePrice}</div>
-                    ) : (
-                      <div className="max-w-40 text-sm font-semibold text-blue-700">
-                        Estimate provided after review
-                      </div>
-                    )}
-                    {hasPublicPrice && service.original_price && servicePrice < service.original_price && (
-                      <>
-                        <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
-                        <div className="text-sm text-green-600 font-medium">Save ${service.original_price - servicePrice}</div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-right">
-                    <div className="text-sm font-semibold text-blue-900">Service offered</div>
-                    <div className="text-xs text-blue-700">
-                      {vendorReviewCount} public review{vendorReviewCount === 1 ? '' : 's'} available
+                    </>
+                  ) : (
+                    <div className="max-w-40 text-sm font-semibold text-blue-700">
+                      Estimate provided after review
                     </div>
-                  </div>
-                )}
+                  )}
+                  {hasPublicPrice && service.original_price && servicePrice < service.original_price && (
+                    <>
+                      <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
+                      <div className="text-sm text-green-600 font-medium">Save ${service.original_price - servicePrice}</div>
+                    </>
+                  )}
+                </div>
               </div>
 
               <p className="text-gray-700 text-lg leading-relaxed mb-6">
@@ -826,7 +820,7 @@ function ServiceDetailPageContent() {
                 <nav className="flex space-x-8 px-6">
                   {[
                     { id: 'overview', label: 'Overview', icon: null },
-                    { id: 'reviews', label: `Reviews (${reviews.length || servicePublicReviewCount})`, icon: null },
+                    { id: 'reviews', label: `Reviews (${servicePublicReviewCount})`, icon: null },
                     { id: 'photos', label: photosTabLabel, icon: null }
                   ].map((tab) => (
                     <button
@@ -856,6 +850,19 @@ function ServiceDetailPageContent() {
 
                 {activeTab === 'reviews' && (
                   <div>
+                    {reviewsError ? (
+                      <div role="alert" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                        <p>{reviewsError}</p>
+                        <button
+                          type="button"
+                          onClick={() => void loadPublicReviews(() => true)}
+                          disabled={reviewsLoading}
+                          className="mt-3 rounded-full border border-amber-300 bg-white px-4 py-2 font-semibold text-amber-950 transition-colors hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {reviewsLoading ? 'Trying again…' : 'Try loading reviews again'}
+                        </button>
+                      </div>
+                    ) : null}
                     {reviews.length > 0 ? (
                       <div className="space-y-6">
                         {reviews.map((review) => (
@@ -906,20 +913,28 @@ function ServiceDetailPageContent() {
                           </div>
                         ))}
                       </div>
-                    ) : (
+                    ) : reviewsLoading ? (
+                      <div className="py-8 text-center" role="status">
+                        <p className="text-gray-500">Loading approved customer reviews…</p>
+                      </div>
+                    ) : !reviewsError ? (
                       <div className="text-center py-8">
                         <p className="text-gray-500">
                           No approved public reviews are available for this service yet.
                         </p>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
 
                 {activeTab === 'photos' && (
                   <div>
                     <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-                      {hasPrimaryProofVideo ? (
+                      {publicMediaTemporarilyUnavailable ? (
+                        <p className="text-amber-900">
+                          Public service media could not load right now. Refresh this page to try again; this message does not mean the service has no approved media.
+                        </p>
+                      ) : hasPrimaryProofVideo ? (
                         <p className="text-emerald-900">
                           Featured final-result video stays highlighted first. Remaining approved service videos are ordered from newest to oldest.
                         </p>
@@ -1042,9 +1057,10 @@ function ServiceDetailPageContent() {
             {/* Booking Card */}
             <div className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 mb-6">
               <div className="text-center mb-6">
-                {isSignedIn ? (
+                {hasPublicPrice ? (
                   <>
-                    <div className="mb-1 text-3xl font-bold text-[var(--reliance-blue)]">${service.price}</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Reference price</div>
+                    <div className="mb-1 text-3xl font-bold text-[var(--reliance-blue)]">${servicePrice}</div>
                     {service.original_price && service.price < service.original_price && (
                       <>
                         <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
@@ -1054,12 +1070,13 @@ function ServiceDetailPageContent() {
                   </>
                 ) : (
                   <>
-                    <div className="text-xl font-bold text-gray-900 mb-2">Review proof before you choose</div>
+                    <div className="text-xl font-bold text-gray-900 mb-2">Estimate provided after review</div>
                     <p className="text-sm text-gray-600">
-                      Review completed work, public feedback, and vendor details before signing in to request service.
+                      Review completed work, public feedback, and vendor details before requesting service.
                     </p>
                   </>
                 )}
+                <p className="mt-3 text-xs text-slate-500">Review proof before you choose, then use Reliance to request service securely.</p>
               </div>
 
               <div className="space-y-4 mb-6">
@@ -1086,18 +1103,9 @@ function ServiceDetailPageContent() {
                 </p>
               ) : null}
 
-              {publicContactHref && publicContactLabel ? (
-                <a
-                  href={publicContactHref}
-                  className="block w-full rounded-xl bg-gray-100 py-3 text-center font-semibold text-gray-700 transition-colors hover:bg-gray-200"
-                >
-                  {publicContactLabel}
-                </a>
-              ) : (
-                <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
-                  Public contact details are not available yet for this vendor.
-                </p>
-              )}
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+                Reliance keeps private contact details off public pages. Request this service to contact the provider through the platform.
+              </p>
             </div>
 
             {/* Vendor Card */}
@@ -1125,18 +1133,6 @@ function ServiceDetailPageContent() {
                     <MapPin className="w-4 h-4" />
                     <span>{service.vendor.location || 'Location not available'}</span>
                   </div>
-                  {service.vendor.phone && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Phone className="w-4 h-4" />
-                      <span>{service.vendor.phone}</span>
-                    </div>
-                  )}
-                  {publicVendorEmail && (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Mail className="w-4 h-4" />
-                      <span>{publicVendorEmail}</span>
-                    </div>
-                  )}
                 </div>
 
                 {vendorSidebarStats.length ? (

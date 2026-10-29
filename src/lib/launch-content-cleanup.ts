@@ -19,10 +19,38 @@ export function isDefaultVendorJobServiceDescription(value: unknown): boolean {
 
 export function cleanPublicServiceName(name: unknown, vendorName?: unknown): string {
   const raw = String(name || '').trim();
-  if (!isDefaultVendorJobServiceName(raw)) return raw || 'Home Service Visit';
+  if (!isDefaultVendorJobServiceName(raw)) {
+    return (raw || 'Home Service Visit')
+      .replace(/\bwire\s+stipping\b/gi, 'Wire Stripping')
+      .replace(/\bstipping\b/gi, 'Stripping');
+  }
   const vendor = String(vendorName || '').trim();
   if (/sparkle/i.test(vendor)) return 'Sparkle Home Cleaning Visit';
   return 'Completed Home Service Visit';
+}
+
+export function getPublicServiceDescriptionPresentation(
+  description: unknown,
+  vendorName?: unknown
+): { description: string; durationLabel: string | null } {
+  const cleaned = cleanPublicServiceDescription(description, vendorName);
+  const durationMatch = cleaned.match(/\bestimated\s+duration\s*:\s*([^.;]+(?:[.;]|$))/i);
+  const durationLabel = durationMatch?.[1]
+    ? durationMatch[1].replace(/[.;]+$/, '').trim()
+    : null;
+  const publicDescription = durationMatch
+    ? cleaned
+        .replace(durationMatch[0], '')
+        .replace(/\s+([,.;:!?])/g, '$1')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/[\s,;:.-]+$/, '')
+        .trim()
+    : cleaned;
+
+  return {
+    description: publicDescription || cleaned,
+    durationLabel,
+  };
 }
 
 export function cleanPublicServiceDescription(description: unknown, vendorName?: unknown): string {

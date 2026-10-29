@@ -8,9 +8,9 @@ import {
   shouldIncludeAssetForCustomerPublicProof,
 } from '@/lib/proof-media-policy';
 import {
-  cleanPublicServiceDescription,
   cleanPublicServiceName,
   cleanPublicServicePrice,
+  getPublicServiceDescriptionPresentation,
 } from '@/lib/launch-content-cleanup';
 import { countableReviewWhere, countableServiceWhere } from '@/lib/metrics-exclusion';
 import { canonicalPublicWrittenReviewWhere } from '@/lib/review-rating-validity';
@@ -53,8 +53,6 @@ export async function GET(
               category: true,
               city: true,
               state: true,
-              phone: true,
-              email: true,
               isPubliclyListed: true,
               accountStatus: true,
               insuranceStatus: true,
@@ -76,6 +74,7 @@ export async function GET(
 
       // Public-safe media only: approved + public + active.
       let publicAssets: any[] = [];
+      let publicMediaStatus: 'available' | 'temporarily_unavailable' = 'available';
       try {
         const canonicalPublicAssetIds = await resolveCanonicalPublicAssetIds({ serviceId: dbService.id });
         publicAssets = await withTransientDbRetry<any[]>(() =>
@@ -107,6 +106,7 @@ export async function GET(
         );
       } catch (publicAssetError) {
         if (!isTransientDbConnectivityError(publicAssetError)) throw publicAssetError;
+        publicMediaStatus = 'temporarily_unavailable';
         console.warn('[services/:id] public media enrichment temporarily unavailable');
       }
 
@@ -178,7 +178,10 @@ export async function GET(
 
       const publicVendorName = dbService.vendor.businessName || dbService.vendor.name;
       const publicServiceName = cleanPublicServiceName(dbService.name, publicVendorName);
-      const publicServiceDescription = cleanPublicServiceDescription(dbService.description, publicVendorName);
+      const publicServiceDescription = getPublicServiceDescriptionPresentation(
+        dbService.description,
+        publicVendorName
+      );
       const publicServicePrice = cleanPublicServicePrice(
         dbService.price,
         dbService.name,
@@ -189,17 +192,15 @@ export async function GET(
         service: {
           id: dbService.id,
           name: publicServiceName,
-          description: publicServiceDescription,
+          description: publicServiceDescription.description,
           category: dbService.vendor?.category || 'General',
           price: publicServicePrice,
-          duration: 'Varies',
+          duration: publicServiceDescription.durationLabel || 'Varies',
           vendor: {
             id: dbService.vendor.id,
             name: publicVendorName,
             location:
               [dbService.vendor.city, dbService.vendor.state].filter(Boolean).join(', ') || 'Unknown',
-            phone: dbService.vendor.phone || null,
-            email: dbService.vendor.email || null,
             rating: vendorReviewAgg?.rating ?? null,
             reviewCount: vendorReviewAgg?.reviewCount ?? null,
             isPubliclyListed: Boolean(dbService.vendor.isPubliclyListed),
@@ -213,6 +214,7 @@ export async function GET(
           hasPrimaryProofVideo: Boolean(primaryProofVideo),
           publicReviewCount,
           mediaCount: mediaUrls.length,
+          publicMediaStatus,
           status: 'active',
         },
       });

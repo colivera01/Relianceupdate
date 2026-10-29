@@ -195,7 +195,7 @@ export function PublicTrustScorePanel({
               {loading ? "Loading" : presentation.maturityLabel}
             </div>
             <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-white/70">
-              Verified Reliability
+              Reliance Trust Score
             </div>
             <div
               className={cn(
@@ -217,15 +217,15 @@ export function PublicTrustScorePanel({
           <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
               <Star className="h-3.5 w-3.5" />
-              Customer Rating
+              Verified Customer Rating
             </div>
             <div className="mt-2 text-2xl font-semibold">
               {typeof customerRating === "number" ? customerRating.toFixed(1) : "New"}
             </div>
             <div className="mt-1 text-sm text-white/72">
               {typeof customerReviewCount === "number"
-                ? `${customerReviewCount} public review${customerReviewCount === 1 ? "" : "s"}`
-                : "Public reviews are still building"}
+                ? `${customerReviewCount} verified star rating${customerReviewCount === 1 ? "" : "s"}`
+                : "Verified ratings are still building"}
             </div>
           </div>
 
@@ -234,8 +234,9 @@ export function PublicTrustScorePanel({
               Separate Systems
             </div>
             <p className="mt-2 text-sm leading-6 text-white/82">
-              Customer Rating comes from public reviews. The Reliance Trust Score is a verified
-              reliability measure using finalized workflow, Service Video, and dispute records.
+              Customer Rating is the average of verified star ratings. Published written feedback is
+              moderated separately. The Reliance Trust Score uses finalized workflow, Service Video,
+              and dispute records.
             </p>
           </div>
         </div>
@@ -303,8 +304,8 @@ export function PublicTrustScorePanel({
                 ))}
               </div>
               <p className="mt-3 text-xs leading-5 text-slate-600">
-                Customer ratings and public reviews appear separately because they do not change
-                this verified reliability calculation.
+                Verified star ratings and published written feedback appear separately because neither
+                changes this verified reliability calculation.
               </p>
             </div>
 

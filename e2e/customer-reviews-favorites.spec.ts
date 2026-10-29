@@ -145,8 +145,8 @@ for (const device of [
           }),
         });
       });
-      await page.route('**/api/vendors/vendor-1/reviews/public', async (route) => {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, reviews: [] }) });
+      await page.route('**/api/vendors/vendor-1/reviews/public**', async (route) => {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, reviews: [], pagination: { page: 1, limit: 3, total: 0, totalPages: 0 } }) });
       });
       await page.route('**/api/vendors/vendor-1/trust-score', async (route) => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, trustScore: null }) });
@@ -158,8 +158,8 @@ for (const device of [
           body: JSON.stringify({
             service: {
               id: 'service-1', name: 'Breaker Replacement', description: 'Replace a faulty breaker.', category: 'Electrical', price: 275, duration: 'Varies',
-              vendor: { id: 'vendor-1', name: 'Electro LLC', location: 'Orlando, FL', phone: null, email: null, rating: 4.8, reviewCount: 18, isPubliclyListed: true, insurance: false, bonded: false },
-              images: [], videos: [], videoItems: [], primaryProofVideoUrl: null, hasPrimaryProofVideo: false, publicReviewCount: 0, mediaCount: 0, status: 'active',
+              vendor: { id: 'vendor-1', name: 'Electro LLC', location: 'Orlando, FL', rating: 4.8, reviewCount: 18, isPubliclyListed: true, insurance: false, bonded: false },
+              images: [], videos: [], videoItems: [], primaryProofVideoUrl: null, hasPrimaryProofVideo: false, publicReviewCount: 0, mediaCount: 0, publicMediaStatus: 'available', status: 'active',
             },
           }),
         });
@@ -187,7 +187,7 @@ for (const device of [
       expect(favoriteMutations).toEqual([]);
       await save.click();
       await expect.poll(() => favoriteMutations).toEqual(['POST']);
-      await page.getByRole('button', { name: 'View Work Type' }).click();
+      await page.getByRole('link', { name: 'View service & public work' }).click();
       await expect(page.getByRole('heading', { name: 'Breaker Replacement', exact: true })).toBeVisible();
       await expect(page.getByText('This Service Offered does not yet include a Public Service Video.')).toBeVisible();
     });

@@ -101,35 +101,38 @@ export function buildPublicTrustPresentationSummary(
   }
 
   if (maturityState === "early_stage") {
+    const evidence = buildPublicTrustEvidenceSummary(input);
     return {
       maturityState,
-      maturityLabel: "Early Stage",
-      title: "Early-stage reliability score",
+      maturityLabel: "Early evidence",
+      title: "Verified reliability performance",
       scoreDisplay: `${totalScorePct}/100`,
-      summary: `${totalScorePct}/100 based on limited finalized activity`,
+      summary: `Performance across ${evidence.verifiedBookings} verified completed job${evidence.verifiedBookings === 1 ? "" : "s"}. Early evidence describes record volume, not score quality.`,
       tone: "calm",
       scoreEmphasis: "subtle",
     };
   }
 
   if (maturityState === "emerging") {
+    const evidence = buildPublicTrustEvidenceSummary(input);
     return {
       maturityState,
-      maturityLabel: "Emerging",
-      title: "Emerging reliability score",
+      maturityLabel: "Emerging evidence",
+      title: "Verified reliability performance",
       scoreDisplay: `${totalScorePct}/100`,
-      summary: `${totalScorePct}/100 with growing finalized activity`,
+      summary: `Performance across ${evidence.verifiedBookings} verified completed jobs. Emerging evidence describes record volume, not score quality.`,
       tone: "balanced",
       scoreEmphasis: "standard",
     };
   }
 
+  const evidence = buildPublicTrustEvidenceSummary(input);
   return {
     maturityState: "established",
-    maturityLabel: "Established",
+    maturityLabel: "Established evidence",
     title: "Reliance Trust Score",
     scoreDisplay: `${totalScorePct}/100`,
-    summary: `${totalScorePct}/100 based on an established history of finalized verified work`,
+    summary: `Supported by ${evidence.verifiedBookings} verified completed jobs and ${evidence.approvedServiceVideos} approved Service Video packages.`,
     tone: "strong",
     scoreEmphasis: "strong",
   };

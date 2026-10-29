@@ -25,9 +25,9 @@ describe("public-trust-score-presentation", () => {
       })
     ).toMatchObject({
       maturityState: "early_stage",
-      maturityLabel: "Early Stage",
+      maturityLabel: "Early evidence",
       scoreDisplay: "100/100",
-      summary: "100/100 based on limited finalized activity",
+      summary: "Performance across 1 verified completed job. Early evidence describes record volume, not score quality.",
     });
   });
 
@@ -42,8 +42,8 @@ describe("public-trust-score-presentation", () => {
       })
     ).toMatchObject({
       maturityState: "emerging",
-      maturityLabel: "Emerging",
-      summary: "96/100 with growing finalized activity",
+      maturityLabel: "Emerging evidence",
+      summary: "Performance across 5 verified completed jobs. Emerging evidence describes record volume, not score quality.",
     });
   });
 
@@ -58,7 +58,7 @@ describe("public-trust-score-presentation", () => {
       })
     ).toMatchObject({
       maturityState: "established",
-      maturityLabel: "Established",
+      maturityLabel: "Established evidence",
       title: "Reliance Trust Score",
     });
   });

@@ -22,6 +22,7 @@ interface PublicService {
   serviceId: string;
   serviceName: string;
   serviceDescription: string;
+  durationLabel?: string | null;
   price: number | null;
   previewMediaUrl: string | null;
   previewMediaType: 'image' | 'video' | null;
@@ -78,6 +79,10 @@ interface PublicVendorPayload {
     publicMediaCount: number;
     servicesWithPublicProof: number;
   };
+  dataStatus?: {
+    publicMedia?: 'available' | 'temporarily_unavailable';
+    reviewMetrics?: 'available' | 'temporarily_unavailable';
+  };
   meta?: {
     serviceEligibilityRule?: string;
     reviewEligibilityRule?: string;
@@ -117,7 +122,8 @@ export default function PublicVendorProfilePage() {
   const { user } = useAuth();
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
-  const isVendorPreview = searchParams?.get('preview') === 'vendor';
+  const requestedVendorPreview = searchParams?.get('preview') === 'vendor';
+  const [isVendorPreview, setIsVendorPreview] = useState(false);
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
   const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Proof';
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
@@ -130,6 +136,7 @@ export default function PublicVendorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<PublicVendorReview[]>([]);
+  const [reviewTotal, setReviewTotal] = useState(0);
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
 
@@ -190,17 +197,20 @@ export default function PublicVendorProfilePage() {
     setReviewsLoading(true);
     setReviewsError(null);
     try {
-      const { response: res, json } = await fetchRetryablePublicJson(`/api/vendors/${vendorId}/reviews/public`);
+      const { response: res, json } = await fetchRetryablePublicJson(`/api/vendors/${vendorId}/reviews/public?limit=3`);
       if (!res.ok || json?.success === false) {
         if (res.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE) {
           throw new Error('Public reviews are temporarily unavailable. Please try again in a moment.');
         }
         throw new Error(json?.error || `Failed to load reviews (${res.status})`);
       }
-      setReviews(Array.isArray(json?.reviews) ? json.reviews : []);
+      const nextReviews = Array.isArray(json?.reviews) ? json.reviews : [];
+      setReviews(nextReviews.slice(0, 3));
+      setReviewTotal(Number(json?.pagination?.total ?? nextReviews.length));
     } catch (err) {
       setReviewsError(err instanceof Error ? err.message : 'Failed to load public reviews');
       setReviews([]);
+      setReviewTotal(0);
     } finally {
       setReviewsLoading(false);
     }
@@ -214,14 +224,41 @@ export default function PublicVendorProfilePage() {
     void loadPublicReviews();
   }, [vendorId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setIsVendorPreview(false);
+    if (!requestedVendorPreview || !vendorId) return () => { cancelled = true; };
+
+    void fetch(`/api/vendor/context?vendorId=${encodeURIComponent(vendorId)}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
+      .then(async (response) => {
+        const json = await response.json().catch(() => ({}));
+        if (!cancelled) {
+          setIsVendorPreview(
+            response.ok && json?.success === true && String(json?.vendorId || '') === vendorId
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setIsVendorPreview(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [requestedVendorPreview, vendorId, user?.id]);
+
   const vendor = payload?.vendor || null;
   const services = payload?.publicServices || [];
+  const profileServices = services.slice(0, 4);
   const media = payload?.publicMedia || [];
   const publicProofSummary = payload?.publicProofSummary || {
     completedWorkCount: 0,
     publicMediaCount: media.length,
     servicesWithPublicProof: 0,
   };
+  const publicMediaTemporarilyUnavailable = payload?.dataStatus?.publicMedia === 'temporarily_unavailable';
+  const reviewMetricsTemporarilyUnavailable = payload?.dataStatus?.reviewMetrics === 'temporarily_unavailable';
   const primaryServiceVideo = useMemo(
     () =>
       media.find(
@@ -266,15 +303,13 @@ export default function PublicVendorProfilePage() {
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-white/72">
                     This is exactly what customers can see. Only public-approved business details, services,
                     reviews, reliability signals, and Service Videos appear here.
-                    {isSignedIn
-                      ? ' You remain signed in while previewing, and Vendor Workspace returns you to your management area.'
-                      : ''}
+                    {' '}You remain signed in while previewing, and Vendor Workspace returns you to your management area.
                   </p>
                 </div>
               </div>
               <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">
                 <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                {isSignedIn ? 'Signed-in customer view' : 'Customer view'}
+                Signed-in customer view
               </div>
             </div>
           ) : null}
@@ -332,7 +367,12 @@ export default function PublicVendorProfilePage() {
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
-                  <VendorFavoriteButton vendorId={vendor.vendorId} vendorName={vendor.vendorName} tone="dark" />
+                  <VendorFavoriteButton
+                    vendorId={vendor.vendorId}
+                    vendorName={vendor.vendorName}
+                    tone="dark"
+                    previewMode={isVendorPreview}
+                  />
                   {vendor.category ? (
                     <Badge className="rounded-full bg-white/10 px-4 py-2 text-white hover:bg-white/10">{vendor.category}</Badge>
                   ) : null}
@@ -379,38 +419,53 @@ export default function PublicVendorProfilePage() {
                 </div>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
+                  <Link
+                    href={`/vendors/${vendorId}/reviews`}
+                    aria-label="View all verified ratings and published customer reviews"
+                    className="group rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-blue-200/30 hover:bg-white/12"
+                  >
                     <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Customer rating</div>
                     <div className="mt-3 text-3xl font-semibold">
-                      {typeof vendor.rating === 'number' ? vendor.rating.toFixed(1) : 'New'}
+                      {reviewMetricsTemporarilyUnavailable
+                        ? 'Unavailable'
+                        : typeof vendor.rating === 'number'
+                          ? vendor.rating.toFixed(1)
+                          : 'New'}
                     </div>
                     <div className="mt-1 text-sm text-white/66">
-                      {typeof vendor.reviewCount === 'number'
-                        ? `${vendor.reviewCount} verified customer rating${vendor.reviewCount === 1 ? '' : 's'}`
-                        : 'Customer ratings are still building'}
+                      {reviewMetricsTemporarilyUnavailable
+                        ? 'Verified rating metrics could not be loaded right now'
+                        : typeof vendor.reviewCount === 'number'
+                          ? `${vendor.reviewCount} verified customer rating${vendor.reviewCount === 1 ? '' : 's'}`
+                          : 'Customer ratings are still building'}
                     </div>
-                  </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
+                    <div className="mt-3 text-xs font-semibold text-blue-100">View ratings and feedback →</div>
+                  </Link>
+                  <Link
+                    href={`/vendors/${vendorId}/services`}
+                    aria-label={`View all ${services.length} public-approved services`}
+                    className="group rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-blue-200/30 hover:bg-white/12"
+                  >
                     <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Public-approved services</div>
                     <div className="mt-3 text-3xl font-semibold">{services.length}</div>
                     <div className="mt-1 text-sm text-white/66">Services currently approved for customer viewing</div>
-                  </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
+                    <div className="mt-3 text-xs font-semibold text-blue-100">Browse all services →</div>
+                  </Link>
+                  <Link
+                    href="#public-work"
+                    aria-label="View customer-shared completed public work"
+                    className="group rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-blue-200/30 hover:bg-white/12"
+                  >
                     <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Public completed work</div>
-                    <div className="mt-3 text-3xl font-semibold">{publicProofSummary.completedWorkCount}</div>
-                    <div className="mt-1 text-sm text-white/66">Customer-shared completed service records</div>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex flex-wrap gap-3" aria-label="Public profile sections">
-                  <Link href="#services-offered" className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/14">
-                    View services offered
-                  </Link>
-                  <Link href="#public-work" className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/14">
-                    See completed public work
-                  </Link>
-                  <Link href="#customer-reviews" className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/14">
-                    Read customer reviews
+                    <div className="mt-3 text-3xl font-semibold">
+                      {publicMediaTemporarilyUnavailable ? 'Unavailable' : publicProofSummary.completedWorkCount}
+                    </div>
+                    <div className="mt-1 text-sm text-white/66">
+                      {publicMediaTemporarilyUnavailable
+                        ? 'Public work records could not be loaded right now'
+                        : 'Customer-shared completed service records'}
+                    </div>
+                    <div className="mt-3 text-xs font-semibold text-blue-100">See public work →</div>
                   </Link>
                 </div>
               </div>
@@ -419,10 +474,10 @@ export default function PublicVendorProfilePage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/58">
-                      Public service video
+                      Customer-shared final result
                     </div>
                     <div className="mt-2 font-display text-2xl text-white">
-                      {primaryServiceVideo?.title || 'Public service video'}
+                      {primaryServiceVideo?.title || 'Public Service Video'}
                     </div>
                   </div>
                   <Badge
@@ -432,7 +487,11 @@ export default function PublicVendorProfilePage() {
                         : 'bg-white/10 text-white/72 hover:bg-white/10'
                     }
                   >
-                    {primaryServiceVideo ? 'Verified Service Video' : 'No public video yet'}
+                    {primaryServiceVideo
+                      ? 'Reliance-audited'
+                      : publicMediaTemporarilyUnavailable
+                        ? 'Temporarily unavailable'
+                        : 'No public Final Result yet'}
                   </Badge>
                 </div>
 
@@ -447,11 +506,18 @@ export default function PublicVendorProfilePage() {
                   <PublicMediaPreview
                     alt={`${vendor.vendorName} public service video`}
                     className="h-[320px] w-full rounded-[24px] border border-white/10"
-                    emptyLabel="No public service video is available yet for this vendor."
+                    emptyLabel={
+                      publicMediaTemporarilyUnavailable
+                        ? 'Public media could not be loaded right now. Please try again shortly.'
+                        : 'No customer-shared Final Result is public yet for this vendor.'
+                    }
                   />
                 )}
 
-                <p className="mt-4 text-sm leading-6 text-white/70">
+                <p className="mt-4 text-sm leading-6 text-white/76">
+                  A video appears here only after the complete staged Service Video package passes Reliance Audit and the customer separately approves public sharing.
+                </p>
+                <p className="mt-3 border-t border-white/10 pt-3 text-sm leading-6 text-white/62">
                   {vendor.bio || 'This vendor profile is publicly listed and ready for customer review.'}
                 </p>
               </div>
@@ -463,14 +529,15 @@ export default function PublicVendorProfilePage() {
       {!loading && !error && vendor ? (
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-8 xl:grid-cols-[0.92fr_1.08fr]">
-            <div className="space-y-8">
+            <div className="contents">
               <PublicTrustScorePanel
                 vendorId={vendor.vendorId}
                 customerRating={vendor.rating ?? null}
                 customerReviewCount={vendor.reviewCount ?? null}
+                className="order-1"
               />
 
-              <section className="reliance-light-card rounded-[32px] px-6 py-6" data-testid="public-business-specialties">
+              <section className="order-3 reliance-light-card rounded-[32px] px-6 py-6" data-testid="public-business-specialties">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-200/20 bg-blue-400/10 text-blue-100">
                     <ShieldCheck className="h-5 w-5" aria-hidden="true" />
@@ -512,7 +579,7 @@ export default function PublicVendorProfilePage() {
                 ) : null}
               </section>
 
-              <section className="reliance-light-card rounded-[32px] px-6 py-6">
+              <section className="order-5 reliance-light-card rounded-[32px] px-6 py-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -594,8 +661,8 @@ export default function PublicVendorProfilePage() {
 
             </div>
 
-            <div className="space-y-8">
-              <section id="services-offered" className="reliance-light-card scroll-mt-6 rounded-[32px] px-6 py-6" data-testid="public-approved-services">
+            <div className="contents">
+              <section id="services-offered" className="order-2 reliance-light-card scroll-mt-6 rounded-[32px] px-6 py-6" data-testid="public-approved-services">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -624,7 +691,7 @@ export default function PublicVendorProfilePage() {
                   </div>
                 ) : (
                   <div className="mt-6 grid gap-5 md:grid-cols-2">
-                    {services.map((service) => (
+                    {profileServices.map((service) => (
                       <Card
                         key={service.serviceId}
                         className="group overflow-hidden rounded-[28px] border-slate-200 shadow-none transition duration-300 hover:-translate-y-1 hover:border-blue-300/35 hover:shadow-[0_22px_50px_rgba(0,0,0,0.26)]"
@@ -641,29 +708,52 @@ export default function PublicVendorProfilePage() {
                           <p className="line-clamp-2 text-sm leading-6 text-slate-600">
                             {service.serviceDescription || 'No description available.'}
                           </p>
+                          {service.durationLabel ? (
+                            <div className="inline-flex w-fit items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                              Typical duration: {service.durationLabel}
+                            </div>
+                          ) : null}
                           {typeof service.price === 'number' ? (
                             <div className="text-sm font-semibold text-slate-950">
                               Reference price: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(service.price)}
                             </div>
                           ) : null}
-                          <div className="flex items-center justify-between gap-3">
+                          <div className="space-y-3">
                             <div className="text-sm font-semibold text-slate-900">
                               {service.previewMediaUrl ? 'Public preview available' : 'Service offered'}
                             </div>
-                            <Link href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}>
-                              <Button size="sm" className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                            <Button asChild size="sm" className="w-full rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                              <Link
+                                href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}
+                              >
                                 View service &amp; public work
-                              </Button>
-                            </Link>
+                              </Link>
+                            </Button>
                           </div>
                         </CardContent>
                       </Card>
                     ))}
                   </div>
                 )}
+                {services.length > 0 ? (
+                  <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
+                    <Link
+                      href={`/vendors/${vendorId}/services`}
+                      className="inline-flex rounded-full bg-[var(--reliance-blue)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1a58db]"
+                    >
+                      View all {services.length} service{services.length === 1 ? '' : 's'}
+                    </Link>
+                    {services.length > profileServices.length ? (
+                      <span className="text-sm text-slate-500">
+                        Showing the first {profileServices.length} here to keep this profile easy to scan.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
 
-              <section id="public-work" className="reliance-light-card scroll-mt-6 rounded-[32px] px-6 py-6" data-testid="public-work-library">
+              <section id="public-work" className="order-4 reliance-light-card scroll-mt-6 rounded-[32px] px-6 py-6" data-testid="public-work-library">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -674,12 +764,18 @@ export default function PublicVendorProfilePage() {
                       Only completed work that passed Reliance review and was separately shared publicly by the customer appears here.
                     </p>
                   </div>
-                  <Badge className="rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                    {publicProofSummary.completedWorkCount} public
+                  <Badge className={publicMediaTemporarilyUnavailable
+                    ? 'rounded-full bg-amber-100 text-amber-900 hover:bg-amber-100'
+                    : 'rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-100'}>
+                    {publicMediaTemporarilyUnavailable ? 'Temporarily unavailable' : `${publicProofSummary.completedWorkCount} public`}
                   </Badge>
                 </div>
 
-                {media.length === 0 ? (
+                {publicMediaTemporarilyUnavailable ? (
+                  <div role="status" className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
+                    Public completed-work records could not be loaded right now. This is a temporary loading issue, not an indication that the vendor has no public work.
+                  </div>
+                ) : media.length === 0 ? (
                   <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                     No customer-shared completed work is public yet. This does not mean the vendor has no completed jobs; private work remains private unless the customer chooses to share it.
                   </div>
@@ -727,11 +823,25 @@ export default function PublicVendorProfilePage() {
                 ) : null}
               </section>
 
-              <section id="customer-reviews" className="reliance-light-card scroll-mt-6 rounded-[32px] px-6 py-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  Public Reviews
+              <section id="customer-reviews" className="order-6 reliance-light-card scroll-mt-6 rounded-[32px] px-6 py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Published written reviews
+                    </div>
+                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Customer feedback</h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                      These are the newest customer comments approved for public display. The Customer Rating above is the separate average of all verified star ratings.
+                    </p>
+                  </div>
+                  <Badge className="shrink-0 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">
+                    {reviewsLoading
+                      ? 'Loading feedback'
+                      : reviewsError
+                        ? 'Feedback unavailable'
+                        : `${reviewTotal} published`}
+                  </Badge>
                 </div>
-                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Customer feedback</h2>
 
                 {reviewsLoading ? (
                   <div className="mt-6 space-y-3">
@@ -748,7 +858,7 @@ export default function PublicVendorProfilePage() {
                   </div>
                 ) : (
                   <div className="mt-6 space-y-4">
-                    {reviews.map((review) => (
+                    {reviews.slice(0, 3).map((review) => (
                       <div key={review.reviewId} className="rounded-[24px] border border-slate-200 bg-white px-5 py-5">
                         <div className="flex items-start justify-between gap-4">
                           <div>
@@ -778,6 +888,19 @@ export default function PublicVendorProfilePage() {
                     ))}
                   </div>
                 )}
+                {reviewTotal > 0 ? (
+                  <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
+                    <Link
+                      href={`/vendors/${vendorId}/reviews`}
+                      className="inline-flex rounded-full bg-[var(--reliance-blue)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1a58db]"
+                    >
+                      View all {reviewTotal} customer review{reviewTotal === 1 ? '' : 's'}
+                    </Link>
+                    {reviewTotal > reviews.length ? (
+                      <span className="text-sm text-slate-500">Showing the newest {reviews.length} on this profile.</span>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
             </div>
           </div>
