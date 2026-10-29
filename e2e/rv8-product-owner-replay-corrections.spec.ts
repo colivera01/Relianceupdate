@@ -479,6 +479,8 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Add Work Record" }).click();
     const dialog = page.getByRole("dialog", { name: "Add Work Record" });
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel("Scheduled service date and time *")).toBeVisible();
+    await expect(dialog.getByLabel("Scheduled service date and time *")).toHaveAttribute("required", "");
     await expect(dialog.getByRole("combobox", { name: "Who, if anyone, needs to be intentionally identifiable in the Service Video?" })).toBeVisible();
     await expect(dialog.getByRole("combobox", { name: "Whose property may appear in the video?" })).toHaveCount(0);
     await expect(dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" })).toHaveCount(0);
@@ -521,6 +523,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await dialog.getByPlaceholder("First name").fill("Reliance");
     await dialog.getByPlaceholder("Last name").fill("Customer");
     await dialog.getByPlaceholder("Enter email address").fill("customer@example.test");
+    await dialog.getByLabel("Scheduled service date and time *").fill("2099-11-05T09:30");
     await dialog.getByRole("radio", { name: /Customer residence/ }).check();
     await dialog.getByPlaceholder("Start typing the service street address").fill("888 City Walk Ln");
     await dialog.getByPlaceholder("City").fill("Oviedo");

@@ -56,6 +56,8 @@ import {
 import {
   dateAndTimeInZone,
   DEFAULT_SERVICE_TIME_ZONE,
+  isValidServiceTimeZone,
+  localDateTimeInputToSchedule,
   zonedDateTimeToUtc,
 } from '@/lib/booking-schedule';
 
@@ -220,6 +222,11 @@ function proposedDateTimeToUtc(value: string, timeZone: string): Date | null {
   return zonedDateTimeToUtc({ date, time, timeZone });
 }
 
+function currentClientServiceTimeZone(): string {
+  const candidate = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isValidServiceTimeZone(candidate) ? candidate : DEFAULT_SERVICE_TIME_ZONE;
+}
+
 export default function VendorJobs() {
   const router = useRouter();
   const dashboardDebug = process.env.NODE_ENV !== 'production';
@@ -287,7 +294,7 @@ export default function VendorJobs() {
     };
   };
 
-  const getEmptyJobForm = () => ({
+  const getEmptyJobForm = (serviceTimeZone = DEFAULT_SERVICE_TIME_ZONE) => ({
     title: '',
     client: '',
     customerFirstName: '',
@@ -295,6 +302,8 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    scheduledAt: '',
+    serviceTimeZone,
     recordingLocation: 'business',
     customerResidenceAddress: '',
     customerResidenceCity: '',
@@ -320,6 +329,7 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    scheduledAt: '',
     recordingLocation: '',
     customerResidenceAddress: '',
     customerBusinessAddress: '',
@@ -440,30 +450,7 @@ export default function VendorJobs() {
   const [locationExceptionReason, setLocationExceptionReason] = useState('');
   const [locationExceptionSubmitting, setLocationExceptionSubmitting] = useState(false);
   const [locationExceptionError, setLocationExceptionError] = useState('');
-  const [newJob, setNewJob] = useState({
-    title: '',
-    client: '',
-    customerFirstName: '',
-    customerLastName: '',
-    phone: '',
-    email: '',
-    serviceId: '',
-    recordingLocation: 'business',
-    customerResidenceAddress: '',
-    customerResidenceCity: '',
-    customerResidenceState: '',
-    customerResidenceZipCode: '',
-    customerResidenceLatitude: null,
-    customerResidenceLongitude: null,
-    customerBusinessAddress: '',
-    customerBusinessCity: '',
-    customerBusinessState: '',
-    customerBusinessZipCode: '',
-    customerBusinessLatitude: null,
-    customerBusinessLongitude: null,
-    intentionalParticipantPlan: '',
-    audioRequested: false,
-  });
+  const [newJob, setNewJob] = useState(getEmptyJobForm());
   const [newServiceForJob, setNewServiceForJob] = useState({
     name: '',
     description: '',
@@ -480,6 +467,7 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    scheduledAt: '',
     recordingLocation: '',
     customerResidenceAddress: '',
     customerBusinessAddress: '',
@@ -495,6 +483,7 @@ export default function VendorJobs() {
   const clientLastNameInputRef = useRef<HTMLInputElement | null>(null);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const emailInputRef = useRef<HTMLInputElement | null>(null);
+  const scheduledAtInputRef = useRef<HTMLInputElement | null>(null);
   const serviceTypeSelectRef = useRef<HTMLSelectElement | null>(null);
   const createJobRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [preferredNextVideoStage, setPreferredNextVideoStage] = useState<'' | VendorJobVideoStage>('');
@@ -2333,6 +2322,12 @@ export default function VendorJobs() {
       job?.updatedAt && !Number.isNaN(new Date(job.updatedAt).getTime())
         ? new Date(job.updatedAt).toISOString()
         : createdAtIso;
+    const scheduledForIso =
+      job?.scheduledFor && !Number.isNaN(new Date(job.scheduledFor).getTime())
+        ? new Date(job.scheduledFor).toISOString()
+        : job?.date && !Number.isNaN(new Date(job.date).getTime())
+          ? new Date(job.date).toISOString()
+          : null;
 
     return {
       id: String(job?.id ?? ''),
@@ -2346,6 +2341,9 @@ export default function VendorJobs() {
       clientName: job?.client || 'Unknown Client',
       operationalPhase: job?.operationalPhase ? String(job.operationalPhase) : undefined,
       status,
+      scheduledFor: scheduledForIso,
+      serviceTimeZone: serviceTimeZoneForJob(job),
+      date: scheduledForIso,
       createdAt: createdAtIso,
       updatedAt: updatedAtIso,
       linkedMediaCount: Number(job?.linkedMediaCount || 0),
@@ -2449,10 +2447,19 @@ export default function VendorJobs() {
     const metadata = booking?.customer_metadata && typeof booking.customer_metadata === 'object'
       ? booking.customer_metadata
       : {};
+    const serviceTimeZone = String(booking?.service_time_zone || DEFAULT_SERVICE_TIME_ZONE).trim()
+      || DEFAULT_SERVICE_TIME_ZONE;
+    const localSchedule = localDateTimeInputToSchedule({
+      value:
+        booking?.booking_date && booking?.booking_time
+          ? `${booking.booking_date}T${String(booking.booking_time).slice(0, 5)}`
+          : '',
+      timeZone: serviceTimeZone,
+    });
     const bookingDate =
-      booking?.booking_date && booking?.booking_time
-        ? `${booking.booking_date}T${booking.booking_time}.000Z`
-        : booking?.created_at || new Date().toISOString();
+      booking?.scheduled_for && !Number.isNaN(new Date(booking.scheduled_for).getTime())
+        ? new Date(booking.scheduled_for).toISOString()
+        : localSchedule?.scheduledForIso || booking?.created_at || new Date().toISOString();
 
     return adaptRecentJobToUiJob({
       id: booking?.id,
@@ -2469,6 +2476,8 @@ export default function VendorJobs() {
       createdAt: booking?.created_at || bookingDate,
       updatedAt: booking?.updated_at || booking?.created_at || bookingDate,
       date: bookingDate,
+      scheduledFor: bookingDate,
+      serviceTimeZone,
       source: 'vendor_created_job',
     });
   };
@@ -2878,6 +2887,11 @@ export default function VendorJobs() {
     const formattedPhone = formatPhoneNumber(normalizedPhoneDigits);
     const email = newJob.email.trim();
     const serviceId = newJob.serviceId.trim();
+    const scheduledAt = String(newJob.scheduledAt || '').trim();
+    const schedule = localDateTimeInputToSchedule({
+      value: scheduledAt,
+      timeZone: newJob.serviceTimeZone,
+    });
     const recordingLocation = String(newJob.recordingLocation || '').trim().toLowerCase();
     const selectedService = publishedServiceOptions.find((service) => service.id === serviceId);
     const addingServiceFromJob = serviceId === ADD_NEW_SERVICE_VALUE;
@@ -2907,6 +2921,11 @@ export default function VendorJobs() {
           ? 'Choose an approved service. Pending admin approval services cannot create work records.'
           : ''
         : 'Service type is required',
+      scheduledAt: !scheduledAt
+        ? 'Scheduled service date and time is required.'
+        : schedule
+          ? ''
+          : 'Enter a valid service date and time for the displayed time zone.',
       recordingLocation:
         recordingLocation === 'business' ||
         recordingLocation === 'residence' ||
@@ -2946,6 +2965,7 @@ export default function VendorJobs() {
       nextJobErrors.phone ||
       nextJobErrors.email ||
       nextJobErrors.serviceId ||
+      nextJobErrors.scheduledAt ||
       nextJobErrors.recordingLocation
       || nextJobErrors.customerResidenceAddress
       || nextJobErrors.customerBusinessAddress
@@ -2959,6 +2979,8 @@ export default function VendorJobs() {
         phoneInputRef.current?.focus();
       } else if (nextJobErrors.email) {
         emailInputRef.current?.focus();
+      } else if (nextJobErrors.scheduledAt) {
+        scheduledAtInputRef.current?.focus();
       } else if (nextJobErrors.serviceId) {
         serviceTypeSelectRef.current?.focus();
       }
@@ -3016,6 +3038,8 @@ export default function VendorJobs() {
             title: selectedService?.name || newJob.title.trim() || 'Work record',
             clientName: client,
             serviceId: serviceId || undefined,
+            scheduledFor: schedule?.scheduledForIso,
+            serviceTimeZone: schedule?.timeZone,
             recordingAssessment: changedMaterialFields.length > 0 ? {
               recordingLocation,
               intentionalParticipantPlan: newJob.intentionalParticipantPlan,
@@ -3091,7 +3115,6 @@ export default function VendorJobs() {
     let resolvedServiceId = serviceId;
     let resolvedServiceName = selectedService?.name || '';
 
-    const now = new Date();
     const payload = {
       vendor_id: vendorId,
       service_id: resolvedServiceId,
@@ -3099,10 +3122,10 @@ export default function VendorJobs() {
       client_name: client,
       client_phone: normalizedPhoneDigits || undefined,
       client_email: email || undefined,
-      booking_date: now.toISOString().split('T')[0],
-      booking_time: now.toTimeString().split(' ')[0],
-      scheduled_for: now.toISOString(),
-      service_time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      booking_date: schedule!.date,
+      booking_time: `${schedule!.time}:00`,
+      scheduled_for: schedule!.scheduledForIso,
+      service_time_zone: schedule!.timeZone,
       amount: 0,
       custom_fields: {
         vendor_job_recording_location: recordingLocation,
@@ -3470,6 +3493,11 @@ export default function VendorJobs() {
     setJobFormTargetId(String(job?.id || ''));
     const splitName = splitCustomerName(job?.client || job?.clientName || '');
     const scope = job?.recordingCompliance?.scopeSummary || {};
+    const serviceTimeZone = serviceTimeZoneForJob(job);
+    const scheduledFor = new Date(job?.scheduledFor || job?.requestedFor || job?.date || '');
+    const scheduledParts = Number.isNaN(scheduledFor.getTime())
+      ? null
+      : dateAndTimeInZone(scheduledFor, serviceTimeZone);
     const editForm = {
       title: String(job?.title || ''),
       client: String(job?.client || job?.clientName || ''),
@@ -3478,6 +3506,8 @@ export default function VendorJobs() {
       phone: String(job?.phone || ''),
       email: String(job?.email || ''),
       serviceId: String(job?.serviceId || ''),
+      scheduledAt: scheduledParts ? `${scheduledParts.date}T${scheduledParts.time}` : '',
+      serviceTimeZone,
       recordingLocation: String(job?.recordingCompliance?.location || 'business'),
       customerResidenceAddress: '',
       customerResidenceCity: '',
@@ -5466,7 +5496,7 @@ export default function VendorJobs() {
                 onClick={() => {
                   setJobModalMode('create');
                   setJobFormTargetId(null);
-                  setNewJob(getEmptyJobForm());
+                  setNewJob(getEmptyJobForm(currentClientServiceTimeZone()));
                   setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
                   setCreateJobError('');
                   setJobFieldErrors(getEmptyJobFieldErrors());
@@ -6282,6 +6312,47 @@ export default function VendorJobs() {
               {jobFieldErrors.contact && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.contact}</p>
               )}
+            </div>
+            <div>
+              <label
+                htmlFor="work-record-scheduled-at"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Scheduled service date and time <span aria-hidden="true">*</span>
+              </label>
+              <Input
+                id="work-record-scheduled-at"
+                ref={scheduledAtInputRef}
+                type="datetime-local"
+                value={newJob.scheduledAt}
+                required
+                aria-invalid={Boolean(jobFieldErrors.scheduledAt)}
+                aria-describedby={
+                  jobFieldErrors.scheduledAt
+                    ? 'work-record-scheduled-at-help work-record-scheduled-at-error'
+                    : 'work-record-scheduled-at-help'
+                }
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setNewJob((current) => ({ ...current, scheduledAt: value }));
+                  if (
+                    localDateTimeInputToSchedule({
+                      value,
+                      timeZone: newJob.serviceTimeZone,
+                    })
+                  ) {
+                    setJobFieldErrors((current) => ({ ...current, scheduledAt: '' }));
+                  }
+                }}
+              />
+              <p id="work-record-scheduled-at-help" className="mt-1 text-xs text-gray-500">
+                Enter the actual service appointment in {newJob.serviceTimeZone}. Reliance saves the exact instant without using the submission time.
+              </p>
+              {jobFieldErrors.scheduledAt ? (
+                <p id="work-record-scheduled-at-error" className="mt-1 text-sm text-red-600">
+                  {jobFieldErrors.scheduledAt}
+                </p>
+              ) : null}
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <label className="block text-sm font-semibold text-slate-900">

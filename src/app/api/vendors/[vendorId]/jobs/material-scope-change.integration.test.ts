@@ -203,6 +203,78 @@ describe("material recording scope change", () => {
     vi.mocked(deliverVerifiedPermissionRequest).mockResolvedValue({ status: "SENT" } as any);
   });
 
+  it("updates the explicit schedule without superseding recording permission or certification", async () => {
+    const nextSchedule = new Date("2099-11-05T14:30:00.000Z");
+    hoisted.bookingUpdate.mockImplementationOnce(async (args: any) => ({
+      id: "job-1",
+      status: "CONFIRMED",
+      title: "Outlet installation",
+      clientName: "Alex Customer",
+      serviceId: "service-1",
+      scheduledFor: args.data.scheduledFor,
+      updatedAt: new Date("2026-10-29T12:00:00.000Z"),
+    }));
+    const request = new Request(
+      "http://localhost/api/vendors/vendor-1/jobs/job-1/actions",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_JOB",
+          scheduledFor: nextSchedule.toISOString(),
+          serviceTimeZone: "America/New_York",
+        }),
+      },
+    );
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          scheduledFor: nextSchedule,
+          date: nextSchedule,
+          customerMetadata: expect.stringContaining('"service_time_zone":"America/New_York"'),
+        }),
+      }),
+    );
+    expect(hoisted.certificationUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.consentUpdateMany).not.toHaveBeenCalled();
+    expect(recordLifecycleAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "work_record_details_updated",
+        previousValue: expect.objectContaining({ scheduledFor: "2026-08-05T14:00:00.000Z" }),
+        newValue: expect.objectContaining({ scheduledFor: nextSchedule.toISOString() }),
+      }),
+    );
+  });
+
+  it("rejects an invalid schedule edit without mutating the work record", async () => {
+    const request = new Request(
+      "http://localhost/api/vendors/vendor-1/jobs/job-1/actions",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_JOB",
+          scheduledFor: "not-a-date",
+          serviceTimeZone: "America/New_York",
+        }),
+      },
+    );
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "INVALID_SCHEDULE" });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
   it("supersedes stale evidence, relocks recording, and requests permission for the new scope", async () => {
     const request = new Request(
       "http://localhost/api/vendors/vendor-1/jobs/job-1/actions",

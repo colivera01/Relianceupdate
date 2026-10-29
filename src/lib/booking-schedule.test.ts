@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveBookingSchedule, zonedDateTimeToUtc } from "./booking-schedule";
+import {
+  localDateTimeInputToSchedule,
+  resolveBookingSchedule,
+  zonedDateTimeToUtc,
+} from "./booking-schedule";
 
 describe("resolveBookingSchedule", () => {
   it("uses the browser's absolute timestamp without a server timezone shift", () => {
@@ -43,5 +47,28 @@ describe("resolveBookingSchedule", () => {
     expect(
       resolveBookingSchedule({ bookingDate: "2026-02-30", bookingTime: "09:00" }),
     ).toBeNull();
+  });
+
+  it("builds an exact timezone-safe vendor schedule from the required local control", () => {
+    const schedule = localDateTimeInputToSchedule({
+      value: "2099-11-05T09:30",
+      timeZone: "America/New_York",
+    });
+
+    expect(schedule).toMatchObject({
+      date: "2099-11-05",
+      time: "09:30",
+      timeZone: "America/New_York",
+      scheduledForIso: "2099-11-05T14:30:00.000Z",
+    });
+  });
+
+  it.each([
+    { value: "", timeZone: "America/New_York" },
+    { value: "2099-02-30T09:30", timeZone: "America/New_York" },
+    { value: "2099-11-05T25:00", timeZone: "America/New_York" },
+    { value: "2099-11-05T09:30", timeZone: "Not/A_Time_Zone" },
+  ])("rejects missing or invalid local schedule input: $value", (input) => {
+    expect(localDateTimeInputToSchedule(input)).toBeNull();
   });
 });

@@ -104,6 +104,8 @@ export const bookingsSDK = {
       vendor_id: d.vendor_id ?? d.vendorId,
       booking_date: d.booking_date ?? d.bookingDate,
       booking_time: d.booking_time ?? d.bookingTime,
+      scheduled_for: d.scheduled_for ?? d.scheduledFor,
+      service_time_zone: d.service_time_zone ?? d.serviceTimeZone,
       user_notes: d.user_notes ?? d.userNotes,
       title: d.title,
       client_name: d.client_name ?? d.clientName,

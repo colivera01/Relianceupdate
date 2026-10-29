@@ -253,6 +253,11 @@ const vendorWithVerifiedBusinessLocation = {
   }),
 };
 
+const explicitVendorSchedule = {
+  scheduled_for: '2099-11-05T14:30:00.000Z',
+  service_time_zone: 'America/New_York',
+};
+
 describe('GET /api/bookings', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
@@ -777,6 +782,60 @@ describe('POST /api/bookings', () => {
     });
   });
 
+  it('rejects a vendor-created work record without an explicit schedule instead of using submission time', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
+
+    const response = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          title: 'Outlet installation',
+          client_name: 'Alex Customer',
+          client_email: 'alex@example.com',
+        },
+        'POST',
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'SCHEDULE_REQUIRED' });
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid explicit vendor work-record schedule', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
+
+    const response = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          title: 'Outlet installation',
+          client_name: 'Alex Customer',
+          client_email: 'alex@example.com',
+          scheduled_for: 'not-a-date',
+          service_time_zone: 'America/New_York',
+        },
+        'POST',
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'INVALID_SCHEDULE' });
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+  });
+
   it('links vendor-staff-created bookings to the customer user resolved from client_email', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
@@ -798,8 +857,9 @@ describe('POST /api/bookings', () => {
         {
           vendor_id: 'ven-1',
           service_id: 'svc-1',
-          booking_date: '2024-09-02',
-          booking_time: '10:00:00',
+          booking_date: '2099-11-05',
+          booking_time: '09:30:00',
+          service_time_zone: 'America/New_York',
           title: 'Fade Haircut',
           client_name: 'Alex',
           client_email: 'alex@example.com',
@@ -813,6 +873,8 @@ describe('POST /api/bookings', () => {
         vendorId: 'ven-1',
         serviceId: 'svc-1',
         userId: 'customer-by-email',
+        scheduledFor: new Date('2099-11-05T14:30:00.000Z'),
+        date: new Date('2099-11-05T14:30:00.000Z'),
       }),
     });
     expect(hoisted.queryRaw).not.toHaveBeenCalled();
@@ -844,6 +906,7 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           client_name: 'Inactive Customer',
           client_email: 'inactive@example.com',
+          ...explicitVendorSchedule,
         },
         'POST'
       )
@@ -885,6 +948,7 @@ describe('POST /api/bookings', () => {
           title: 'Electrical Service Recording Test',
           client_name: 'Alex',
           client_email: 'alex@example.com',
+          ...explicitVendorSchedule,
           custom_fields: {
             vendor_job_recording_location: 'residence',
             vendor_job_customer_residence_address: '407 Boxwood Circle',
@@ -943,6 +1007,7 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           client_name: 'Customer Without Address',
           client_email: 'customer@example.com',
+          ...explicitVendorSchedule,
           custom_fields: { vendor_job_recording_location: 'residence' },
         },
         'POST'
@@ -999,6 +1064,7 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           client_name: 'Residence Customer',
           client_email: 'customer@example.com',
+          ...explicitVendorSchedule,
           custom_fields: {
             vendor_job_recording_location: 'residence',
             vendor_job_customer_residence_address: '407 Boxwood Circle',
@@ -1068,6 +1134,7 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           client_name: 'Residence Customer',
           client_email: 'customer@example.com',
+          ...explicitVendorSchedule,
           custom_fields: {
             vendor_job_recording_location: 'residence',
             vendor_job_customer_residence_address: '407 Boxwood Circle',
@@ -1123,6 +1190,7 @@ vi.mock('@/lib/customer-service-records-server', () => ({
           title: 'Outlet installation',
           client_name: 'Alex',
           client_email: 'alex@example.com',
+          ...explicitVendorSchedule,
           custom_fields: {
             vendor_job_recording_location: 'business',
             recording_property_scope: 'vendor_owned',
@@ -1188,6 +1256,7 @@ vi.mock('@/lib/customer-service-records-server', () => ({
             service_id: 'svc-1',
             client_name: 'Unsupported Authority',
             client_email: 'customer@example.com',
+            ...explicitVendorSchedule,
             custom_fields: {
               vendor_job_recording_location: 'residence',
               recording_property_scope: 'customer_owned',
@@ -1231,6 +1300,7 @@ vi.mock('@/lib/customer-service-records-server', () => ({
           service_id: 'svc-1',
           client_name: 'Alex',
           client_email: 'alex@example.com',
+          ...explicitVendorSchedule,
           idempotency_key: 'stable-create-key',
         },
         'POST'
@@ -1305,6 +1375,7 @@ vi.mock('@/lib/customer-service-records-server', () => ({
           service_id: 'svc-1',
           client_name: 'Alex',
           client_email: 'alex@example.com',
+          ...explicitVendorSchedule,
           custom_fields: {
             vendor_job_recording_location: 'customer-business',
             vendor_job_customer_business_address: '500 Customer Business Blvd',

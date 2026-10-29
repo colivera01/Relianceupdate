@@ -33,6 +33,7 @@ import {
   canonicalPublicWrittenReviewWhere,
   canonicalVerifiedCustomerRatingWhere,
 } from "@/lib/review-rating-validity";
+import { DEFAULT_SERVICE_TIME_ZONE } from "@/lib/booking-schedule";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -809,6 +810,7 @@ export async function GET(
       const assignedMembershipIds = extractAssignedMembershipIdsFromMetadata(booking.customerMetadata);
       const uploadedVideoStages = extractUploadedVideoStagesFromMetadata(booking.customerMetadata);
       const customerContact = resolveCustomerContactForBooking(booking);
+      const bookingMetadata = parseCustomerMetadata(booking.customerMetadata);
       const legacyCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
       const permissionGate = await loadRecordingPermissionGate({
         bookingId: String(booking.id),
@@ -843,6 +845,9 @@ export async function GET(
         customerPhone: customerContact.phone,
         amount: amountValue,
         status: effectiveStatus,
+        scheduledFor: booking.scheduledFor?.toISOString() || booking.date?.toISOString() || null,
+        serviceTimeZone:
+          String(bookingMetadata.service_time_zone || "").trim() || DEFAULT_SERVICE_TIME_ZONE,
         operationalPhase,
         canonicalAdminAuditPending: canonicalAdminAuditPendingBookingIds.has(String(booking.id)),
         adminAuditIntegrityIssueCode: adminAuditIssueByBookingId.get(String(booking.id)) || null,

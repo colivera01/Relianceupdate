@@ -19,7 +19,7 @@ import {
 import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
 import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
-import { resolveBookingSchedule } from '@/lib/booking-schedule';
+import { isValidServiceTimeZone, resolveBookingSchedule } from '@/lib/booking-schedule';
 import { toBookingNotificationState } from '@/lib/booking-notification-delivery';
 import { createVerifiedPermissionRequest } from '@/lib/consent/request-service';
 import { deliverVerifiedPermissionRequest } from '@/lib/consent/delivery-service';
@@ -944,12 +944,47 @@ export async function POST(request: NextRequest) {
 
     let scheduledFor: Date | null = null;
     if (isVendorStaffForThisVendor) {
+      const hasAbsoluteSchedule = Boolean(String(scheduled_for || '').trim());
+      const hasBookingDate = Boolean(String(booking_date || '').trim());
+      const hasBookingTime = Boolean(String(booking_time || '').trim());
+      if (!hasAbsoluteSchedule && !hasBookingDate && !hasBookingTime) {
+        return NextResponse.json(
+          {
+            error: 'Scheduled service date and time is required for a vendor-created work record.',
+            code: 'SCHEDULE_REQUIRED',
+          },
+          { status: 400 },
+        );
+      }
+      const vendorServiceTimeZone =
+        String(service_time_zone || '').trim() || DEFAULT_BOOKING_TIMEZONE;
+      if (
+        (!hasAbsoluteSchedule && (!hasBookingDate || !hasBookingTime)) ||
+        !isValidServiceTimeZone(vendorServiceTimeZone)
+      ) {
+        return NextResponse.json(
+          {
+            error: 'Enter a valid scheduled service date, time, and service time zone.',
+            code: 'INVALID_SCHEDULE',
+          },
+          { status: 400 },
+        );
+      }
       scheduledFor = resolveBookingSchedule({
         scheduledFor: scheduled_for,
         bookingDate: booking_date,
         bookingTime: booking_time,
-        timeZone: service_time_zone,
-      }) || new Date();
+        timeZone: vendorServiceTimeZone,
+      });
+      if (!scheduledFor) {
+        return NextResponse.json(
+          {
+            error: 'The scheduled service date and time could not be resolved.',
+            code: 'INVALID_SCHEDULE',
+          },
+          { status: 400 },
+        );
+      }
     } else if (requiredCustomerScheduleMode === 'CUSTOMER_SELECTS_TIME') {
       const slotCheck = await checkVendorSlotAvailability({
         vendorId,

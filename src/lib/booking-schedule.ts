@@ -19,6 +19,17 @@ function validTimeZone(value: unknown): string {
   }
 }
 
+export function isValidServiceTimeZone(value: unknown): boolean {
+  const candidate = String(value || "").trim();
+  if (!candidate) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function partsInTimeZone(value: Date, timeZone: string): ZonedParts {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -112,6 +123,37 @@ export function dateAndTimeInZone(value: Date, timeZone?: unknown): {
   return {
     date: `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
     time: `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`,
+  };
+}
+
+export function localDateTimeInputToSchedule(input: {
+  value: unknown;
+  timeZone?: unknown;
+}): {
+  date: string;
+  time: string;
+  timeZone: string;
+  scheduledFor: Date;
+  scheduledForIso: string;
+} | null {
+  const value = String(input.value || "").trim();
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(value);
+  const timeZone = String(input.timeZone || "").trim();
+  if (!match || !isValidServiceTimeZone(timeZone)) return null;
+
+  const scheduledFor = zonedDateTimeToUtc({
+    date: match[1],
+    time: match[2],
+    timeZone,
+  });
+  if (!scheduledFor) return null;
+
+  return {
+    date: match[1],
+    time: match[2],
+    timeZone,
+    scheduledFor,
+    scheduledForIso: scheduledFor.toISOString(),
   };
 }
 

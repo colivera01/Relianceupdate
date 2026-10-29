@@ -55,6 +55,11 @@ import {
   enqueueServiceRequestCustomerEvent,
 } from "@/lib/notifications/service-request";
 import { bookingIntervalsOverlap, resolveServiceDurationMinutes } from "@/lib/availability-slots";
+import {
+  DEFAULT_SERVICE_TIME_ZONE,
+  isValidServiceTimeZone,
+  resolveBookingSchedule,
+} from "@/lib/booking-schedule";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -872,6 +877,41 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const data: any = {};
       if (title !== undefined) data.title = title || null;
       if (clientName !== undefined) data.clientName = clientName || null;
+      const hasScheduleUpdate =
+        Object.prototype.hasOwnProperty.call(body || {}, "scheduledFor") ||
+        Object.prototype.hasOwnProperty.call(body || {}, "scheduled_for");
+      let scheduleTimeZoneUpdate: string | null = null;
+      if (hasScheduleUpdate) {
+        const rawScheduledFor = body?.scheduledFor ?? body?.scheduled_for;
+        const rawServiceTimeZone = body?.serviceTimeZone ?? body?.service_time_zone;
+        scheduleTimeZoneUpdate =
+          String(rawServiceTimeZone || "").trim() ||
+          String(parseCustomerMetadata(booking.customerMetadata).service_time_zone || "").trim() ||
+          DEFAULT_SERVICE_TIME_ZONE;
+        const scheduledForUpdate = resolveBookingSchedule({
+          scheduledFor: rawScheduledFor,
+          timeZone: scheduleTimeZoneUpdate,
+        });
+        if (
+          !String(rawScheduledFor || "").trim() ||
+          !isValidServiceTimeZone(scheduleTimeZoneUpdate) ||
+          !scheduledForUpdate
+        ) {
+          return NextResponse.json(
+            apiResponse(
+              false,
+              "INVALID_SCHEDULE",
+              "Enter a valid scheduled service date, time, and service time zone.",
+            ),
+            { status: 400 },
+          );
+        }
+        data.scheduledFor = scheduledForUpdate;
+        data.date = scheduledForUpdate;
+        const scheduleMetadata = parseCustomerMetadata(booking.customerMetadata);
+        scheduleMetadata.service_time_zone = scheduleTimeZoneUpdate;
+        data.customerMetadata = stringifyCustomerMetadata(scheduleMetadata);
+      }
       if (serviceId !== undefined) {
         if (serviceId) {
           const service = await prisma.service.findFirst({
@@ -1042,6 +1082,9 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       if (nextAssessment && materialScopeChange) {
         const now = new Date();
         const metadata = parseCustomerMetadata(booking.customerMetadata);
+        if (scheduleTimeZoneUpdate) {
+          metadata.service_time_zone = scheduleTimeZoneUpdate;
+        }
         metadata.vendor_job_recording_location = nextAssessment.recordingLocation;
         metadata.recording_intentional_participant_plan =
           nextAssessment.intentionalParticipantPlan;
@@ -1148,6 +1191,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
               title: true,
               clientName: true,
               serviceId: true,
+              scheduledFor: true,
               updatedAt: true,
             },
           });
@@ -1264,7 +1308,15 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const updated = await prisma.booking.update({
         where: { id: booking.id },
         data,
-        select: { id: true, status: true, title: true, clientName: true, serviceId: true, updatedAt: true },
+        select: {
+          id: true,
+          status: true,
+          title: true,
+          clientName: true,
+          serviceId: true,
+          scheduledFor: true,
+          updatedAt: true,
+        },
       });
       await recordLifecycleAudit({
         actionType: "work_record_details_updated",
@@ -1275,11 +1327,13 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           title: booking.title,
           clientName: booking.clientName,
           serviceId: booking.service?.id || null,
+          scheduledFor: booking.scheduledFor?.toISOString?.() || booking.scheduledFor || null,
         },
         newValue: {
           title: updated.title,
           clientName: updated.clientName,
           serviceId: updated.serviceId,
+          scheduledFor: updated.scheduledFor?.toISOString?.() || updated.scheduledFor || null,
         },
         metadata: { vendorId, evidenceSuperseded: false },
       });
