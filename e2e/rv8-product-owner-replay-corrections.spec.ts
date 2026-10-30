@@ -499,6 +499,21 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(dialog.getByRole("radio", { name: /Recording is required/ })).toHaveCount(0);
     await expect(dialog.getByRole("radio", { name: /service can continue without recording/ })).toHaveCount(0);
 
+    const submitButton = dialog.getByRole("button", { name: "Add Work Record" });
+    await dialog.locator("select").first().selectOption("rv8-service");
+    await dialog.getByPlaceholder("First name").fill("Reliance");
+    await dialog.getByPlaceholder("Last name").fill("Customer");
+    await dialog.getByPlaceholder("Enter email address").fill("customer@example.test");
+    await expect(submitButton).toBeDisabled();
+
+    await dialog.getByLabel("Scheduled service date and time *").fill("2099-11-05T09:30");
+    await expect(submitButton).toBeDisabled();
+
+    await dialog
+      .getByRole("combobox", { name: "Who, if anyone, needs to be intentionally identifiable in the Service Video?" })
+      .selectOption("none");
+    await expect(submitButton).toBeEnabled();
+
   });
 
   test("shows the authoritative no-match outcome beside manual address creation", async ({ page }) => {

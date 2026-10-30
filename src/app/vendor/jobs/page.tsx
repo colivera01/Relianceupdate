@@ -1200,6 +1200,12 @@ export default function VendorJobs() {
   const trimmedEmail = newJob.email.trim();
   const selectedServiceId = newJob.serviceId.trim();
   const selectedRecordingLocation = String(newJob.recordingLocation || '').trim();
+  const selectedScheduledAt = String(newJob.scheduledAt || '').trim();
+  const selectedSchedule = localDateTimeInputToSchedule({
+    value: selectedScheduledAt,
+    timeZone: newJob.serviceTimeZone,
+  });
+  const selectedParticipantPlan = String(newJob.intentionalParticipantPlan || '').trim();
   const isAddingServiceFromJob = selectedServiceId === ADD_NEW_SERVICE_VALUE;
   const publishedServiceOptions = serviceOptions.filter((service: any) => service.isPublished !== false);
   const selectedServiceForWorkRecord = publishedServiceOptions.find((service) => service.id === selectedServiceId);
@@ -1224,12 +1230,36 @@ export default function VendorJobs() {
   const isCreateJobPhoneValid = !hasPhoneInput || phoneDigits.length === 10;
   const isCreateJobEmailValid = hasEmailInput && trimmedEmail.includes('@') && trimmedEmail.includes('.');
   const isEditMode = jobModalMode === 'edit';
+  const isRecordingLocationValid =
+    selectedRecordingLocation === 'business' ||
+    selectedRecordingLocation === 'residence' ||
+    selectedRecordingLocation === 'customer-business';
+  const hasRequiredRecordingAddress =
+    isEditMode ||
+    selectedRecordingLocation === 'business' ||
+    (selectedRecordingLocation === 'residence' &&
+      Boolean(
+        newJob.customerResidenceAddress.trim() &&
+          newJob.customerResidenceCity.trim() &&
+          newJob.customerResidenceState.trim() &&
+          newJob.customerResidenceZipCode.trim()
+      )) ||
+    (selectedRecordingLocation === 'customer-business' &&
+      Boolean(
+        newJob.customerBusinessAddress.trim() &&
+          newJob.customerBusinessCity.trim() &&
+          newJob.customerBusinessState.trim() &&
+          newJob.customerBusinessZipCode.trim()
+      ));
   const canCreateJob = Boolean(
     trimmedCustomerFirstName &&
     trimmedCustomerLastName &&
     (isEditMode || (isCreateJobPhoneValid && isCreateJobEmailValid)) &&
     selectedServiceId &&
-    selectedRecordingLocation &&
+    selectedSchedule &&
+    isRecordingLocationValid &&
+    hasRequiredRecordingAddress &&
+    selectedParticipantPlan &&
     (isAddingServiceFromJob ? newServiceIsValid : Boolean(selectedServiceForWorkRecord)) &&
     vendorId &&
     !isCreatingJob &&
