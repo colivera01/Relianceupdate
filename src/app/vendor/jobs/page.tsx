@@ -48,6 +48,8 @@ import {
 import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation, shouldShowPermissionRefreshFeedback } from '@/lib/vendor-job-lifecycle-presentation';
 import { getMaterialWorkRecordEditFields } from '@/lib/vendor-job-material-edit';
 import { resolveVendorServiceOrderPresentation } from '@/lib/vendor-service-order-presentation';
+import { resolveVendorRecordingNoticePresentation } from '@/lib/vendor-recording-notice-presentation';
+import { resolveVendorPermissionExpiryRisk } from '@/lib/vendor-permission-expiry-presentation';
 import {
   formatRelianceDate,
   formatRelianceDateTime,
@@ -403,6 +405,9 @@ export default function VendorJobs() {
       allVideosPresent: !nextStage,
       nextStageLabel: stageLabel,
       serviceOrderSent: serviceOrderPresentation.serviceOrderSent,
+      serviceOrderReviewRequired:
+        snapshot?.managerAttestationRequiredForRelease === true &&
+        serviceOrderPresentation.serviceOrderSent !== true,
       consentRecipientLabel: formatCustomerConsentRecipient(job),
     });
   };
@@ -947,9 +952,12 @@ export default function VendorJobs() {
       workflowAction === 'Send Consent' ||
       workflowAction === 'View Consent Step' ||
       workflowAction === 'Resend Consent' ||
+      workflowAction === 'Review & Send Service Order' ||
       workflowAction === 'Send Service Order'
     ) {
-      if (workflowAction === 'Send Service Order') {
+      if (workflowAction === 'Review & Send Service Order') {
+        openJobDetails(job);
+      } else if (workflowAction === 'Send Service Order') {
         void handleResendEmployeeServiceOrder(job, false);
       } else {
         void openComplianceForNextStage(job);
@@ -1878,15 +1886,17 @@ export default function VendorJobs() {
       console.info('[recording-compliance] unsatisfied: invalid location', { locationChoice });
       return false;
     }
-    const consentSatisfied = snapshot.recordingUnlocked === true;
-    if (!consentSatisfied) {
-      console.info('[recording-compliance] unsatisfied: consent requirement not met', {
+    const recordingUnlocked = snapshot.recordingUnlocked === true;
+    if (!recordingUnlocked) {
+      console.info('[recording-compliance] unsatisfied: recording is not unlocked', {
         locationChoice,
+        permissionRequired: snapshot.permissionRequired,
         consentAccepted: snapshot.consentAccepted,
         hasVerifiedPermission: Boolean(snapshot.consentAccepted),
+        recordingUnlocked: snapshot.recordingUnlocked,
       });
     }
-    return consentSatisfied;
+    return recordingUnlocked;
   };
 
   const refreshRecordingComplianceSnapshot = async (
@@ -2403,8 +2413,10 @@ export default function VendorJobs() {
       latestConsentId: String(job?.latestConsentId || '').trim(),
       consentAcceptedAt: job?.consentAcceptedAt || null,
       consentDeclinedAt: job?.consentDeclinedAt || null,
+      consentExpiresAt: job?.consentExpiresAt || null,
       recordingCompliance: job?.recordingCompliance || null,
       consentNotification: job?.consentNotification || null,
+      recordingNotice: job?.recordingNotice || null,
       cancellation: job?.cancellation || null,
       ...preserveVendorDashboardCanonicalEvidence(job),
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
@@ -3241,6 +3253,8 @@ export default function VendorJobs() {
         email,
       });
       const automaticConsent = parsed?.automaticConsent;
+      const recordingNotice = parsed?.recordingNotice;
+      const recordingNoticeStatus = String(recordingNotice?.status || '').trim().toUpperCase();
       if (['requested', 'delivered', 'sending'].includes(String(automaticConsent?.status || '').toLowerCase())) {
         setConsentStatusByBookingId((prev) => ({
           ...prev,
@@ -3262,7 +3276,8 @@ export default function VendorJobs() {
         type:
           automaticConsent?.status === 'delivery_failed' ||
           automaticConsent?.status === 'no_digital_channel' ||
-          automaticConsent?.status === 'recipient_mismatch'
+          automaticConsent?.status === 'recipient_mismatch' ||
+          recordingNoticeStatus === 'FAILED'
             ? 'error'
             : 'success',
         message:
@@ -3274,6 +3289,12 @@ export default function VendorJobs() {
                 ? `Added the work record for ${client}, but no customer email or mobile phone is available. Recording stays locked until the recipient is corrected and permission is verified.`
                 : automaticConsent?.status === 'recipient_mismatch'
                   ? `Added the work record for ${client}, but the email and phone may belong to different accounts. Recording stays locked until the recipient is corrected.`
+                  : recordingNoticeStatus === 'FAILED'
+                    ? `Added the work record for ${client}, but the informational customer recording notice was not delivered. Check the saved email and mobile phone; Reliance will keep the notice queued for retry.`
+                    : recordingNoticeStatus === 'PARTIAL'
+                      ? `Added the work record for ${client}. The informational customer recording notice reached at least one channel, but another channel failed. Check the saved customer contact before the service.`
+                      : recordingNoticeStatus === 'SENT'
+                        ? `Added the work record for ${client}. The informational customer recording notice was delivered; no response is required.`
                 : addingServiceFromJob && resolvedServiceName
             ? `Created "${resolvedServiceName}" in Services Offered as pending admin approval and added the work record for ${client}. Next time, choose "${resolvedServiceName}" from the Service Offered / Work Type dropdown.`
             : `Added the work record for ${client}.`,
@@ -4688,45 +4709,6 @@ export default function VendorJobs() {
     } finally {
       setArchiveActionLoadingId(null);
     }
-  };
-
-  const jobBlocksEmployeeAvailability = (job: any): boolean => {
-    const raw = String(job?.status || '').trim().toLowerCase();
-    const normalized = raw.replace(/[_\s]+/g, '-');
-    return (
-      normalized === 'pending' ||
-      normalized === 'scheduled' ||
-      normalized === 'in-progress' ||
-      normalized === 'confirmed'
-    );
-  };
-
-  // Get available employees (active or invited memberships without active/pending assignments)
-  const getAvailableEmployees = () => {
-    const assignedMembershipIdSet = new Set<string>();
-    jobs.forEach((job) => {
-      if (!jobBlocksEmployeeAvailability(job)) {
-        return;
-      }
-      const ids = Array.isArray(job.assignedMembershipIds) ? job.assignedMembershipIds : [];
-      ids.forEach((id: string) => assignedMembershipIdSet.add(String(id)));
-      if (ids.length === 0 && Array.isArray(job.assignedEmployees) && teamMembers.length > 0) {
-        job.assignedEmployees.forEach((empName: string) => {
-          const m = teamMembers.find(
-            (t) => t.name.trim().toLowerCase() === String(empName).trim().toLowerCase()
-          );
-          if (m) assignedMembershipIdSet.add(m.membershipId);
-        });
-      }
-    });
-
-    return teamMembers
-      .filter((m) => !assignedMembershipIdSet.has(m.membershipId))
-      .map((m) => ({
-        id: m.membershipId,
-        name: m.name,
-        photo: avatarUrlForName(m.name),
-      }));
   };
 
   // Persisted job action functions
@@ -7071,7 +7053,7 @@ export default function VendorJobs() {
               ) : employeesLoadError ? (
                 <p className="text-sm text-red-700">{employeesLoadError}</p>
               ) : teamMembers.length === 0 ? (
-                <p className="text-sm text-amber-700">No available employees for assignment.</p>
+                <p className="text-sm text-amber-700">No active employees are eligible for assignment.</p>
               ) : (
                 <div className="space-y-2">
                   {teamMembers.map((m) => (
@@ -7188,7 +7170,7 @@ export default function VendorJobs() {
               ) : employeesLoadError ? (
                 <p className="text-sm text-red-700">{employeesLoadError}</p>
               ) : teamMembers.length === 0 ? (
-                <p className="text-sm text-amber-700">No available employees for assignment.</p>
+                <p className="text-sm text-amber-700">No active employees are eligible for assignment.</p>
               ) : (
                 <div className="space-y-2">
                   {teamMembers.map((m) => (
@@ -8299,17 +8281,17 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
-      {/* Available Employees Section */}
+      {/* Active assignment roster */}
       {!isEmployeeView && (
       <div className="mb-6">
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold text-green-800 flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Available Employees for Assignment
+              Active Employees Eligible for Assignment
             </h3>
             <Badge className="bg-green-100 text-green-800">
-              {getAvailableEmployees().length} available
+              {teamMembers.length} active
             </Badge>
           </div>
           
@@ -8321,25 +8303,30 @@ export default function VendorJobs() {
             <div className="text-center py-4">
               <p className="text-red-700">{employeesLoadError}</p>
             </div>
-          ) : getAvailableEmployees().length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {getAvailableEmployees().map(employee => (
-                <div key={employee.id} className="bg-white border border-green-200 rounded-lg p-3 flex items-center gap-3">
-                  <img 
-                    src={employee.photo} 
-                    alt={employee.name} 
-                    className="w-10 h-10 rounded-full"
-                  />
-                  <div>
-                    <p className="font-medium text-gray-900">{employee.name}</p>
-                    <p className="text-sm text-green-600">Available for assignment</p>
+          ) : teamMembers.length > 0 ? (
+            <div>
+              <p className="mb-3 text-sm text-green-800">
+                These active employees appear in Assign Job. Confirm schedules before assigning overlapping work.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {teamMembers.map(employee => (
+                  <div key={employee.membershipId} className="bg-white border border-green-200 rounded-lg p-3 flex items-center gap-3">
+                    <img
+                      src={avatarUrlForName(employee.name)}
+                      alt={employee.name}
+                      className="w-10 h-10 rounded-full"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">{employee.name}</p>
+                      <p className="text-sm text-green-600">Eligible for assignment</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           ) : (
             <div className="text-center py-4">
-              <p className="text-gray-600">No active employees are available for assignment yet.</p>
+              <p className="text-gray-600">No active employees are eligible for assignment.</p>
             </div>
           )}
         </div>
@@ -8683,6 +8670,78 @@ export default function VendorJobs() {
                             </Button>
                           </div>
                         ) : null}
+                      </div>
+                    );
+                  })() : null}
+                  {!isEmployeeView ? (() => {
+                    const notice = resolveVendorRecordingNoticePresentation(job?.recordingNotice);
+                    if (!notice) return null;
+                    const noticeClasses = {
+                      info: 'border-blue-300/35 bg-blue-500/10 text-blue-50',
+                      warning: 'border-amber-300/35 bg-amber-500/10 text-amber-50',
+                      error: 'border-rose-300/35 bg-rose-500/10 text-rose-50',
+                    };
+                    return (
+                      <div
+                        className={`rounded-md border px-4 py-3 ${noticeClasses[notice.tone]}`}
+                        role={notice.tone === 'error' ? 'alert' : 'status'}
+                        data-testid={`recording-notice-delivery-${job.id}`}
+                      >
+                        <p className="text-sm font-semibold">{notice.title}</p>
+                        <p className="mt-1 text-xs leading-5 opacity-85">{notice.detail}</p>
+                        <p className="mt-2 text-xs opacity-75">
+                          This is an informational notice, not a customer recording-permission request.
+                        </p>
+                        {notice.reviewContact ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-3 border-current/30 bg-transparent text-current hover:bg-white/10 hover:text-current"
+                            onClick={() => openEditModal(job)}
+                          >
+                            Review customer contact
+                          </Button>
+                        ) : null}
+                      </div>
+                    );
+                  })() : null}
+                  {!isEmployeeView ? (() => {
+                    const expiryRisk = resolveVendorPermissionExpiryRisk({
+                      permissionRequired: job?.recordingCompliance?.permissionRequired === true,
+                      permissionStatus: job?.consentStatus,
+                      expiresAt: job?.consentExpiresAt,
+                      scheduledFor: job?.date,
+                    });
+                    if (!expiryRisk) return null;
+                    const expired = expiryRisk.kind === 'EXPIRED';
+                    return (
+                      <div
+                        className={`rounded-md border px-4 py-3 ${
+                          expired
+                            ? 'border-rose-300/35 bg-rose-500/10 text-rose-50'
+                            : 'border-amber-300/35 bg-amber-500/10 text-amber-50'
+                        }`}
+                        role={expired ? 'alert' : 'status'}
+                        data-testid={`permission-expiry-warning-${job.id}`}
+                      >
+                        <p className="text-sm font-semibold">
+                          {expired
+                            ? 'Recording-permission link expired'
+                            : 'Recording-permission link expires before this appointment'}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 opacity-85">
+                          {expired
+                            ? `The prior secure link expired ${formatRelianceDateTime(expiryRisk.expiresAt)}. Recording stays locked until the verified customer contact decides through a current link.`
+                            : `The current secure link expires ${formatRelianceDateTime(expiryRisk.expiresAt)}, before service is scheduled for ${formatRelianceDateTime(expiryRisk.scheduledFor)}. The customer may decide before expiry; otherwise send a new 48-hour link closer to service.`}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3 border-current/30 bg-transparent text-current hover:bg-white/10 hover:text-current"
+                          onClick={() => openPermissionRecoveryForJob(job)}
+                        >
+                          Manage Recording Permission
+                        </Button>
                       </div>
                     );
                   })() : null}

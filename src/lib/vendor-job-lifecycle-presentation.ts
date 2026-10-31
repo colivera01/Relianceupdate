@@ -28,6 +28,7 @@ export type VendorJobLifecycleInput = {
   allVideosPresent?: boolean;
   nextStageLabel?: string | null;
   serviceOrderSent?: boolean;
+  serviceOrderReviewRequired?: boolean;
   consentRecipientLabel?: string | null;
 };
 
@@ -209,6 +210,16 @@ export function resolveVendorJobLifecyclePresentation(
         `Complete ${nextStage} from the secure employee Service Order.`,
       );
     }
+    if (input.serviceOrderReviewRequired) {
+      return result(
+        "Review Service Order before sending",
+        "Review the exact Employee assignment and recording scope. A current Manager Work Record attestation is required before Reliance can send the Service Order.",
+        "Review & Send Service Order",
+        "blue",
+        "Vendor manager",
+        "Open the Work Record, confirm the Manager attestation, and send the secure Service Order.",
+      );
+    }
     return result(
       "Ready to send Service Order",
       `Recording permission is verified for ${recipient}.`,
@@ -248,6 +259,16 @@ export function resolveVendorJobLifecyclePresentation(
   }
   if (input.serviceOrderSent) {
     return result("Service Order Sent", "The assigned employee received the Service Order.", "Service Order Sent", "green", "Assigned employee", `Complete ${nextStage} from the secure employee Service Order.`);
+  }
+  if (input.serviceOrderReviewRequired) {
+    return result(
+      "Review Service Order before sending",
+      "Review the exact Employee assignment and recording scope. A current Manager Work Record attestation is required before Reliance can send the Service Order.",
+      "Review & Send Service Order",
+      "blue",
+      "Vendor manager",
+      "Open the Work Record, confirm the Manager attestation, and send the secure Service Order.",
+    );
   }
   return result("Ready to send Service Order", "The employee will verify the saved location before recording begins.", "Send Service Order", "blue", "Vendor manager", "Send the secure Service Order to the assigned employee.");
 }

@@ -47,6 +47,8 @@ const USE_DASHBOARD_CACHE =
 const DASHBOARD_DEBUG_LOG = process.env.NODE_ENV !== "production";
 const APPROVED_STATUS = "APPROVED";
 const PUBLIC_VISIBILITY_STATUS = "PUBLIC";
+const CUSTOMER_PERMISSION_NOTIFICATION_KIND_PREFIX = "CUSTOMER_PERMISSION_REQUEST";
+const CUSTOMER_RECORDING_NOTICE_KIND_PREFIX = "CUSTOMER_RECORDING_NOTICE";
 
 function approvedCustomerReviewWhereForVendor(
   vendorId: string,
@@ -677,7 +679,10 @@ export async function GET(
           (prisma as any).bookingNotification.findMany({
             where: {
               bookingId: { in: bookingIds },
-              kind: { startsWith: 'CUSTOMER_PERMISSION_REQUEST' },
+              OR: [
+                { kind: { startsWith: CUSTOMER_PERMISSION_NOTIFICATION_KIND_PREFIX } },
+                { kind: { startsWith: CUSTOMER_RECORDING_NOTICE_KIND_PREFIX } },
+              ],
             },
             orderBy: { createdAt: 'desc' },
           })
@@ -722,6 +727,7 @@ export async function GET(
     const sessionsForPhaseByBookingId = new Map<string, any[]>();
     const latestConsentByBookingId = new Map<string, any>();
     const consentNotificationByBookingId = new Map<string, any>();
+    const recordingNoticeNotificationByBookingId = new Map<string, any>();
     const currentPackageByBookingId = new Map(
       currentServiceVideoPackages.map((pkg: any) => [String(pkg.bookingId), pkg]),
     );
@@ -747,7 +753,13 @@ export async function GET(
     }
     for (const notification of consentNotifications as any[]) {
       const key = String(notification?.bookingId || "");
-      if (key && !consentNotificationByBookingId.has(key)) {
+      if (!key) continue;
+      const kind = String(notification?.kind || "");
+      if (kind.startsWith(CUSTOMER_RECORDING_NOTICE_KIND_PREFIX)) {
+        if (!recordingNoticeNotificationByBookingId.has(key)) {
+          recordingNoticeNotificationByBookingId.set(key, notification);
+        }
+      } else if (!consentNotificationByBookingId.has(key)) {
         consentNotificationByBookingId.set(key, notification);
       }
     }
@@ -782,6 +794,8 @@ export async function GET(
         : null;
       const consentNotification =
         consentNotificationByBookingId.get(String(booking.id)) || null;
+      const recordingNoticeNotification =
+        recordingNoticeNotificationByBookingId.get(String(booking.id)) || null;
       const packageState = evaluateVendorJobPackageState(
         sessionsForPhaseByBookingId.get(String(booking.id)) || []
       );
@@ -906,7 +920,9 @@ export async function GET(
           : null,
         consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,
         consentDeclinedAt: latestConsentRecord?.declinedAt?.toISOString?.() || null,
+        consentExpiresAt: latestConsentRecord?.expiresAt?.toISOString?.() || null,
         consentNotification: toBookingNotificationState(consentNotification),
+        recordingNotice: toBookingNotificationState(recordingNoticeNotification),
         cancellation: extractCancellationFromMetadata(booking.customerMetadata),
         source: resolveJobSourceFromMetadata(booking.customerMetadata),
         createdAt: booking.createdAt?.toISOString() || null,

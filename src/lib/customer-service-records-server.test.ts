@@ -158,6 +158,33 @@ describe('customer Service Records server loader', () => {
     expect(result.records[0].customer_record.attention.actionHref).toBe('/consent/token');
   });
 
+  it('shows vendor-created pending work as a scheduled Service Record, not an unaccepted customer request', async () => {
+    const row = {
+      ...booking(1, 'PENDING'),
+      customerMetadata: JSON.stringify({
+        customer_account_linked: true,
+        claim_status: 'CLAIMED',
+      }),
+    };
+    const db = database({ bookings: [row] });
+    const result = await loadCustomerServiceRecords({
+      db,
+      customerUserId: 'customer-1',
+      requestedTab: 'upcoming',
+    });
+
+    expect(result.records[0].customer_record).toMatchObject({
+      lifecycle: 'UPCOMING',
+      lifecycleLabel: 'Scheduled by business',
+      request: {
+        state: 'SCHEDULED',
+        label: 'Scheduled by business',
+        needsResponse: false,
+        requestedScheduledFor: row.scheduledFor.toISOString(),
+      },
+    });
+  });
+
   it('keeps unknown current states accessible only through the neutral fallback', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const db = database({ bookings: [booking(1, 'FUTURE_UNKNOWN')] });

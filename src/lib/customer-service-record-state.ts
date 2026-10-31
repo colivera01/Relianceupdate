@@ -143,6 +143,8 @@ function permissionNeedsCustomerAction(consent: CustomerRecordConsentLike | null
 
 export function deriveCustomerServiceRecordState(input: {
   bookingStatus: string | null | undefined;
+  bookingSource?: string | null;
+  scheduledFor?: Date | string | null;
   hasExplicitCompletedEvidence?: boolean;
   organizationEvents?: CustomerRecordOrganizationEventLike[] | null;
   currentConsent?: CustomerRecordConsentLike | null;
@@ -159,6 +161,12 @@ export function deriveCustomerServiceRecordState(input: {
 }): CustomerServiceRecordState {
   const bookingStatus = normalize(input.bookingStatus);
   const requestLifecycleState = normalize(input.requestLifecycle?.state);
+  const scheduledFor = asIso(input.scheduledFor);
+  const vendorCreatedScheduled =
+    bookingStatus === 'PENDING' &&
+    requestLifecycleState === '' &&
+    normalize(input.bookingSource) === 'VENDOR_CREATED_JOB' &&
+    Boolean(scheduledFor);
   const legacyArchived = bookingStatus === 'ARCHIVED';
   const completedEvidence = input.hasExplicitCompletedEvidence === true;
   const cancelled = bookingStatus === 'CANCELED' || bookingStatus === 'CANCELLED';
@@ -280,6 +288,16 @@ export function deriveCustomerServiceRecordState(input: {
       responseReason: String(input.requestLifecycle?.response_reason || '').trim() || null,
       proposedScheduledFor: asIso(input.requestLifecycle?.proposed_scheduled_for),
       requestedScheduledFor: asIso(input.requestLifecycle?.requested_scheduled_for),
+    };
+  } else if (vendorCreatedScheduled) {
+    request = {
+      state: 'SCHEDULED',
+      label: 'Scheduled by business',
+      detail: 'The business created this Service Record for the scheduled appointment.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: scheduledFor,
     };
   } else if (requestLifecycleState === 'REQUESTED' || bookingStatus === 'PENDING') {
     request = {

@@ -1110,4 +1110,36 @@ describe("database-backed canonical recording gate", () => {
       },
     });
   });
+
+  it("keeps repeated observe evaluations read-only while preserving the blocked result", async () => {
+    const observeMetadata = JSON.stringify({
+      ...JSON.parse(metadata),
+      vendor_job_service_order_released_membership_ids: [],
+      vendor_job_service_order_releases: [],
+      vendor_job_service_order_released_at: null,
+    });
+
+    const first = await load({
+      capability: "observe",
+      customerMetadata: observeMetadata,
+      actorKind: "VENDOR_MANAGER",
+      surface: "vendor_jobs",
+    });
+    const second = await load({
+      capability: "observe",
+      customerMetadata: observeMetadata,
+      actorKind: "VENDOR_MANAGER",
+      surface: "vendor_jobs",
+    });
+
+    expect(first).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "SERVICE_ORDER_RELEASE_REQUIRED",
+    });
+    expect(second).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "SERVICE_ORDER_RELEASE_REQUIRED",
+    });
+    expect(db.metricCreate).not.toHaveBeenCalled();
+  });
 });

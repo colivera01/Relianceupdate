@@ -77,6 +77,42 @@ describe('customer Service Record canonical state', () => {
     });
   });
 
+  it('presents a vendor-created pending appointment as scheduled instead of a customer request awaiting acceptance', () => {
+    const state = resolve({
+      bookingStatus: 'PENDING',
+      bookingSource: 'vendor_created_job',
+      scheduledFor: '2026-11-03T16:00:00.000Z',
+      requestLifecycle: null,
+    });
+
+    expect(state.request).toEqual({
+      state: 'SCHEDULED',
+      label: 'Scheduled by business',
+      detail: 'The business created this Service Record for the scheduled appointment.',
+      needsResponse: false,
+      responseReason: null,
+      proposedScheduledFor: null,
+      requestedScheduledFor: '2026-11-03T16:00:00.000Z',
+    });
+    expect(state.lifecycle).toBe('UPCOMING');
+    expect(state.lifecycleLabel).toBe('Scheduled by business');
+  });
+
+  it('does not infer vendor-created scheduling without both authoritative source and appointment evidence', () => {
+    expect(resolve({
+      bookingStatus: 'PENDING',
+      bookingSource: 'vendor_created_job',
+      scheduledFor: null,
+      requestLifecycle: null,
+    }).request.state).toBe('REQUESTED');
+    expect(resolve({
+      bookingStatus: 'PENDING',
+      bookingSource: 'customer_booking',
+      scheduledFor: '2026-11-03T16:00:00.000Z',
+      requestLifecycle: null,
+    }).request.state).toBe('REQUESTED');
+  });
+
   it('marks only an actionable current recording request as Needs Attention', () => {
     const state = resolve({
       bookingStatus: 'CONFIRMED',

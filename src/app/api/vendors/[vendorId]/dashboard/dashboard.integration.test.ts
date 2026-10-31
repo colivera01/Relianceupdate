@@ -336,6 +336,89 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(hoisted.bookingFindMany.mock.calls[1]?.[0]).not.toHaveProperty("take");
   });
 
+  it("exposes the latest informational recording-notice delivery separately from permission delivery", async () => {
+    mockHappyPathData();
+    hoisted.bookingNotificationFindMany.mockReset().mockResolvedValue([
+      {
+        id: "notice-1",
+        bookingId: "job-1",
+        kind: "CUSTOMER_RECORDING_NOTICE:1",
+        status: "FAILED",
+        attemptCount: 1,
+        channelsJson: JSON.stringify([
+          { channel: "email", attempted: true, success: false, errorMessage: "email_delivery_failed" },
+        ]),
+        lastError: "email_delivery_failed",
+        lastAttemptAt: new Date("2026-04-15T10:10:00.000Z"),
+        sentAt: null,
+        createdAt: new Date("2026-04-15T10:00:00.000Z"),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res) as any;
+
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingNotificationFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          bookingId: { in: ["job-1"] },
+          OR: [
+            { kind: { startsWith: "CUSTOMER_PERMISSION_REQUEST" } },
+            { kind: { startsWith: "CUSTOMER_RECORDING_NOTICE" } },
+          ],
+        }),
+      }),
+    );
+    expect(body.recentJobs[0]).toMatchObject({
+      consentNotification: null,
+      recordingNotice: {
+        status: "FAILED",
+        attemptCount: 1,
+        lastError: "email_delivery_failed",
+        sentAt: null,
+      },
+    });
+  });
+
+  it("exposes the current permission-link expiry for vendor recovery guidance", async () => {
+    mockHappyPathData();
+    hoisted.consentRecordFindMany.mockResolvedValue([{
+      id: "permission-1",
+      bookingId: "job-1",
+      status: "requested",
+      lifecycleStatus: "PENDING",
+      verifiedDecision: false,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      recipientMismatch: false,
+      recipientEmailMasked: "p***@example.com",
+      recipientPhoneMasked: null,
+      acceptedAt: null,
+      declinedAt: null,
+      requestedAt: new Date("2026-10-31T21:25:00.000Z"),
+      expiresAt: new Date("2026-11-02T21:25:00.000Z"),
+      decisionEvidence: null,
+    }]);
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res) as any;
+
+    expect(res.status).toBe(200);
+    expect(body.recentJobs[0]).toMatchObject({
+      consentStatus: "pending",
+      consentExpiresAt: "2026-11-02T21:25:00.000Z",
+    });
+  });
+
   it("separates verified star metrics from publicly approved written comments", async () => {
     mockHappyPathData();
     hoisted.reviewFindMany.mockReset().mockResolvedValue([]);

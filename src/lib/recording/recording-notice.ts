@@ -83,7 +83,7 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   const text = [
     `Hello${customerName ? ` ${customerName}` : ""},`,
     "",
-    `${vendorName} plans to create three short, ${recordingFormat} proof-of-service clips for ${serviceName}.`,
+    `${vendorName} plans to create three short ${recordingFormat} Service Videos for ${serviceName}.`,
     scopeDisclosure,
     "Minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, and confidential information must not be recorded.",
     `${audioDisclosure} Recordings start Private. Public sharing would require a separate later decision.`,
@@ -93,10 +93,10 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   ].join("\n");
   const html = buildRelianceEmailHtml({
     eyebrow: "Recording notice",
-    headline: "Private proof-of-service recording is planned",
+    headline: "Private Service Video recording is planned",
     greeting: `Hello${customerName ? ` ${customerName}` : ""},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> plans to create three short, ${recordingFormat} proof-of-service clips.</p>
+      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> plans to create three short ${recordingFormat} Service Videos.</p>
       <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(scopeDisclosure)}</p>
       <p style="margin:0 0 14px;">Minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, and confidential information must not be recorded.</p>
       <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(audioDisclosure)} Recordings start Private. Public sharing would require a separate later decision.</p>
@@ -133,7 +133,7 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance: ${vendorName} plans ${recordingFormat} Private proof for ${serviceName}. ${scopeDisclosure} ${audioDisclosure} No response required. Reply STOP to opt out.`;
+    const body = `Reliance: ${vendorName} plans ${recordingFormat} Service Videos for ${serviceName}. ${scopeDisclosure} ${audioDisclosure} Service Videos start Private. No response required. Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",

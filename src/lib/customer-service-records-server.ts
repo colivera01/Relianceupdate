@@ -35,6 +35,19 @@ function normalized(value: unknown): string {
   return String(value || '').trim().toUpperCase();
 }
 
+function bookingSourceFromCustomerMetadata(metadata: Record<string, unknown>): string | null {
+  const explicitSource = String(metadata.booking_source || metadata.source || '').trim().toLowerCase();
+  if (explicitSource === 'customer_booking') return 'customer_booking';
+  if (
+    explicitSource === 'vendor_created_job' ||
+    Boolean(String(metadata.claim_status || '').trim()) ||
+    typeof metadata.customer_account_linked === 'boolean'
+  ) {
+    return 'vendor_created_job';
+  }
+  return null;
+}
+
 function mapLatestByBooking<T extends { bookingId: string }>(rows: T[]): Map<string, T> {
   const result = new Map<string, T>();
   for (const row of rows) {
@@ -352,6 +365,8 @@ export async function loadCustomerServiceRecords(input: {
     const requestLifecycle = parseJsonRecord(customerMetadata.service_request);
     const state = deriveCustomerServiceRecordState({
       bookingStatus: booking.status,
+      bookingSource: bookingSourceFromCustomerMetadata(customerMetadata),
+      scheduledFor: booking.scheduledFor || booking.date,
       hasExplicitCompletedEvidence: Boolean(pkg),
       organizationEvents: eventsByBooking.get(id) || [],
       currentConsent: consentByBooking.get(id) || null,

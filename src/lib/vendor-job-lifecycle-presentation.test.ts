@@ -109,6 +109,22 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.actionLabel).toBe("Service Order Sent");
   });
 
+  it("routes an unreleased Service Order through exact manager review before sending", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "PENDING",
+      locationSelected: true,
+      permissionRequired: false,
+      assigned: true,
+      serviceOrderSent: false,
+      serviceOrderReviewRequired: true,
+    });
+
+    expect(state.label).toBe("Review Service Order before sending");
+    expect(state.actionLabel).toBe("Review & Send Service Order");
+    expect(state.detail).toContain("Manager Work Record attestation");
+    expect(state.resolution).toContain("Open the Work Record");
+  });
+
   it.each([
     ["pending", "info", "Still waiting for customer permission."],
     ["allowed", "success", "Customer permission approved."],

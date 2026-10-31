@@ -54,6 +54,8 @@ describe("customer recording notice", () => {
       vi.mocked(sendEmail).mock.calls[0][0],
       vi.mocked(sendSms).mock.calls[0][0],
     ]);
+    expect(serialized).toMatch(/Service Videos/);
+    expect(serialized).not.toMatch(/proof/i);
     expect(serialized).not.toMatch(/allow recording|approve recording|public approval/i);
     expect(serialized).not.toMatch(/audio is included|video-and-audio/i);
   });

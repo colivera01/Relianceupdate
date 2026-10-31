@@ -100,4 +100,40 @@ describe("Vendor operations UI contract", () => {
     expect(page).toContain('data-testid={`vendor-job-primary-action-${job.id}`}');
     expect(smoke).toContain("name: 'Open Work Record'");
   });
+
+  it("keeps the assignment roster consistent with the employees shown in Assign Job", () => {
+    const page = source("src/app/vendor/jobs/page.tsx");
+
+    expect(page).toContain("Active Employees Eligible for Assignment");
+    expect(page).toContain("{teamMembers.length} active");
+    expect(page).toContain("These active employees appear in Assign Job");
+    expect(page).toContain("{teamMembers.map(employee => (");
+    expect(page).toContain("No active employees are eligible for assignment.");
+    expect(page).not.toContain("getAvailableEmployees");
+    expect(page).not.toContain("jobBlocksEmployeeAvailability");
+  });
+
+  it("routes unreleased Service Orders through Manager attestation before delivery", () => {
+    const listPage = source("src/app/vendor/jobs/page.tsx");
+    const detailPage = source("src/app/vendor/jobs/[jobId]/page.tsx");
+    const attestation = source("src/components/vendor/ManagerWorkRecordAttestation.tsx");
+
+    expect(listPage).toContain("serviceOrderReviewRequired:");
+    expect(listPage).toContain("workflowAction === 'Review & Send Service Order'");
+    expect(listPage).toContain("openJobDetails(job)");
+    expect(detailPage).toContain("onStatusChange={setManagerAttestationCurrent}");
+    expect(detailPage).toContain('action: "RELEASE_EMPLOYEE_SERVICE_ORDER"');
+    expect(detailPage).toContain("managerAttestationCurrent &&");
+    expect(detailPage).toContain('normalizeStatus(job.recordingCompliance?.permissionStatus)');
+    expect(attestation).toContain("props.onStatusChange?.(body?.status?.current === true)");
+  });
+
+  it("warns managers when a secure permission link expires before scheduled service", () => {
+    const page = source("src/app/vendor/jobs/page.tsx");
+
+    expect(page).toContain("resolveVendorPermissionExpiryRisk");
+    expect(page).toContain("Recording-permission link expires before this appointment");
+    expect(page).toContain("send a new 48-hour link closer to service");
+    expect(page).toContain("Manage Recording Permission");
+  });
 });

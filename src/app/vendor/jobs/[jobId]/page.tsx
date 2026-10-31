@@ -286,6 +286,8 @@ export default function VendorJobDetailPage() {
   const [playbackCompleted, setPlaybackCompleted] = useState(false);
   const [reviewedStages, setReviewedStages] = useState<ReviewStage[]>([]);
   const [resendingCompletedOrder, setResendingCompletedOrder] = useState(false);
+  const [managerAttestationCurrent, setManagerAttestationCurrent] = useState(false);
+  const [serviceOrderSending, setServiceOrderSending] = useState(false);
   const [serviceRequestDialog, setServiceRequestDialog] = useState<'DECLINE' | 'COUNTER' | null>(null);
   const [serviceRequestReason, setServiceRequestReason] = useState('');
   const [serviceRequestProposedAt, setServiceRequestProposedAt] = useState('');
@@ -388,6 +390,9 @@ export default function VendorJobDetailPage() {
       allVideosPresent: allStagesExist,
       nextStageLabel: nextStage,
       serviceOrderSent: job?.recordingCompliance?.serviceOrderCurrent === true,
+      serviceOrderReviewRequired:
+        job?.recordingCompliance?.managerAttestationRequiredForRelease === true &&
+        job?.recordingCompliance?.serviceOrderCurrent !== true,
       consentRecipientLabel: job?.customerEmail || job?.customerPhone || "the customer",
     });
   }, [allStagesExist, correctionPending, job, nextMissingStage, normalizedStatus]);
@@ -473,6 +478,33 @@ export default function VendorJobDetailPage() {
     lastAutoLoadKeyRef.current = loadKey;
     void load();
   }, [effectiveVendorId, jobId, vendorProfileLoading]);
+
+  const sendEmployeeServiceOrder = async () => {
+    if (!effectiveVendorId || !jobId || !managerAttestationCurrent || serviceOrderSending) return;
+    setServiceOrderSending(true);
+    setActionMessage(null);
+    setActionError(null);
+    try {
+      const response = await fetch(
+        `/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/actions`,
+        {
+          method: "PATCH",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "RELEASE_EMPLOYEE_SERVICE_ORDER" }),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.success === false) {
+        throw new Error(actionErrorMessage(body, "The Service Order could not be sent."));
+      }
+      setActionMessage(String(body?.message || "Employee Service Order sent."));
+      await load();
+    } catch (nextError) {
+      setActionError(nextError instanceof Error ? nextError.message : "The Service Order could not be sent.");
+    } finally {
+      setServiceOrderSending(false);
+    }
+  };
 
   const watchStage = async (stageKey: ReviewStage) => {
     if (!effectiveVendorId) return;
@@ -1116,7 +1148,29 @@ export default function VendorJobDetailPage() {
                     bookingId={job.id}
                     headers={headers}
                     serviceOrderCurrent={job.recordingCompliance?.serviceOrderCurrent === true}
+                    onStatusChange={setManagerAttestationCurrent}
                   />
+                  {managerAttestationCurrent &&
+                  job.recordingCompliance?.serviceOrderCurrent !== true &&
+                  Boolean(job.assignedEmployees?.length) &&
+                  (job.recordingCompliance?.permissionRequired !== true ||
+                    ["ACCEPTED", "ALLOWED"].includes(
+                      normalizeStatus(job.recordingCompliance?.permissionStatus),
+                    )) ? (
+                    <div className="mt-5 border-t border-slate-200 pt-5">
+                      <p className="text-sm text-slate-700">
+                        The current assignment and recording scope are attested. Send the secure Service Order to the assigned Employee.
+                      </p>
+                      <Button
+                        type="button"
+                        className="mt-3 bg-blue-700 text-white hover:bg-blue-800"
+                        disabled={serviceOrderSending}
+                        onClick={() => void sendEmployeeServiceOrder()}
+                      >
+                        {serviceOrderSending ? "Sending Service Order..." : "Send Service Order"}
+                      </Button>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             ) : null}

@@ -28,6 +28,7 @@ export function ManagerWorkRecordAttestation(props: {
   bookingId: string;
   headers: Record<string, string>;
   serviceOrderCurrent: boolean;
+  onStatusChange?: (current: boolean) => void;
 }) {
   const [view, setView] = useState<View | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -43,6 +44,7 @@ export function ManagerWorkRecordAttestation(props: {
   async function load() {
     setLoading(true);
     setError("");
+    props.onStatusChange?.(false);
     try {
       const response = await fetch(
         `/api/vendors/${encodeURIComponent(props.vendorId)}/jobs/${encodeURIComponent(props.bookingId)}/manager-attestation`,
@@ -53,6 +55,7 @@ export function ManagerWorkRecordAttestation(props: {
         throw new Error(body?.error || "Manager attestation could not be loaded.");
       }
       setView(body as View);
+      props.onStatusChange?.(body?.status?.current === true);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Manager attestation could not be loaded.");
     } finally {

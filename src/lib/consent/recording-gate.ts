@@ -992,14 +992,21 @@ export async function loadCanonicalRecordingGate(input: {
     }
     return decision;
   }
-  await recordBlockMetric({
-    bookingId: input.bookingId,
-    vendorId: input.vendorId || assessment?.vendorId || "",
-    surface: input.surface,
-    block: decision.block,
-    actorKind: input.actorKind,
-    db,
-  });
+  // `observe` is used by dashboard/detail GET routes to render current state.
+  // A read-only refresh must not create diagnostic rows; otherwise polling and
+  // navigation inflate block metrics without a participant attempting an
+  // action. Release/record evaluations remain action boundaries and continue
+  // to emit the same operational block metrics.
+  if (capability !== "observe") {
+    await recordBlockMetric({
+      bookingId: input.bookingId,
+      vendorId: input.vendorId || assessment?.vendorId || "",
+      surface: input.surface,
+      block: decision.block,
+      actorKind: input.actorKind,
+      db,
+    });
+  }
   return decision;
 }
 
