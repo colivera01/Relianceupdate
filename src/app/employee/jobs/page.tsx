@@ -23,6 +23,7 @@ import {
   getEmployeeCaptureStageHeading,
   getEmployeeCaptureSupportCopy,
   getEmployeeStageStep,
+  getMissingEmployeeStagePrerequisite,
   getNextEmployeeCaptureStage,
 } from "@/lib/employee-stage-capture";
 import {
@@ -2043,7 +2044,7 @@ export default function EmployeeJobsPage() {
             <p className="mt-1 text-xs leading-5 text-blue-100/80">
               Do not record minors, unrelated people or conversations, private documents or screens, sensitive account information, credentials, keys, security details, confidential information, or anything outside this scope. Stop if conditions change.
             </p>
-            {canonicalBlock?.code === "EMPLOYEE_CERTIFICATION_REQUIRED" ? (
+            {canonicalBlock?.code === "EMPLOYEE_CERTIFICATION_REQUIRED" && legalAssentCurrent === true ? (
               <button
                 type="button"
                 onClick={() => void certifyRecordingScope(job.id)}
@@ -2133,6 +2134,10 @@ export default function EmployeeJobsPage() {
                 bookingId={job.id}
                 stage={selectedStage.key}
                 serviceLocation={job.recordingCompliance?.serviceLocation}
+                intentionalParticipantPlan={
+                  job.recordingCompliance?.scopeSummary?.intentionalParticipantPlan
+                }
+                audioAllowed={Boolean(job.recordingCompliance?.audioAllowed)}
                 headers={employeeRequestHeaders()}
                 onComplete={async () => {
                   setSafetyRecheckJobId(null);
@@ -2181,9 +2186,17 @@ export default function EmployeeJobsPage() {
                 );
                 const stageCorrectionRequested =
                   job.recordingCompliance?.correctionRequestedStages?.includes(stage.key) === true;
+                const missingStagePrerequisite = correctionRequested
+                  ? null
+                  : getMissingEmployeeStagePrerequisite(job.stageProgress, stage.key);
+                const missingStagePrerequisiteLabel = missingStagePrerequisite
+                  ? STAGES.find((candidate) => candidate.key === missingStagePrerequisite)?.label
+                  : null;
+                const stageChronologyBlocked = Boolean(missingStagePrerequisite);
                 const canStartThisStage =
                   hasCaptureToken &&
                   (!stageBlocked || stageCanResolveLocation) &&
+                  !stageChronologyBlocked &&
                   !capturedDraft &&
                   !recordingKey &&
                   !recordingOpeningKey &&
@@ -2204,6 +2217,7 @@ export default function EmployeeJobsPage() {
                     }}
                     disabled={
                       (stageBlocked && (!stageCanResolveLocation || serviceOrderSafetyRequired)) ||
+                      stageChronologyBlocked ||
                       safetyRecheckRequested ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
@@ -2253,6 +2267,8 @@ export default function EmployeeJobsPage() {
                                 ? done
                                   ? "Replacement saved"
                                   : "Correction requested - tap to record"
+                            : stageChronologyBlocked
+                              ? `Complete ${missingStagePrerequisiteLabel || "the earlier stage"} first`
                             : stageBlocked
                             ? stageCanResolveSafety
                               ? "Locked until the one-time check"

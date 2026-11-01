@@ -8,6 +8,7 @@ import {
   getEmployeeCaptureStageHeading,
   getEmployeeCaptureSupportCopy,
   getEmployeeStageStep,
+  getMissingEmployeeStagePrerequisite,
   getNextEmployeeCaptureStage,
 } from "@/lib/employee-stage-capture";
 
@@ -46,6 +47,33 @@ describe("employee-stage-capture", () => {
         COMPLETED: true,
       })
     ).toBe("COMPLETED");
+  });
+
+  it("requires earlier Service Video stages in chronological order", () => {
+    expect(
+      getMissingEmployeeStagePrerequisite(
+        { INTRO: false, IN_PROGRESS: false, COMPLETED: false },
+        "INTRO",
+      ),
+    ).toBeNull();
+    expect(
+      getMissingEmployeeStagePrerequisite(
+        { INTRO: false, IN_PROGRESS: false, COMPLETED: false },
+        "IN_PROGRESS",
+      ),
+    ).toBe("INTRO");
+    expect(
+      getMissingEmployeeStagePrerequisite(
+        { INTRO: true, IN_PROGRESS: false, COMPLETED: false },
+        "COMPLETED",
+      ),
+    ).toBe("IN_PROGRESS");
+    expect(
+      getMissingEmployeeStagePrerequisite(
+        { INTRO: true, IN_PROGRESS: true, COMPLETED: false },
+        "COMPLETED",
+      ),
+    ).toBeNull();
   });
 
   it("returns helpful stage labels and action copy", () => {

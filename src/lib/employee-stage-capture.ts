@@ -22,6 +22,18 @@ export function getNextEmployeeCaptureStage(progress: EmployeeStageProgress): Ve
   return "COMPLETED";
 }
 
+export function getMissingEmployeeStagePrerequisite(
+  progress: EmployeeStageProgress,
+  stage: VendorJobVideoStage,
+): VendorJobVideoStage | null {
+  const stageIndex = EMPLOYEE_STAGE_ORDER.indexOf(stage);
+  if (stageIndex <= 0) return null;
+  for (const prerequisite of EMPLOYEE_STAGE_ORDER.slice(0, stageIndex)) {
+    if (!progress[prerequisite]) return prerequisite;
+  }
+  return null;
+}
+
 export function getEmployeeStageStep(stage: VendorJobVideoStage): number {
   return Math.max(1, EMPLOYEE_STAGE_ORDER.indexOf(stage) + 1);
 }

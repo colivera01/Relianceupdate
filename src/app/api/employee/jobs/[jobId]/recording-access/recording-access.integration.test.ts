@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   requireVendorMembership: vi.fn(),
   parseAssignmentMetadata: vi.fn(),
   loadRecordingPermissionGate: vi.fn(),
+  assertServiceVideoStageMutationAllowed: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -33,6 +34,13 @@ vi.mock("@/lib/consent/recording-gate", () => ({
     blocked: gate.block,
   })),
 }));
+vi.mock("@/lib/service-video-evidence", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/service-video-evidence")>();
+  return {
+    ...actual,
+    assertServiceVideoStageMutationAllowed: mocks.assertServiceVideoStageMutationAllowed,
+  };
+});
 
 function request(stage = "INTRO") {
   return new Request("http://localhost/api/employee/jobs/booking-1/recording-access", {
@@ -57,6 +65,7 @@ describe("employee stage recording-access preflight", () => {
       userId: "employee-1",
     });
     mocks.parseAssignmentMetadata.mockReturnValue({ assignedMembershipIds: ["membership-1"] });
+    mocks.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
   });
 
   it("revalidates the exact current stage before camera access", async () => {
@@ -79,6 +88,33 @@ describe("employee stage recording-access preflight", () => {
         capability: "record",
       }),
     );
+    expect(mocks.assertServiceVideoStageMutationAllowed).toHaveBeenCalledWith(
+      expect.any(Object),
+      { bookingId: "booking-1", vendorId: "vendor-1", stage: "COMPLETED" },
+    );
+  });
+
+  it("blocks a later stage until its earlier Service Video stages are saved", async () => {
+    mocks.loadRecordingPermissionGate.mockResolvedValue({
+      recordingUnlocked: true,
+      blockCode: null,
+      block: null,
+    });
+    const { ServiceVideoMutationBlockedError } = await import("@/lib/service-video-evidence");
+    mocks.assertServiceVideoStageMutationAllowed.mockRejectedValue(
+      new ServiceVideoMutationBlockedError("SERVICE_VIDEO_STAGE_ORDER_REQUIRED"),
+    );
+    const { POST } = await import("./route");
+    const response = await POST(request("IN_PROGRESS"), {
+      params: Promise.resolve({ jobId: "booking-1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      code: "SERVICE_VIDEO_STAGE_ORDER_REQUIRED",
+      message: "Complete and save the earlier Service Video stage before starting this one.",
+    });
   });
 
   it("blocks a stale safety/location context before the camera opens", async () => {

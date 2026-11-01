@@ -116,6 +116,25 @@ describe("Employee Service Order guidance", () => {
     expect(videos[4].detail).toContain("2 of 3 videos saved");
   });
 
+  it("explains that no employee choice was made when participation is not required", () => {
+    const steps = buildEmployeeServiceOrderSteps({
+      legalAssentCurrent: true,
+      participationStatus: "NOT_REQUIRED",
+      scopeConfirmed: false,
+      safetyAndLocationComplete: false,
+      completedStageCount: 0,
+      totalStageCount: 3,
+    });
+
+    expect(steps[1]).toMatchObject({
+      label: "Recording participation for this job",
+      state: "complete",
+      detail: "No recording-participation choice is required because this Service Order does not intentionally record an identifiable employee.",
+    });
+    expect(steps[1].detail).not.toContain("verified job-specific choice");
+    expect(steps[2].state).toBe("current");
+  });
+
   it("uses the exact current lock reason instead of claiming manager review", () => {
     expect(employeeStageLockCopy({
       legalAssentCurrent: false,

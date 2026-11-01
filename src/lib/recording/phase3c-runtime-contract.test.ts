@@ -93,6 +93,7 @@ describe("Phase 3C dormant Employee runtime contract", () => {
     expect(page).toContain("Step {index + 1}: {step.label}");
     expect(page).toContain("EmployeeServiceOrderLegalAssent");
     expect(page).toContain("hideCompatibilityParticipationUntilLegal");
+    expect(page).toContain('canonicalBlock?.code === "EMPLOYEE_CERTIFICATION_REQUIRED" && legalAssentCurrent === true');
     expect(page).toContain("Service Order agreement was saved");
     expect(page).toContain("buildEmployeeServiceOrderSteps");
     expect(page).toContain("Video ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}");

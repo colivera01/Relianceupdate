@@ -1,7 +1,7 @@
 export const EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS = [
   {
     id: "approved_people_only",
-    text: "Only the approved assigned service professional will be intentionally visible or heard. No minors, unrelated adults, or bystanders are included.",
+    text: "Only the people named in the approved recording scope will be intentionally identifiable. No minors, unrelated adults, or bystanders are included.",
   },
   {
     id: "approved_area_only",
@@ -20,6 +20,49 @@ export const EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS = [
     text: "If any condition changes, I will stop and complete a fresh safety and location check before recording.",
   },
 ] as const;
+
+type EmployeeStageSafetyScope = {
+  intentionalParticipantPlan?: string | null;
+  audioAllowed?: boolean;
+};
+
+function approvedPeopleAcknowledgment(intentionalParticipantPlan: string): string {
+  if (intentionalParticipantPlan === "none") {
+    return "No person is approved to be intentionally identifiable. Keep the assigned service professional, customer, minors, unrelated adults, and bystanders from being intentionally identifiable in the recording.";
+  }
+  if (intentionalParticipantPlan === "customer") {
+    return "Only the customer is approved to be intentionally identifiable. Keep the assigned service professional, minors, unrelated adults, and bystanders from being intentionally identifiable in the recording.";
+  }
+  if (intentionalParticipantPlan === "assigned_service_professional") {
+    return "Only the assigned service professional is approved to be intentionally identifiable. Keep the customer, minors, unrelated adults, and bystanders from being intentionally identifiable in the recording.";
+  }
+  if (intentionalParticipantPlan === "customer_and_assigned_service_professional") {
+    return "Only the customer and assigned service professional are approved to be intentionally identifiable. No minors, unrelated adults, or bystanders are included.";
+  }
+  return EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS[0].text;
+}
+
+export function employeeStageSafetyAcknowledgmentsForScope(
+  scope: EmployeeStageSafetyScope,
+): Array<{ id: EmployeeStageSafetyAcknowledgmentId; text: string }> {
+  const intentionalParticipantPlan = String(scope.intentionalParticipantPlan || "")
+    .trim()
+    .toLowerCase();
+  return EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS.map((item) => {
+    if (item.id === "approved_people_only") {
+      return { ...item, text: approvedPeopleAcknowledgment(intentionalParticipantPlan) };
+    }
+    if (item.id === "audio_scope_clear") {
+      return {
+        ...item,
+        text: scope.audioAllowed
+          ? "Audio is enabled only within the approved recording scope. No unrelated or private conversation will be captured."
+          : "Audio is disabled for this Service Order. No voices or other identifying audio will be captured.",
+      };
+    }
+    return item;
+  });
+}
 
 export type EmployeeStageSafetyAcknowledgmentId =
   (typeof EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS)[number]["id"];

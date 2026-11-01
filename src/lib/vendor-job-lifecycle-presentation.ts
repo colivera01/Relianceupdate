@@ -203,7 +203,7 @@ export function resolveVendorJobLifecyclePresentation(
     if (input.serviceOrderSent) {
       return result(
         "Service Order Sent",
-        "The assigned employee received the Service Order and can complete the authorized recording stages.",
+        "The Service Order was sent, and at least one delivery channel accepted it for the assigned employee. The authorized recording stages are now available; this does not confirm that the employee opened or read the message.",
         "Service Order Sent",
         "green",
         "Assigned employee",
@@ -258,7 +258,7 @@ export function resolveVendorJobLifecyclePresentation(
     return result("All videos uploaded", "All three required Service Video stages are present.", "View Job", "green", "Vendor manager", "Open the package and continue the current review workflow.");
   }
   if (input.serviceOrderSent) {
-    return result("Service Order Sent", "The assigned employee received the Service Order.", "Service Order Sent", "green", "Assigned employee", `Complete ${nextStage} from the secure employee Service Order.`);
+    return result("Service Order Sent", "The Service Order was sent, and at least one delivery channel accepted it for the assigned employee. This does not confirm that the employee opened or read the message.", "Service Order Sent", "green", "Assigned employee", `Complete ${nextStage} from the secure employee Service Order.`);
   }
   if (input.serviceOrderReviewRequired) {
     return result(

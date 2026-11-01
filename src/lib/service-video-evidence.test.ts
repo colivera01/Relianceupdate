@@ -11,7 +11,7 @@ const hoisted = vi.hoisted(() => ({
     booking: { findFirst: vi.fn() },
     serviceVideoStageEvidence: { findMany: vi.fn() },
     recordingGateDecisionEvidence: { findFirst: vi.fn() },
-    mediaSession: { findFirst: vi.fn() },
+    mediaSession: { findFirst: vi.fn(), findMany: vi.fn() },
     mediaAsset: { findFirst: vi.fn() },
   },
 }));
@@ -53,6 +53,8 @@ describe("Private Service Video evidence", () => {
     vi.clearAllMocks();
     hoisted.prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(hoisted.prisma));
     hoisted.prisma.booking.findFirst.mockResolvedValue({ id: "booking-1", status: "IN_PROGRESS" });
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue(null);
+    hoisted.prisma.mediaSession.findMany.mockResolvedValue([]);
   });
 
   it("keeps historical version-1 Video-only evidence valid without reinterpretation", async () => {
@@ -219,6 +221,41 @@ describe("Private Service Video evidence", () => {
       vendorId: "vendor-1",
       stage: "INTRO",
     })).rejects.toMatchObject({ code: "MANAGER_REVIEW_IN_PROGRESS" });
+  });
+
+  it("enforces before, during, then finished stage chronology", async () => {
+    const { assertServiceVideoStageMutationAllowed } = await import("./service-video-evidence");
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue(null);
+
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "IN_PROGRESS",
+    })).rejects.toMatchObject({ code: "SERVICE_VIDEO_STAGE_ORDER_REQUIRED" });
+
+    hoisted.prisma.mediaSession.findMany.mockResolvedValue([
+      { vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-before" }] },
+    ]);
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "IN_PROGRESS",
+    })).resolves.toBeUndefined();
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "COMPLETED",
+    })).rejects.toMatchObject({ code: "SERVICE_VIDEO_STAGE_ORDER_REQUIRED" });
+
+    hoisted.prisma.mediaSession.findMany.mockResolvedValue([
+      { vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-before" }] },
+      { vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-during" }] },
+    ]);
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "COMPLETED",
+    })).resolves.toBeUndefined();
   });
 
   it("treats Admin REJECT as terminal for every later employee mutation", async () => {

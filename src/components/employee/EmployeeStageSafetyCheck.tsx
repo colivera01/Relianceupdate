@@ -4,7 +4,7 @@ import { Check, LoaderCircle, LocateFixed, ShieldCheck } from "lucide-react";
 import { useRef, useState } from "react";
 
 import {
-  EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS,
+  employeeStageSafetyAcknowledgmentsForScope,
   type EmployeeStageSafetyAcknowledgmentId,
 } from "@/lib/recording/employee-stage-safety-contract";
 
@@ -60,6 +60,8 @@ export function EmployeeStageSafetyCheck(props: {
   bookingId: string;
   stage: RecordingStage;
   serviceLocation: string | null | undefined;
+  intentionalParticipantPlan: string | null | undefined;
+  audioAllowed: boolean;
   headers: Record<string, string>;
   onComplete: () => void | Promise<void>;
 }) {
@@ -69,7 +71,11 @@ export function EmployeeStageSafetyCheck(props: {
   const [status, setStatus] = useState<"idle" | "locating" | "submitting" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const pendingSubmission = useRef<PendingSubmission | null>(null);
-  const allAcknowledged = EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS.every(
+  const safetyAcknowledgments = employeeStageSafetyAcknowledgmentsForScope({
+    intentionalParticipantPlan: props.intentionalParticipantPlan,
+    audioAllowed: props.audioAllowed,
+  });
+  const allAcknowledged = safetyAcknowledgments.every(
     (item) => acknowledged[item.id] === true,
   );
   const busy = status === "locating" || status === "submitting";
@@ -119,7 +125,7 @@ export function EmployeeStageSafetyCheck(props: {
             locationAttemptId: pending.locationAttemptId,
             requestId: pending.requestId,
             acknowledgments: Object.fromEntries(
-              EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS.map((item) => [item.id, true]),
+              safetyAcknowledgments.map((item) => [item.id, true]),
             ),
           }),
         },
@@ -173,7 +179,7 @@ export function EmployeeStageSafetyCheck(props: {
       </div>
 
       <div className="mt-4 space-y-2">
-        {EMPLOYEE_STAGE_SAFETY_ACKNOWLEDGMENTS.map((item) => {
+        {safetyAcknowledgments.map((item) => {
           const checked = acknowledged[item.id] === true;
           return (
             <label

@@ -480,6 +480,79 @@ describe("beta role-assent evidence service", () => {
     await expect(getEmployeeRoleAssentStatus({ db: data.db, context })).resolves.toMatchObject({ current: true, decision: "ASSENT" });
   });
 
+  it("keeps legal assent available when recording participation is not applicable", async () => {
+    const data = fixture();
+    const noIdentifiableEmployee = parseRecordingAssessmentV2({
+      contractVersion: "recording-assessment-v4-multiscope-safety-v1",
+      location: { type: "VENDOR_BUSINESS", snapshotEvidenceHash: "b".repeat(64) },
+      intendedSubjects: ["SERVICE_AREA_OR_EQUIPMENT"],
+      expectedPeople: ["NO_IDENTIFIABLE_PEOPLE"],
+      recordingFormat: "VIDEO_ONLY",
+      recordingArea: { boundary: "SERVICE_AREA_ONLY" },
+    });
+    Object.assign(data.assessment, {
+      scopeHash: noIdentifiableEmployee.scopeHash,
+      scopeJson: noIdentifiableEmployee.scopeJson,
+      subjectJson: noIdentifiableEmployee.subjectJson,
+    });
+    (data.metadata.vendor_job_service_order_release_contexts as Record<string, any>)[
+      data.employee.id
+    ].scopeHash = noIdentifiableEmployee.scopeHash;
+    data.booking.customerMetadata = JSON.stringify(data.metadata);
+
+    await expect(
+      loadEmployeeDecisionContext({
+        db: data.db,
+        purpose: EMPLOYEE_DECISION_PURPOSES.RECORDING,
+        userId: data.employee.userId,
+        membershipId: data.employee.id,
+        bookingId: data.booking.id,
+      }),
+    ).rejects.toThrow("EMPLOYEE_RECORDING_PARTICIPATION_NOT_APPLICABLE");
+
+    const context = await loadEmployeeRoleAssentContext({
+      db: data.db,
+      userId: data.employee.userId,
+      membershipId: data.employee.id,
+      bookingId: data.booking.id,
+    });
+    expect(context.decisionContext).toMatchObject({
+      purpose: EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT,
+      serviceOrderCurrent: true,
+      scopeHash: noIdentifiableEmployee.scopeHash,
+      participantPlan: JSON.stringify(["NO_IDENTIFIABLE_PEOPLE"]),
+    });
+
+    const secret = "verified-no-participation-session";
+    data.sessions.push({
+      id: "verified-session-no-participation",
+      secretHash: hashOpaqueSecret(secret),
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      purpose: EMPLOYEE_DECISION_PURPOSES.SERVICE_ORDER_LEGAL_ASSENT,
+      contextHash: context.decisionContext.contextHash,
+      userId: data.employee.userId,
+      vendorId: data.employee.vendorId,
+      membershipId: data.employee.id,
+      membershipGeneration: data.employee.membershipGeneration,
+      verifiedChannel: "email",
+      verifiedContactHash: "f".repeat(64),
+    });
+    const result = await recordEmployeeRoleAssent({
+      db: data.db,
+      userId: data.employee.userId,
+      membershipId: data.employee.id,
+      bookingId: data.booking.id,
+      decision: "ASSENT",
+      sessionSecret: secret,
+      expectedServiceOrderContextHash: context.decisionContext.contextHash,
+      acknowledgements: { identity: true, terms: true, privacy: true, electronicRecords: true },
+      displayedContentSetHash: roleAssentContentSetHash("EMPLOYEE"),
+      requestId: "employee-assent-no-participation",
+    });
+    expect(result.evidenceIds).toHaveLength(3);
+  });
+
   it("rejects another principal and preserves decline as legal evidence only", async () => {
     const data = fixture();
     await expect(loadEmployeeRoleAssentContext({

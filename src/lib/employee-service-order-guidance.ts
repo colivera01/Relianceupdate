@@ -45,13 +45,15 @@ export function buildEmployeeServiceOrderSteps(input: {
     },
     {
       label: "Recording participation for this job",
-      detail: participationComplete
-        ? "Your verified job-specific choice is complete."
-        : participationDeclined
-          ? "You declined recording participation for this Service Order."
-          : input.legalAssentCurrent
-            ? "Allow or decline, then verify using the available contact method shown below."
-            : "Available after the Service Order agreement.",
+      detail: input.participationStatus === "NOT_REQUIRED"
+        ? "No recording-participation choice is required because this Service Order does not intentionally record an identifiable employee."
+        : participationComplete
+          ? "Your verified job-specific choice is complete."
+          : participationDeclined
+            ? "You declined recording participation for this Service Order."
+            : input.legalAssentCurrent
+              ? "Allow or decline, then verify using the available contact method shown below."
+              : "Available after the Service Order agreement.",
       state: participationComplete
         ? "complete"
         : participationDeclined

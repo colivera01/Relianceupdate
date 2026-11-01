@@ -197,7 +197,10 @@ export async function loadEmployeeDecisionContext(input: {
     });
     if (!assessment) throw new Error("EMPLOYEE_RECORDING_ASSESSMENT_REQUIRED");
     const assessmentContext = recordingContextFromAssessment(assessment);
-    if (!assessmentContext.includesAssignedEmployee) {
+    if (
+      input.purpose === EMPLOYEE_DECISION_PURPOSES.RECORDING &&
+      !assessmentContext.includesAssignedEmployee
+    ) {
       throw new Error("EMPLOYEE_RECORDING_PARTICIPATION_NOT_APPLICABLE");
     }
     recordingFields = {

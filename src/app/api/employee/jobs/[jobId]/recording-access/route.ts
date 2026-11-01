@@ -6,6 +6,11 @@ import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { requiredSafetyCheckForStage } from "@/lib/recording/employee-safety";
 import { assertV2EmployeeServiceOrderEntry } from "@/lib/recording/employee-v2-service-order-entry";
+import {
+  assertServiceVideoStageMutationAllowed,
+  ServiceVideoMutationBlockedError,
+  type ServiceVideoStage,
+} from "@/lib/service-video-evidence";
 import { prisma } from "@/server/db";
 
 type RouteContext = { params: Promise<{ jobId: string }> };
@@ -80,8 +85,26 @@ export async function POST(request: Request, context: RouteContext) {
     if (!recordingGate.recordingUnlocked || recordingGate.blockCode) {
       return NextResponse.json(recordingGateErrorBody(recordingGate), { status: 409 });
     }
+    await assertServiceVideoStageMutationAllowed(prisma, {
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      stage: recordingStage as ServiceVideoStage,
+    });
     return NextResponse.json({ success: true, recordingGate });
   } catch (error) {
+    if (error instanceof ServiceVideoMutationBlockedError) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: error.code,
+          message:
+            error.code === "SERVICE_VIDEO_STAGE_ORDER_REQUIRED"
+              ? "Complete and save the earlier Service Video stage before starting this one."
+              : "This Service Video stage is not available for recording right now.",
+        },
+        { status: 409 },
+      );
+    }
     console.error("[employee/jobs/recording-access] POST error", {
       code: error instanceof Error ? error.message : "RECORDING_ACCESS_CHECK_FAILED",
     });

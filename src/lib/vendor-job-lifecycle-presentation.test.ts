@@ -107,6 +107,27 @@ describe("vendor job lifecycle presentation", () => {
     });
     expect(state.label).toBe("Service Order Sent");
     expect(state.actionLabel).toBe("Service Order Sent");
+    expect(state.detail).toContain("at least one delivery channel accepted it");
+    expect(state.detail).toContain("does not confirm that the employee opened or read");
+    expect(state.detail).not.toContain("employee received");
+  });
+
+  it("does not imply employee receipt after an approved recording-permission release", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "CONFIRMED",
+      locationSelected: true,
+      permissionRequired: true,
+      permissionState: "ALLOWED",
+      hasCustomerContact: true,
+      assigned: true,
+      serviceOrderSent: true,
+      nextStageLabel: "Starting Condition",
+    });
+
+    expect(state.label).toBe("Service Order Sent");
+    expect(state.detail).toContain("at least one delivery channel accepted it");
+    expect(state.detail).toContain("does not confirm that the employee opened or read");
+    expect(state.detail).not.toContain("employee received");
   });
 
   it("routes an unreleased Service Order through exact manager review before sending", () => {

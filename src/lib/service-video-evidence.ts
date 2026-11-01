@@ -24,6 +24,7 @@ import {
   assertEmployeeParticipationEvidenceCurrent,
   employeeRecordingParticipationContractEnabled,
 } from "@/lib/employee-recording-participation";
+import { getMissingEmployeeStagePrerequisite } from "@/lib/employee-stage-capture";
 
 export const V2_RECORDING_GATE_EVIDENCE_VERSION =
   "recording-gate-decision-v2-safety-binding-v1" as const;
@@ -39,6 +40,44 @@ export class ServiceVideoMutationBlockedError extends Error {
   constructor(public readonly code: string) {
     super(code);
     this.name = "ServiceVideoMutationBlockedError";
+  }
+}
+
+export async function assertServiceVideoStageChronology(
+  db: any,
+  input: { bookingId: string; vendorId: string; stage: ServiceVideoStage },
+) {
+  if (input.stage === "INTRO") return;
+  if (!db.mediaSession?.findMany) {
+    if (process.env.NODE_ENV === "test") return;
+    throw new ServiceVideoMutationBlockedError("SERVICE_VIDEO_STAGE_CHRONOLOGY_UNAVAILABLE");
+  }
+  const sessions = await db.mediaSession.findMany({
+    where: {
+      bookingId: input.bookingId,
+      vendorId: input.vendorId,
+      sessionType: "JOB_SERVICE_VIDEO",
+      vendorJobVideoStage: { in: REQUIRED_SERVICE_VIDEO_STAGES },
+    },
+    select: {
+      vendorJobVideoStage: true,
+      mediaAssets: {
+        where: { deletedAt: null, archiveStatus: "active", uploadState: "SAVED" },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+  const progress = { INTRO: false, IN_PROGRESS: false, COMPLETED: false };
+  for (const session of sessions) {
+    const stage = String(session.vendorJobVideoStage || "").trim().toUpperCase() as ServiceVideoStage;
+    if (!REQUIRED_SERVICE_VIDEO_STAGES.includes(stage)) continue;
+    if (Array.isArray(session.mediaAssets) && session.mediaAssets.length > 0) {
+      progress[stage] = true;
+    }
+  }
+  if (getMissingEmployeeStagePrerequisite(progress, input.stage)) {
+    throw new ServiceVideoMutationBlockedError("SERVICE_VIDEO_STAGE_ORDER_REQUIRED");
   }
 }
 
@@ -119,6 +158,7 @@ export async function assertServiceVideoStageMutationAllowed(
   if (currentPackage) {
     throw new ServiceVideoMutationBlockedError("SERVICE_VIDEO_PACKAGE_RECORDING_CLOSED");
   }
+  await assertServiceVideoStageChronology(db, input);
 }
 
 function sha256(value: Buffer | string): string {
