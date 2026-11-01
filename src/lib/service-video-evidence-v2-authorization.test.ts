@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   loadGate: vi.fn(),
   assertParticipation: vi.fn(),
+  includesAssignedEmployee: vi.fn(),
   resolveSafety: vi.fn(),
   validateLocation: vi.fn(),
   prisma: { $transaction: vi.fn() },
@@ -15,6 +16,7 @@ vi.mock("@/lib/consent/recording-gate", () => ({
 vi.mock("@/lib/employee-recording-participation", () => ({
   employeeRecordingParticipationContractEnabled: (metadata: string | null | undefined) =>
     String(metadata || "").includes("employee-recording-participation-v1"),
+  assessmentIntentionallyIncludesAssignedEmployee: mocks.includesAssignedEmployee,
   assertEmployeeParticipationEvidenceCurrent: mocks.assertParticipation,
 }));
 vi.mock("@/lib/recording/employee-safety", async () => {
@@ -140,6 +142,9 @@ describe("V2 recording authorization evidence", () => {
     vi.clearAllMocks();
     mocks.loadGate.mockResolvedValue(allowedGate);
     mocks.assertParticipation.mockResolvedValue({ required: true, complete: true });
+    mocks.includesAssignedEmployee.mockImplementation(
+      (assessment: any) => assessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+    );
     mocks.resolveSafety.mockReturnValue(safety);
     mocks.validateLocation.mockReturnValue({
       ok: true,
@@ -185,6 +190,7 @@ describe("V2 recording authorization evidence", () => {
         evidence: employeeParticipationEvidence,
       },
     };
+    mocks.includesAssignedEmployee.mockReturnValue(true);
     const create = vi.fn().mockImplementation(({ data }) => ({ id: "gate-combined-1", ...data }));
     const evidence = await persistAllowedRecordingGateDecision({
       bookingId: "booking-1",
@@ -222,6 +228,59 @@ describe("V2 recording authorization evidence", () => {
       stage: "INTRO",
       surface: "upload_complete",
     })).resolves.toBe(evidence);
+  });
+
+  it("accepts exact V2 safety evidence without Employee participation evidence when participation is not required", async () => {
+    const { evidence } = await persistedEvidence();
+    const db = {
+      ...authorizationDb(evidence),
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({
+          customerMetadata: JSON.stringify({
+            vendor_job_employee_recording_participation_contract_version:
+              "employee-recording-participation-v1",
+          }),
+        }),
+      },
+    };
+    mocks.includesAssignedEmployee.mockReturnValue(false);
+
+    expect(evidence.employeeParticipationEvidenceJson).toBeNull();
+    await expect(assertRecordingAuthorizationCurrent(db, {
+      gateDecisionId: "gate-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      stage: "INTRO",
+      surface: "upload_init",
+    })).resolves.toBe(evidence);
+    expect(mocks.assertParticipation).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when Employee participation is required but exact participation evidence is absent", async () => {
+    const { evidence } = await persistedEvidence();
+    const db = {
+      ...authorizationDb(evidence),
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({
+          customerMetadata: JSON.stringify({
+            vendor_job_employee_recording_participation_contract_version:
+              "employee-recording-participation-v1",
+          }),
+        }),
+      },
+    };
+    mocks.includesAssignedEmployee.mockReturnValue(true);
+
+    await expect(assertRecordingAuthorizationCurrent(db, {
+      gateDecisionId: "gate-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      stage: "INTRO",
+      surface: "upload_init",
+    })).rejects.toMatchObject({ code: "RECORDING_AUTHORIZATION_EVIDENCE_INVALID" });
+    expect(mocks.loadGate).not.toHaveBeenCalled();
   });
 
   it("rejects media mutation when exact Employee participation evidence becomes stale", async () => {
@@ -526,5 +585,128 @@ describe("V2 recording authorization evidence", () => {
       submittedByMembershipId: "membership-1",
     })).rejects.toMatchObject({ code: "V2_RUNTIME_SAFETY_BLOCKED" });
     expect(tx.serviceVideoPackageEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("submits a complete V2 package without Employee participation evidence when participation is not required", async () => {
+    const stageKeys = ["INTRO", "IN_PROGRESS", "COMPLETED"] as const;
+    const stageRows = stageKeys.map((stage, index) => ({
+      id: `stage-${index + 1}`,
+      stage,
+      stageVersion: 1,
+      mediaAssetId: `asset-${index + 1}`,
+      mediaSessionId: `session-${index + 1}`,
+      assessmentId: "assessment-v2-1",
+      assessmentGeneration: 2,
+      permissionEvidenceId: "assessment-v2-1",
+      recordingGateDecisionId: `gate-${index + 1}`,
+      employeeMembershipId: "membership-1",
+      captureProvenance: "LIVE_BROWSER_CAPTURE",
+      contentHash: `content-${index + 1}`,
+      publicEligible: true,
+      uploadState: "SAVED",
+      audioExpected: false,
+      audioPresence: "ABSENT",
+      audioEvidenceVersion: 2,
+    }));
+    const gates = new Map(stageRows.map((row, index) => [row.recordingGateDecisionId, {
+      id: row.recordingGateDecisionId,
+      assessmentId: "assessment-v2-1",
+      assessmentGeneration: 2,
+      scopeHash: allowedGate.scopeHash,
+      assignmentGeneration: 4,
+      certificationId: "certification-1",
+      permissionEvidenceId: "assessment-v2-1",
+      employeeParticipationEvidenceJson: null,
+      stage: row.stage,
+      safetyEvidenceId: `safety-${index + 1}`,
+      safetyEvidenceHash: `safety-hash-${index + 1}`,
+      locationAttemptId: `location-${index + 1}`,
+      locationAttemptEvidenceHash: `location-hash-${index + 1}`,
+      audioExpected: false,
+    }]));
+    const safetyRows = new Map(stageRows.map((row, index) => [row.stage, [{
+      id: `safety-${index + 1}`,
+      evidenceHash: `safety-hash-${index + 1}`,
+      locationAttemptId: `location-${index + 1}`,
+      locationAttemptEvidenceHash: `location-hash-${index + 1}`,
+    }]]));
+    const createdPackage = { id: "package-1", status: "AWAITING_MANAGER_REVIEW" };
+    const tx: any = {
+      recordingScopeAssessment: { findFirst: vi.fn().mockResolvedValue({
+        id: "assessment-v2-1",
+        generation: 2,
+        contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+        scopeHash: allowedGate.scopeHash,
+        scopeJson: "{}",
+        locationType: "business",
+        status: "COMPLETE",
+      }) },
+      booking: { findFirst: vi.fn().mockResolvedValue({
+        customerMetadata: JSON.stringify({
+          vendor_job_assigned_membership_ids: ["membership-1"],
+          vendor_job_assignment_generation: 4,
+          vendor_job_employee_recording_participation_contract_version:
+            "employee-recording-participation-v1",
+        }),
+      }) },
+      serviceVideoStageEvidence: { findMany: vi.fn().mockResolvedValue(stageRows) },
+      recordingGateDecisionEvidence: {
+        findFirst: vi.fn().mockImplementation(({ where }) => gates.get(where.id)),
+      },
+      employeeRecordingSafetyEvidence: {
+        findMany: vi.fn().mockImplementation(({ where }) => {
+          const serviceStage = where.stage === "STARTING_CONDITION"
+            ? "INTRO"
+            : where.stage === "WORK_IN_PROGRESS"
+              ? "IN_PROGRESS"
+              : "COMPLETED";
+          return safetyRows.get(serviceStage) || [];
+        }),
+      },
+      mediaAsset: { findFirst: vi.fn().mockImplementation(({ where }) => {
+        const row = stageRows.find((candidate) => candidate.mediaAssetId === where.id)!;
+        return { ...row };
+      }) },
+      mediaSession: { findFirst: vi.fn().mockResolvedValue({ status: "COMPLETED", audioExpected: false }) },
+      serviceVideoPackageEvidence: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn().mockResolvedValue(createdPackage),
+      },
+    };
+    mocks.prisma.$transaction.mockImplementation(async (callback: (db: any) => unknown) => callback(tx));
+    mocks.includesAssignedEmployee.mockReturnValue(false);
+    mocks.loadGate.mockImplementation(async ({ recordingStage }) => {
+      const index = stageKeys.indexOf(recordingStage);
+      return {
+        ...allowedGate,
+        v2Safety: {
+          ...safety,
+          evidenceId: `safety-${index + 1}`,
+          evidenceHash: `safety-hash-${index + 1}`,
+          locationAttemptId: `location-${index + 1}`,
+          locationAttemptEvidenceHash: `location-hash-${index + 1}`,
+        },
+        locationAttemptId: `location-${index + 1}`,
+      };
+    });
+    mocks.resolveSafety.mockImplementation(({ recordingStage }) => {
+      const index = stageKeys.indexOf(recordingStage);
+      return {
+        ...safety,
+        evidenceId: `safety-${index + 1}`,
+        evidenceHash: `safety-hash-${index + 1}`,
+        locationAttemptId: `location-${index + 1}`,
+        locationAttemptEvidenceHash: `location-hash-${index + 1}`,
+      };
+    });
+
+    await expect(submitServiceVideoPackage({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      submittedByMembershipId: "membership-1",
+    })).resolves.toBe(createdPackage);
+    expect(tx.serviceVideoPackageEvidence.create).toHaveBeenCalledOnce();
+    expect(mocks.assertParticipation).not.toHaveBeenCalled();
   });
 });

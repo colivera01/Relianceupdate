@@ -21,6 +21,7 @@ import {
   type StoredEmployeeRecordingSafetyEvidence,
 } from "@/lib/recording/employee-safety";
 import {
+  assessmentIntentionallyIncludesAssignedEmployee,
   assertEmployeeParticipationEvidenceCurrent,
   employeeRecordingParticipationContractEnabled,
 } from "@/lib/employee-recording-participation";
@@ -352,7 +353,8 @@ export async function assertRecordingAuthorizationCurrent(
   }
   const v2 = assessment.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
   const employeeParticipationRequired =
-    employeeRecordingParticipationContractEnabled(booking.customerMetadata);
+    (employeeRecordingParticipationContractEnabled(booking.customerMetadata) || v2) &&
+    assessmentIntentionallyIncludesAssignedEmployee(assessment);
   if (!v2 && !employeeParticipationRequired) return evidence;
   const invalidEvidenceCode = employeeParticipationRequired
     ? "RECORDING_AUTHORIZATION_EVIDENCE_INVALID"
@@ -812,6 +814,12 @@ async function loadCompleteCurrentStageEvidence(db: any, bookingId: string, vend
   const metadata = parseCustomerMetadata(booking?.customerMetadata);
   const assignmentGeneration = Number(metadata.vendor_job_assignment_generation || 1);
   const v2 = currentAssessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+  const employeeParticipationRequired = Boolean(
+    currentAssessment &&
+      booking &&
+      (employeeRecordingParticipationContractEnabled(booking.customerMetadata) || v2) &&
+      assessmentIntentionallyIncludesAssignedEmployee(currentAssessment),
+  );
   const location = v2 && currentAssessment?.locationType
     ? validateRecordingLocationSnapshot(
         booking?.customerMetadata,
@@ -895,12 +903,12 @@ async function loadCompleteCurrentStageEvidence(db: any, bookingId: string, vend
         throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_STALE");
       }
       if (
-        employeeRecordingParticipationContractEnabled(booking!.customerMetadata) &&
+        employeeParticipationRequired &&
         !gate.employeeParticipationEvidenceJson
       ) {
         throw new ServiceVideoMutationBlockedError("RECORDING_AUTHORIZATION_EVIDENCE_INVALID");
       }
-      if (employeeRecordingParticipationContractEnabled(booking!.customerMetadata)) {
+      if (employeeParticipationRequired) {
         try {
           await assertEmployeeParticipationEvidenceCurrent({
             db,
