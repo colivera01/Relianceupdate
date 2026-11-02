@@ -191,12 +191,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
       isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
     }));
 
+    const responseAssets = audience === "public"
+      ? normalized.map((asset: any) => ({
+          id: asset.id,
+          mimeType: asset.mimeType,
+          blobUrl: asset.blobUrl,
+          createdAt: asset.createdAt,
+          serviceId: asset.serviceId,
+          isPrimaryProofVideo: asset.isPrimaryProofVideo,
+        }))
+      : normalized;
+
     return NextResponse.json({
       success: true,
       audience,
-      assets: normalized,
-      images: normalized.filter((a: any) => String(a.mimeType || "").startsWith("image/")),
-      videos: normalized.filter((a: any) => String(a.mimeType || "").startsWith("video/")),
+      assets: responseAssets,
+      images: responseAssets.filter((a: any) => String(a.mimeType || "").startsWith("image/")),
+      videos: responseAssets.filter((a: any) => String(a.mimeType || "").startsWith("video/")),
     });
   } catch (error: any) {
     console.error("[services/:id/media] GET error:", error);

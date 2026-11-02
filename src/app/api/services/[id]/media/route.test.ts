@@ -131,12 +131,12 @@ describe("GET /api/services/[id]/media", () => {
       moderationStatus: "approved",
       visibilityStatus: "public",
       archiveStatus: "active",
-      moderationReason: null,
+      moderationReason: "internal moderation reason",
       moderatedAt: null,
       createdAt: new Date("2026-10-20T14:00:00.000Z"),
       mediaSession: {
-        title: "Final Result",
-        description: "Completed work",
+        title: "internal session title",
+        description: "internal session description",
         bookingId: "booking-legacy",
         serviceId: null,
         booking: { serviceId: "service-1" },
@@ -166,11 +166,31 @@ describe("GET /api/services/[id]/media", () => {
         },
       }),
     }));
-    expect(body.assets[0]).toMatchObject({
+    expect(body.assets[0]).toEqual({
       id: "public-asset",
-      serviceId: "service-1",
+      mimeType: "video/mp4",
       blobUrl: "/api/public/media/public-asset",
+      createdAt: "2026-10-20T14:00:00.000Z",
+      serviceId: "service-1",
+      isPrimaryProofVideo: true,
     });
-    expect(JSON.stringify(body)).not.toContain("https://private.example/");
+    expect(body.videos[0]).toEqual(body.assets[0]);
+    expect(body.images).toEqual([]);
+    expect(Object.keys(body.assets[0]).sort()).toEqual([
+      "blobUrl",
+      "createdAt",
+      "id",
+      "isPrimaryProofVideo",
+      "mimeType",
+      "serviceId",
+    ]);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("https://private.example/");
+    expect(serialized).not.toContain("booking-legacy");
+    expect(serialized).not.toContain("session-1");
+    expect(serialized).not.toContain("private/public-asset.mp4");
+    expect(serialized).not.toContain("internal moderation reason");
+    expect(serialized).not.toContain("internal session title");
+    expect(serialized).not.toContain("internal session description");
   });
 });
