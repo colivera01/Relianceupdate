@@ -5,6 +5,7 @@ import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregat
 import {
   groupCompletePublicProofPackagesByService,
   isCompletedStageProofVideo,
+  resolvePublicProofServiceId,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
 import { buildProofCard, rankProofFirstResults, type ProofStageAvailability } from "@/lib/proof-card";
@@ -258,7 +259,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                 in: getVisibilityStatusesForAudience("public"),
               },
               mediaSession: {
-                serviceId: { in: serviceIds },
+                OR: [
+                  { serviceId: { in: serviceIds } },
+                  {
+                    serviceId: null,
+                    booking: { is: { serviceId: { in: serviceIds } } },
+                  },
+                ],
               },
             }),
             orderBy: { createdAt: "desc" },
@@ -271,6 +278,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                 select: {
                   serviceId: true,
                   bookingId: true,
+                  booking: {
+                    select: {
+                      serviceId: true,
+                    },
+                  },
                   vendorJobVideoStage: true,
                   sessionType: true,
                 },
@@ -286,7 +298,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const proofSafePublicAssets = publicAssets.filter((asset: any) =>
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
-    );
+    ).map((asset: any) => ({
+      ...asset,
+      mediaSession: {
+        ...asset?.mediaSession,
+        serviceId: resolvePublicProofServiceId(asset?.mediaSession || null),
+      },
+    }));
 
     const previewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     const primaryProofPreviewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();

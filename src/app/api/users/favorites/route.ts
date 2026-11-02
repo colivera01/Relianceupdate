@@ -134,10 +134,30 @@ export async function GET(request: NextRequest) {
             id: { in: canonicalPublicAssetIds },
             ...getApprovedActiveBaseWhere(),
             visibilityStatus: { in: getVisibilityStatusesForAudience('public') },
-            mediaSession: { serviceId: { in: serviceIds } },
+            mediaSession: {
+              OR: [
+                { serviceId: { in: serviceIds } },
+                {
+                  serviceId: null,
+                  booking: { is: { serviceId: { in: serviceIds } } },
+                },
+              ],
+            },
           }),
           orderBy: { createdAt: 'desc' },
-          select: { id: true, mimeType: true, mediaSession: { select: { serviceId: true, bookingId: true, vendorJobVideoStage: true, sessionType: true } } },
+          select: {
+            id: true,
+            mimeType: true,
+            mediaSession: {
+              select: {
+                serviceId: true,
+                bookingId: true,
+                booking: { select: { serviceId: true } },
+                vendorJobVideoStage: true,
+                sessionType: true,
+              },
+            },
+          },
         })
       : [];
     const completePackagesByServiceId = groupCompletePublicProofPackagesByService(media);

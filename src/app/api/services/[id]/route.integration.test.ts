@@ -151,6 +151,21 @@ describe('GET /api/services/[id]', () => {
         isPrimaryProofVideo: true,
       },
     ]);
+    expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          mediaSession: {
+            OR: [
+              { serviceId: 'svc-1' },
+              {
+                serviceId: null,
+                booking: { is: { serviceId: 'svc-1' } },
+              },
+            ],
+          },
+        }),
+      }),
+    );
     expect(hoisted.reviewCount).toHaveBeenCalledWith({
       where: expect.objectContaining({
         demo: false,

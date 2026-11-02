@@ -8,6 +8,7 @@ import {
 } from "@/lib/media-visibility";
 import {
   isCompletedStageProofVideo,
+  resolvePublicProofServiceId,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
 import { loadAuthorizedPrivateProof } from "@/lib/service-video-evidence";
@@ -113,8 +114,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
         in: getVisibilityStatusesForAudience(audience),
       },
       mediaSession: {
-        serviceId,
         ...(audience === "customer" ? { bookingId } : {}),
+        OR: [
+          { serviceId },
+          {
+            serviceId: null,
+            booking: { is: { serviceId } },
+          },
+        ],
       },
     };
     if (audience === "public") {
@@ -147,6 +154,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
             description: true,
             bookingId: true,
             serviceId: true,
+            booking: {
+              select: {
+                serviceId: true,
+              },
+            },
             vendorJobVideoStage: true,
             sessionType: true,
           },
@@ -175,7 +187,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       title: asset.mediaSession?.title || "Service Media",
       description: asset.mediaSession?.description || "",
       bookingId: asset.mediaSession?.bookingId || null,
-      serviceId: asset.mediaSession?.serviceId || null,
+      serviceId: resolvePublicProofServiceId(asset.mediaSession || null),
       isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
     }));
 

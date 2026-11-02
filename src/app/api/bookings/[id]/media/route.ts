@@ -5,6 +5,7 @@ import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } f
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import {
   isCompletedStageProofVideo,
+  resolvePublicProofServiceId,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
 import {
@@ -152,7 +153,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
         title: asset.mediaSession?.title || "Service Media",
         description: asset.mediaSession?.description || "",
         bookingId: asset.mediaSession?.bookingId || null,
-        serviceId: asset.mediaSession?.serviceId || null,
+        serviceId: resolvePublicProofServiceId({
+          ...asset.mediaSession,
+          booking: { serviceId: booking.serviceId },
+        }),
         videoStage: proofStage,
         proofStage,
         isPrimaryServiceVideo: isCompletedStageProofVideo(asset?.mediaSession || null),

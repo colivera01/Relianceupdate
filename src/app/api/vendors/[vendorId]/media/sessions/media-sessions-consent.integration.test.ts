@@ -154,6 +154,7 @@ function mockBookingLocation(
         : "customer_supplied";
   hoisted.bookingFindFirst.mockResolvedValue({
     id: BOOKING_ID,
+    serviceId: "service-from-booking",
     customerMetadata: JSON.stringify({
       vendor_job_assigned_membership_ids: ["membership-1"],
       vendor_job_assignment_generation: 1,
@@ -509,9 +510,10 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
-  it("allows business location without customer consent when verified near registered address", async () => {
+  it("uses the booking service instead of a conflicting client service for an allowed staged session", async () => {
     mockBookingLocation("business");
     const { req, ctx } = buildPostRequest({
+      serviceId: "client-selected-different-service",
       locationContext: "business",
       locationProof: {
         latitude: 28.53831,
@@ -527,6 +529,17 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect((json.session as any)?.id).toBe("session-1");
     expect(hoisted.consentRecordFindFirst).toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.mediaSessionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingId: BOOKING_ID,
+        serviceId: "service-from-booking",
+      }),
+    });
+    expect(hoisted.bookingFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ serviceId: true }),
+      }),
+    );
   });
 
   it("does not reuse an occupied stage session whose authorization is stale", async () => {

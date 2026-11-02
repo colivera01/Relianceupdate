@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
+import { getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import { prisma } from "@/server/db";
 import {
   loadRecordingPermissionGate,
@@ -1285,7 +1286,9 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
         deletedAt: null,
         uploadState: "SAVED",
         moderationStatus: "approved",
-        visibilityStatus: "customer_only",
+        visibilityStatus: {
+          in: getVisibilityStatusesForAudience("customer"),
+        },
         contentHash: stage.contentHash,
         stageVersion: stage.stageVersion,
         captureProvenance: stage.captureProvenance,

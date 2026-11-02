@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { groupCompletePublicProofPackagesByService } from "./proof-media-policy";
+import {
+  groupCompletePublicProofPackagesByService,
+  resolvePublicProofServiceId,
+} from "./proof-media-policy";
 
 function stageAsset(stage: "INTRO" | "IN_PROGRESS" | "COMPLETED", bookingId: string) {
   return {
@@ -57,5 +60,39 @@ describe("groupCompletePublicProofPackagesByService", () => {
 
     expect(duplicate.has("service-1")).toBe(false);
     expect(missingBooking.has("service-1")).toBe(false);
+  });
+
+  it("uses the authoritative booking service for legacy sessions without a service id", () => {
+    const assets = [
+      stageAsset("INTRO", "booking-legacy"),
+      stageAsset("IN_PROGRESS", "booking-legacy"),
+      stageAsset("COMPLETED", "booking-legacy"),
+    ].map((asset) => ({
+      ...asset,
+      mediaSession: {
+        ...asset.mediaSession,
+        serviceId: null,
+        booking: { serviceId: "service-from-booking" },
+      },
+    }));
+
+    const grouped = groupCompletePublicProofPackagesByService(assets);
+
+    expect(grouped.get("service-from-booking")?.map((asset) => asset.id)).toEqual([
+      "booking-legacy-INTRO",
+      "booking-legacy-IN_PROGRESS",
+      "booking-legacy-COMPLETED",
+    ]);
+  });
+
+  it("does not let a conflicting booking relation replace a persisted session service", () => {
+    expect(resolvePublicProofServiceId({
+      serviceId: "service-from-session",
+      booking: { serviceId: "service-from-booking" },
+    })).toBe("service-from-session");
+    expect(resolvePublicProofServiceId({
+      serviceId: null,
+      booking: { serviceId: null },
+    })).toBeNull();
   });
 });

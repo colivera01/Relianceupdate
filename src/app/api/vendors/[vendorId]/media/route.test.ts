@@ -54,6 +54,8 @@ function asset(id: string, createdAt: string) {
         id: "booking-1",
         title: "Outlet Installation",
         clientName: "Customer",
+        serviceId: "service-1",
+        service: { id: "service-1", name: "Outlet Installation" },
       },
       service: { id: "service-1", name: "Outlet Installation" },
       employee: { id: "employee-1", name: "Employee" },
@@ -129,5 +131,41 @@ describe("GET /api/vendors/[vendorId]/media activity mode", () => {
         ],
       },
     });
+  });
+
+  it("uses the booking service for legacy media labels when the session service is null", async () => {
+    hoisted.packageFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(1);
+    const legacyAsset: any = asset("asset-legacy", "2026-10-24T12:00:00.000Z");
+    legacyAsset.mediaSession.serviceId = null;
+    legacyAsset.mediaSession.service = null;
+    hoisted.mediaAssetFindMany.mockResolvedValue([legacyAsset]);
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/media"),
+      { params: Promise.resolve({ vendorId: "vendor-1" }) }
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.assets[0]).toMatchObject({
+      id: "asset-legacy",
+      serviceId: "service-1",
+      serviceName: "Outlet Installation",
+    });
+    expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        mediaSession: expect.objectContaining({
+          include: expect.objectContaining({
+            booking: expect.objectContaining({
+              select: expect.objectContaining({
+                serviceId: true,
+                service: { select: { id: true, name: true } },
+              }),
+            }),
+          }),
+        }),
+      }),
+    }));
   });
 });

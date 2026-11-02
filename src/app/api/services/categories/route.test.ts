@@ -126,4 +126,48 @@ describe("GET /api/services/categories", () => {
     ]);
     expect(json.meta.countedServices).toBe(1);
   });
+
+  it("counts a legacy package through its booking service only when the session service is null", async () => {
+    hoisted.serviceFindMany.mockResolvedValue([createService()]);
+    const assets = [
+      createStageAsset("INTRO"),
+      createStageAsset("IN_PROGRESS"),
+      createStageAsset("COMPLETED"),
+    ].map((asset) => ({
+      ...asset,
+      mediaSession: {
+        ...asset.mediaSession,
+        serviceId: null,
+        booking: { serviceId: "service-1" },
+      },
+    }));
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(assets.map((asset) => asset.id));
+    hoisted.mediaAssetFindMany.mockResolvedValue(assets);
+
+    const response = await GET();
+    const json = await readJson(response);
+
+    expect(response.status).toBe(200);
+    expect(json.meta.countedServices).toBe(1);
+    expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        mediaSession: {
+          OR: [
+            { serviceId: { in: ["service-1"] } },
+            {
+              serviceId: null,
+              booking: { is: { serviceId: { in: ["service-1"] } } },
+            },
+          ],
+        },
+      }),
+      select: expect.objectContaining({
+        mediaSession: expect.objectContaining({
+          select: expect.objectContaining({
+            booking: { select: { serviceId: true } },
+          }),
+        }),
+      }),
+    }));
+  });
 });

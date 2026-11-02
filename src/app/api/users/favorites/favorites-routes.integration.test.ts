@@ -251,6 +251,43 @@ describe('GET /api/users/favorites', () => {
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalled();
   });
 
+  it('keeps a legacy booking-linked Public package visible in Favorites', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
+    hoisted.favoriteCount.mockResolvedValue(1);
+    hoisted.favoriteFindMany.mockResolvedValue([sampleFavoriteRow()]);
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-intro', 'asset-progress', 'asset-final']);
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      { id: 'asset-intro', mimeType: 'video/mp4', mediaSession: { serviceId: null, bookingId: 'booking-1', booking: { serviceId: 'svc-1' }, vendorJobVideoStage: 'INTRO' } },
+      { id: 'asset-progress', mimeType: 'video/mp4', mediaSession: { serviceId: null, bookingId: 'booking-1', booking: { serviceId: 'svc-1' }, vendorJobVideoStage: 'IN_PROGRESS' } },
+      { id: 'asset-final', mimeType: 'video/mp4', mediaSession: { serviceId: null, bookingId: 'booking-1', booking: { serviceId: 'svc-1' }, vendorJobVideoStage: 'COMPLETED' } },
+    ]);
+
+    const response = await favoritesGET(new NextRequest('http://localhost/api/users/favorites'));
+    const favorite = ((await getJson(response)).favorites as Record<string, any>[])[0];
+
+    expect(response.status).toBe(200);
+    expect(favorite.previewMediaUrl).toBe('/api/public/media/asset-intro');
+    expect(favorite.publicListing.hasPublicMedia).toBe(true);
+    expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        mediaSession: {
+          OR: [
+            { serviceId: { in: ['svc-1'] } },
+            {
+              serviceId: null,
+              booking: { is: { serviceId: { in: ['svc-1'] } } },
+            },
+          ],
+        },
+      }),
+      select: expect.objectContaining({
+        mediaSession: expect.objectContaining({
+          select: expect.objectContaining({ booking: { select: { serviceId: true } } }),
+        }),
+      }),
+    }));
+  });
+
   it('keeps a saved Service but removes Public actions when its complete package is no longer Public', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
     hoisted.favoriteCount.mockResolvedValue(1);

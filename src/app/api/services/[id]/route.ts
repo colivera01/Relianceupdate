@@ -86,7 +86,13 @@ export async function GET(
                 in: getVisibilityStatusesForAudience('public'),
               },
               mediaSession: {
-                serviceId: dbService.id,
+                OR: [
+                  { serviceId: dbService.id },
+                  {
+                    serviceId: null,
+                    booking: { is: { serviceId: dbService.id } },
+                  },
+                ],
               },
             },
             orderBy: { createdAt: 'desc' },

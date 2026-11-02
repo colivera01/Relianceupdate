@@ -4,6 +4,7 @@ import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
 import {
   isCompletedStageProofVideo,
+  resolvePublicProofServiceId,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
 import {
@@ -163,6 +164,11 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
                 id: true,
                 bookingId: true,
                 serviceId: true,
+                booking: {
+                  select: {
+                    serviceId: true,
+                  },
+                },
                 title: true,
                 vendorJobVideoStage: true,
                 sessionType: true,
@@ -184,7 +190,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     const previewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     const primaryProofPreviewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     for (const asset of proofSafePublicAssets) {
-      const serviceId = String(asset?.mediaSession?.serviceId || "");
+      const serviceId = resolvePublicProofServiceId(asset?.mediaSession || null) || "";
       const url = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!serviceId || !url || primaryProofPreviewByServiceId.has(serviceId)) continue;
       if (!String(asset?.mimeType || "").startsWith("video/")) continue;
@@ -192,7 +198,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       primaryProofPreviewByServiceId.set(serviceId, { url, type: "video" });
     }
     for (const asset of proofSafePublicAssets) {
-      const serviceId = String(asset?.mediaSession?.serviceId || "");
+      const serviceId = resolvePublicProofServiceId(asset?.mediaSession || null) || "";
       const url = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!serviceId || !url || previewByServiceId.has(serviceId)) continue;
       previewByServiceId.set(serviceId, {
@@ -244,7 +250,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
 
       if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
 
-      const serviceId = asset?.mediaSession?.serviceId ? String(asset.mediaSession.serviceId) : null;
+      const serviceId = resolvePublicProofServiceId(asset?.mediaSession || null);
       const stageKey = String(asset?.mediaSession?.vendorJobVideoStage || "").trim().toUpperCase() || null;
       const bookingId = String(asset?.mediaSession?.bookingId || "").trim();
       const mediaSessionId = String(asset?.mediaSession?.id || "").trim();

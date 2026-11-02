@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "crypto";
+// Keep module transform work outside the first assertion's timeout budget.
+import "./service-video-evidence";
 
 const hoisted = vi.hoisted(() => ({
   prisma: {
@@ -133,6 +135,39 @@ describe("Private Service Video evidence", () => {
     expect(hoisted.prisma.recordingGateDecisionEvidence.findFirst).toHaveBeenCalledTimes(3);
     expect(hoisted.prisma.mediaSession.findFirst).toHaveBeenCalledTimes(3);
     expect(hoisted.prisma.mediaAsset.findFirst).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the exact granted package available to its customer after the assets become Public", async () => {
+    const { loadAuthorizedPrivateProof } = await import("./service-video-evidence");
+    hoisted.prisma.privateProofAccessGrant.findFirst.mockResolvedValue({
+      id: "grant-1",
+      packageId: "package-1",
+      managerDecisionId: "decision-1",
+    });
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({
+      id: "package-1",
+      vendorId: "vendor-1",
+      packageHash: "package-hash",
+      stageEvidenceJson: JSON.stringify(packageRows),
+    });
+    hoisted.prisma.serviceVideoManagerDecisionEvidence.findFirst.mockResolvedValue({ id: "decision-1" });
+    hoisted.prisma.serviceVideoStageEvidence.findMany.mockResolvedValue(stages);
+    hoisted.prisma.recordingGateDecisionEvidence.findFirst.mockResolvedValue({ decision: "ALLOWED" });
+    hoisted.prisma.mediaSession.findFirst.mockResolvedValue({ status: "COMPLETED" });
+    hoisted.prisma.mediaAsset.findFirst.mockResolvedValue({
+      uploadState: "SAVED",
+      moderationStatus: "approved",
+      visibilityStatus: "public",
+    });
+
+    const proof = await loadAuthorizedPrivateProof({ bookingId: "booking-1", customerUserId: "customer-1" });
+
+    expect(proof).toMatchObject({ assetIds: ["asset-1", "asset-2", "asset-3"] });
+    expect(hoisted.prisma.mediaAsset.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        visibilityStatus: { in: ["public", "customer_only"] },
+      }),
+    });
   });
 
   it("requires durable Admin PASS evidence for a new-path customer proof grant", async () => {

@@ -18,6 +18,8 @@ const hoisted = vi.hoisted(() => {
     serviceVideoPublicationCustomerDecision: { findFirst: vi.fn() },
     serviceVideoPublicationVendorDecision: { findFirst: vi.fn() },
     serviceVideoPublicationAdminDecision: { findFirst: vi.fn() },
+    serviceVideoPackageVisibilityDecision: { findFirst: vi.fn() },
+    serviceVideoAdminAuditDecisionEvidence: { findFirst: vi.fn() },
     serviceVideoPublicationParticipantDecision: { findMany: vi.fn() },
     serviceVideoPublicationAuditEvent: { create: vi.fn() },
     publicServiceVideoEligibility: { findMany: vi.fn(), updateMany: vi.fn() },
@@ -221,6 +223,16 @@ describe("exact-media Public Service Video evidence", () => {
 
     await expect(resolveCanonicalPublicAssetIds({ bookingId: "booking-1" })).resolves.toEqual(["asset-final"]);
 
+    hoisted.prisma.mediaSession.findFirst.mockImplementation(({ where }: any) =>
+      Promise.resolve({ id: where.id, serviceId: null, status: "COMPLETED" }),
+    );
+    await expect(resolveCanonicalPublicAssetIds({ serviceId: "service-1" })).resolves.toEqual(["asset-final"]);
+
+    hoisted.prisma.mediaSession.findFirst.mockImplementation(({ where }: any) =>
+      Promise.resolve({ id: where.id, serviceId: "different-service", status: "COMPLETED" }),
+    );
+    await expect(resolveCanonicalPublicAssetIds({ serviceId: "service-1" })).resolves.toEqual([]);
+
     hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValueOnce({
       id: "package-2",
       version: 4,
@@ -264,6 +276,134 @@ describe("exact-media Public Service Video evidence", () => {
     hoisted.prisma.serviceVideoPublicationParticipantDecision.findMany.mockResolvedValue([]);
 
     await expect(resolveCanonicalPublicAssetIds({ bookingId: "booking-1" })).resolves.toEqual([]);
+  });
+
+  it("does not query a legacy vendor decision when a standing-consent row has no vendor decision id", async () => {
+    const { resolveCanonicalPublicAssetIds } = await import("./service-video-publication");
+    hoisted.prisma.publicServiceVideoEligibility.findMany.mockResolvedValue([{
+      proposalId: "proposal-1",
+      stageId: "publication-stage-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      mediaAssetId: "asset-final",
+      packageId: "package-1",
+      packageHash: "package-hash-1",
+      proposalHash: "proposal-hash-1",
+      presentationHash: "presentation-hash-1",
+      contentHash: "hash-final",
+      customerDecisionId: "visibility-decision-1",
+      packageVisibilityDecisionId: "visibility-decision-1",
+      vendorDecisionId: null,
+      adminDecisionId: "admin-audit-1",
+      participantDecisionIdsJson: "[]",
+      standingConsentDecisionIdsJson: "[]",
+    }]);
+    hoisted.prisma.serviceVideoPublicationProposal.findFirst.mockResolvedValue({
+      id: "proposal-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      packageId: "package-1",
+      packageVersion: 3,
+      packageHash: "package-hash-1",
+      proposalHash: "proposal-hash-1",
+      isCurrent: true,
+      status: "PUBLIC",
+      contractVersion: 4,
+      authorizationModel: "CUSTOMER_COMPLETE_PACKAGE_STANDING_EMPLOYEE_CONSENT",
+    });
+    hoisted.prisma.serviceVideoPublicationStage.findFirst.mockResolvedValue({
+      id: "publication-stage-1",
+      proposalId: "proposal-1",
+      stageEvidenceId: "stage-final",
+      stageVersion: 2,
+      mediaAssetId: "asset-final",
+      contentHash: "hash-final",
+      presentationHash: "presentation-hash-1",
+      containsMinor: false,
+      containsBystander: false,
+      containsEmployeeLikeness: false,
+      includesAudio: false,
+    });
+    hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst.mockResolvedValue(null);
+    hoisted.prisma.serviceVideoAdminAuditDecisionEvidence.findFirst.mockResolvedValue(null);
+    hoisted.prisma.serviceVideoPublicationVendorDecision.findFirst.mockImplementation(({ where }: any) => {
+      if (where.id == null) throw new Error("Argument `id` must not be null");
+      return Promise.resolve(null);
+    });
+
+    await expect(resolveCanonicalPublicAssetIds({ bookingId: "booking-1" })).resolves.toEqual([]);
+
+    expect(hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "visibility-decision-1", decision: "SHARE_PUBLICLY" }),
+    });
+    expect(hoisted.prisma.serviceVideoPublicationVendorDecision.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not let a pre-v4 row claim the standing-consent authorization model", async () => {
+    const { resolveCanonicalPublicAssetIds } = await import("./service-video-publication");
+    hoisted.prisma.publicServiceVideoEligibility.findMany.mockResolvedValue([{
+      proposalId: "proposal-1",
+      stageId: "publication-stage-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      mediaAssetId: "asset-final",
+      packageId: "package-1",
+      packageHash: "package-hash-1",
+      proposalHash: "proposal-hash-1",
+      presentationHash: "presentation-hash-1",
+      contentHash: "hash-final",
+      customerDecisionId: "customer-decision-1",
+      packageVisibilityDecisionId: "visibility-decision-1",
+      vendorDecisionId: null,
+      adminDecisionId: "admin-decision-1",
+      participantDecisionIdsJson: "[]",
+      standingConsentDecisionIdsJson: "[]",
+    }]);
+    hoisted.prisma.serviceVideoPublicationProposal.findFirst.mockResolvedValue({
+      id: "proposal-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      packageId: "package-1",
+      packageVersion: 3,
+      packageHash: "package-hash-1",
+      proposalHash: "proposal-hash-1",
+      isCurrent: true,
+      status: "PUBLIC",
+      contractVersion: 3,
+      authorizationModel: "CUSTOMER_COMPLETE_PACKAGE_STANDING_EMPLOYEE_CONSENT",
+    });
+    hoisted.prisma.serviceVideoPublicationStage.findFirst.mockResolvedValue({
+      id: "publication-stage-1",
+      proposalId: "proposal-1",
+      stageEvidenceId: "stage-final",
+      stageVersion: 2,
+      mediaAssetId: "asset-final",
+      contentHash: "hash-final",
+      presentationHash: "presentation-hash-1",
+      containsMinor: false,
+      containsBystander: false,
+      containsEmployeeLikeness: false,
+      includesAudio: false,
+    });
+    hoisted.prisma.serviceVideoPublicationCustomerDecision.findFirst.mockResolvedValue({
+      id: "customer-decision-1",
+      decisionJson: JSON.stringify({ stages: { "publication-stage-1": "APPROVED" } }),
+    });
+    hoisted.prisma.serviceVideoPublicationAdminDecision.findFirst.mockResolvedValue({
+      id: "admin-decision-1",
+      decision: "APPROVED",
+      approvedAudience: "PUBLIC",
+    });
+    hoisted.prisma.serviceVideoPublicationVendorDecision.findFirst.mockImplementation(({ where }: any) => {
+      if (where.id == null) throw new Error("Argument `id` must not be null");
+      return Promise.resolve({ id: where.id, decision: "APPROVED" });
+    });
+
+    await expect(resolveCanonicalPublicAssetIds({ bookingId: "booking-1" })).resolves.toEqual([]);
+
+    expect(hoisted.prisma.serviceVideoPackageVisibilityDecision.findFirst).not.toHaveBeenCalled();
+    expect(hoisted.prisma.serviceVideoPublicationCustomerDecision.findFirst).toHaveBeenCalled();
+    expect(hoisted.prisma.serviceVideoPublicationVendorDecision.findFirst).not.toHaveBeenCalled();
   });
 
   it("keeps current immediate-publication contracts out of the legacy Admin queue", async () => {

@@ -64,6 +64,8 @@ function finalAsset(input: {
   bookingId: string;
   mediaSessionId: string;
   createdAt: string;
+  serviceId?: string | null;
+  bookingServiceId?: string | null;
 }) {
   return {
     id: input.id,
@@ -73,7 +75,10 @@ function finalAsset(input: {
     mediaSession: {
       id: input.mediaSessionId,
       bookingId: input.bookingId,
-      serviceId: 'service-1',
+      serviceId: input.serviceId === undefined ? 'service-1' : input.serviceId,
+      booking: {
+        serviceId: input.bookingServiceId === undefined ? 'service-1' : input.bookingServiceId,
+      },
       title: 'Completed outlet installation',
       vendorJobVideoStage: 'COMPLETED',
       sessionType: 'JOB_SERVICE_VIDEO',
@@ -151,6 +156,61 @@ describe('GET /api/vendors/[vendorId]/public', () => {
       'Lighting Installation',
       'Residential Rewiring',
     ]);
+  });
+
+  it('associates legacy public work through its authoritative booking service', async () => {
+    const asset = finalAsset({
+      id: 'asset-legacy-booking-service',
+      bookingId: 'booking-legacy',
+      mediaSessionId: 'session-legacy',
+      createdAt: '2026-10-21T14:00:00.000Z',
+      serviceId: null,
+      bookingServiceId: 'service-1',
+    });
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([asset.id]);
+    h.mediaAssetFindMany.mockResolvedValue([asset]);
+
+    const { response, json } = await getPublicVendor();
+
+    expect(response.status).toBe(200);
+    expect(h.mediaAssetFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        mediaSession: expect.objectContaining({
+          select: expect.objectContaining({
+            booking: { select: { serviceId: true } },
+          }),
+        }),
+      }),
+    }));
+    expect(json.publicServices[0].previewMediaUrl).toBe('/api/public/media/asset-legacy-booking-service');
+    expect(json.publicMedia[0]).toMatchObject({
+      mediaId: 'asset-legacy-booking-service',
+      serviceId: 'service-1',
+      serviceName: 'Outlet Installation',
+    });
+    expect(json.publicProofSummary.servicesWithPublicProof).toBe(1);
+  });
+
+  it('does not relink conflicting public work through the booking fallback', async () => {
+    const asset = finalAsset({
+      id: 'asset-conflicting-service',
+      bookingId: 'booking-conflict',
+      mediaSessionId: 'session-conflict',
+      createdAt: '2026-10-22T14:00:00.000Z',
+      serviceId: 'service-from-session',
+      bookingServiceId: 'service-1',
+    });
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([asset.id]);
+    h.mediaAssetFindMany.mockResolvedValue([asset]);
+
+    const { response, json } = await getPublicVendor();
+
+    expect(response.status).toBe(200);
+    expect(json.publicServices[0].previewMediaUrl).toBeNull();
+    expect(json.publicMedia[0]).toMatchObject({
+      serviceId: 'service-from-session',
+      serviceName: null,
+    });
   });
 
   it('marks transient public-media enrichment failures instead of returning a genuine empty state', async () => {

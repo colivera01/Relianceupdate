@@ -98,6 +98,7 @@ export async function POST(
     // Keep booking linkage optional and backward-compatible with UI-local job IDs.
     // If bookingId is provided but not found for this vendor, ignore it instead of failing FK constraints.
     let validBookingId: string | null = null;
+    let validBookingServiceId: string | null = null;
     let validBookingMetadata: string | null = null;
     let validBookingVendorLocation: VendorBusinessLocation | null = null;
     if (bookingId) {
@@ -108,6 +109,7 @@ export async function POST(
         },
         select: {
           id: true,
+          serviceId: true,
           customerMetadata: true,
           vendor: {
             select: {
@@ -123,6 +125,7 @@ export async function POST(
         },
       });
       validBookingId = booking?.id ?? null;
+      validBookingServiceId = booking?.serviceId ?? null;
       validBookingMetadata = booking?.customerMetadata ?? null;
       validBookingVendorLocation = booking?.vendor ?? null;
       if (booking && employeeActor) {
@@ -309,7 +312,9 @@ export async function POST(
       userId: userId || null,
       employeeId: employeeId || null,
       bookingId: validBookingId,
-      serviceId: serviceId || null,
+      // A booking is the authoritative Service Offered relationship. Never let a
+      // client-supplied service ID relink staged evidence to a different service.
+      serviceId: validBookingId ? validBookingServiceId : serviceId || null,
       deviceId: deviceId || null,
       deviceType: deviceType || null,
       sessionType: normalizedStage ? "JOB_SERVICE_VIDEO" : resolvedSessionType,

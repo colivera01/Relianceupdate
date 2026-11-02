@@ -125,8 +125,12 @@ function assessmentContainsProtectedNonParticipant(assessment: {
 }
 
 function isPackageVisibilityProposal(proposal: any): boolean {
+  if (isStandingConsentProposal(proposal)) return true;
   return Number(proposal?.contractVersion || 1) >= PACKAGE_VISIBILITY_CONTRACT_VERSION &&
-    [PACKAGE_VISIBILITY_AUTHORIZATION_MODEL, IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL].includes(
+    [
+      PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
+      IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL,
+    ].includes(
       String(proposal?.authorizationModel || ""),
     );
 }
@@ -2411,7 +2415,14 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
   if (!packaged || packaged.mediaAssetId !== row.mediaAssetId || packaged.contentHash !== row.contentHash || Number(packaged.stageVersion) !== Number(stage.stageVersion)) return false;
   const exact = await loadExactStage(db, foundation, packaged).catch(() => null);
   if (!exact) return false;
-  if (filters?.serviceId && exact.session.serviceId !== filters.serviceId) return false;
+  if (filters?.serviceId) {
+    // Older employee capture sessions were booking-linked but did not persist
+    // serviceId. The immutable booking/package chain remains authoritative for
+    // those rows. A non-null session value still wins so conflicting evidence
+    // cannot be silently relinked by the compatibility path.
+    const effectiveServiceId = exact.session.serviceId ?? foundation.booking.serviceId;
+    if (effectiveServiceId !== filters.serviceId) return false;
+  }
   const packageLevel = isPackageVisibilityProposal(proposal);
   const immediatePublication = isImmediatePublicationProposal(proposal);
   const [customer, vendor, admin] = await Promise.all([
@@ -2430,7 +2441,9 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
       : db.serviceVideoPublicationCustomerDecision.findFirst({ where: { id: row.customerDecisionId, proposalId: proposal.id, proposalHash: proposal.proposalHash } }),
     packageLevel
       ? Promise.resolve(null)
-      : db.serviceVideoPublicationVendorDecision.findFirst({ where: { id: row.vendorDecisionId, proposalId: proposal.id, proposalHash: proposal.proposalHash, decision: "APPROVED" } }),
+      : row.vendorDecisionId
+        ? db.serviceVideoPublicationVendorDecision.findFirst({ where: { id: row.vendorDecisionId, proposalId: proposal.id, proposalHash: proposal.proposalHash, decision: "APPROVED" } })
+        : Promise.resolve(null),
     immediatePublication
       ? db.serviceVideoAdminAuditDecisionEvidence.findFirst({
           where: {

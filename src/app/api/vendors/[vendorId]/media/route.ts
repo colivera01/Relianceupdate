@@ -11,6 +11,7 @@ import {
   normalizeArchiveStatus,
 } from "@/lib/media-visibility";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
+import { resolvePublicProofServiceId } from "@/lib/proof-media-policy";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -96,6 +97,13 @@ export async function GET(
               id: true,
               title: true,
               clientName: true,
+              serviceId: true,
+              service: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
             },
           },
           service: {
@@ -211,8 +219,11 @@ export async function GET(
         jobTitle: asset.mediaSession?.booking?.title || null,
         bookingId: asset.mediaSession?.booking?.id || null,
         clientName: asset.mediaSession?.booking?.clientName || null,
-        serviceId: asset.mediaSession?.service?.id || asset.mediaSession?.serviceId || null,
-        serviceName: asset.mediaSession?.service?.name || null,
+        serviceId: resolvePublicProofServiceId(asset.mediaSession || null),
+        serviceName:
+          asset.mediaSession?.service?.name ||
+          asset.mediaSession?.booking?.service?.name ||
+          null,
         sessionType: asset.mediaSession?.sessionType || null,
         vendorJobVideoStage: asset.mediaSession?.vendorJobVideoStage || null,
         mediaPurpose: deriveMediaPurposeFromSessionType(asset.mediaSession?.sessionType),

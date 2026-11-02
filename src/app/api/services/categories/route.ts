@@ -74,7 +74,13 @@ export async function GET(): Promise<NextResponse> {
             in: getVisibilityStatusesForAudience("public"),
           },
           mediaSession: {
-            serviceId: { in: serviceIds },
+            OR: [
+              { serviceId: { in: serviceIds } },
+              {
+                serviceId: null,
+                booking: { is: { serviceId: { in: serviceIds } } },
+              },
+            ],
           },
         }),
         select: {
@@ -84,6 +90,11 @@ export async function GET(): Promise<NextResponse> {
             select: {
               serviceId: true,
               bookingId: true,
+              booking: {
+                select: {
+                  serviceId: true,
+                },
+              },
               vendorJobVideoStage: true,
               sessionType: true,
             },

@@ -94,7 +94,16 @@ describe("GET /api/services/[id]/media", () => {
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: { in: ["asset-1", "asset-2", "asset-3"] },
-        mediaSession: { serviceId: "service-1", bookingId: "booking-1" },
+        mediaSession: {
+          bookingId: "booking-1",
+          OR: [
+            { serviceId: "service-1" },
+            {
+              serviceId: null,
+              booking: { is: { serviceId: "service-1" } },
+            },
+          ],
+        },
       }),
     }));
   });
@@ -111,15 +120,57 @@ describe("GET /api/services/[id]/media", () => {
   });
 
   it("preserves canonical Public media resolution", async () => {
+    hoisted.mediaAssetFindMany.mockResolvedValue([{
+      id: "public-asset",
+      vendorId: "vendor-1",
+      mediaSessionId: "session-1",
+      bytes: BigInt(100),
+      mimeType: "video/mp4",
+      blobKey: "private/public-asset.mp4",
+      blobUrl: "https://private.example/public-asset.mp4",
+      moderationStatus: "approved",
+      visibilityStatus: "public",
+      archiveStatus: "active",
+      moderationReason: null,
+      moderatedAt: null,
+      createdAt: new Date("2026-10-20T14:00:00.000Z"),
+      mediaSession: {
+        title: "Final Result",
+        description: "Completed work",
+        bookingId: "booking-legacy",
+        serviceId: null,
+        booking: { serviceId: "service-1" },
+        vendorJobVideoStage: "COMPLETED",
+        sessionType: "JOB_SERVICE_VIDEO",
+      },
+    }]);
     const response = await GET(
       new NextRequest("http://localhost/api/services/service-1/media?audience=public"),
       context,
     );
+    const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(resolveCanonicalPublicAssetIds).toHaveBeenCalledWith({ serviceId: "service-1" });
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: { in: ["public-asset"] } }),
+      where: expect.objectContaining({
+        id: { in: ["public-asset"] },
+        mediaSession: {
+          OR: [
+            { serviceId: "service-1" },
+            {
+              serviceId: null,
+              booking: { is: { serviceId: "service-1" } },
+            },
+          ],
+        },
+      }),
     }));
+    expect(body.assets[0]).toMatchObject({
+      id: "public-asset",
+      serviceId: "service-1",
+      blobUrl: "/api/public/media/public-asset",
+    });
+    expect(JSON.stringify(body)).not.toContain("https://private.example/");
   });
 });

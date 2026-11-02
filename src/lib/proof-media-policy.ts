@@ -43,8 +43,26 @@ type PublicProofPackageAsset = {
   mediaSession?: (MediaSessionStageShape & {
     bookingId?: string | null;
     serviceId?: string | null;
+    booking?: {
+      serviceId?: string | null;
+    } | null;
   }) | null;
 };
+
+/**
+ * Older employee capture sessions can be booking-linked without persisting a
+ * session-level serviceId. Use the immutable booking association only as a
+ * compatibility fallback. A non-empty session value always wins so a
+ * conflicting booking relation cannot silently relink public media.
+ */
+export function resolvePublicProofServiceId(
+  session: PublicProofPackageAsset["mediaSession"]
+): string | null {
+  const sessionServiceId = String(session?.serviceId || "").trim();
+  if (sessionServiceId) return sessionServiceId;
+  const bookingServiceId = String(session?.booking?.serviceId || "").trim();
+  return bookingServiceId || null;
+}
 
 /**
  * Resolves one complete canonical package per Service without combining stages
@@ -61,7 +79,7 @@ export function groupCompletePublicProofPackagesByService<T extends PublicProofP
   for (const asset of assets) {
     if (!String(asset?.mimeType || "").startsWith("video/")) continue;
     if (!shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)) continue;
-    const serviceId = String(asset?.mediaSession?.serviceId || "").trim();
+    const serviceId = resolvePublicProofServiceId(asset?.mediaSession || null);
     const bookingId = String(asset?.mediaSession?.bookingId || "").trim();
     const stage = resolveVendorJobVideoStageFromSession(asset?.mediaSession || {});
     if (!serviceId || !bookingId || !VENDOR_JOB_VIDEO_STAGES.includes(stage as VendorJobVideoStage)) {

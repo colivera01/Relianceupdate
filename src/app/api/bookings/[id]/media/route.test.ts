@@ -46,7 +46,12 @@ describe("customer Private Service Video list", () => {
 
   it("returns no media when the approved evidence chain is incomplete", async () => {
     const { GET } = await import("./route");
-    hoisted.bookingFindUnique.mockResolvedValue({ id: "booking-1", userId: "customer-1", vendorId: "vendor-1" });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "booking-1",
+      userId: "customer-1",
+      vendorId: "vendor-1",
+      serviceId: "service-1",
+    });
     hoisted.loadAuthorizedPrivateProof.mockResolvedValue(null);
 
     const response = await GET(new Request("http://localhost/api/bookings/booking-1/media"), {
@@ -61,7 +66,12 @@ describe("customer Private Service Video list", () => {
 
   it("returns only assets bound to the authorized package and records the view", async () => {
     const { GET } = await import("./route");
-    hoisted.bookingFindUnique.mockResolvedValue({ id: "booking-1", userId: "customer-1", vendorId: "vendor-1" });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "booking-1",
+      userId: "customer-1",
+      vendorId: "vendor-1",
+      serviceId: "service-1",
+    });
     hoisted.loadAuthorizedPrivateProof.mockResolvedValue({
       grant: { id: "grant-1" },
       package: { id: "package-1" },
@@ -86,7 +96,7 @@ describe("customer Private Service Video list", () => {
           title: "Final Result",
           description: "Completed work",
           bookingId: "booking-1",
-          serviceId: "service-1",
+          serviceId: null,
           vendorJobVideoStage: "COMPLETED",
           sessionType: "JOB_SERVICE_VIDEO",
         },
@@ -102,7 +112,12 @@ describe("customer Private Service Video list", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(body).toMatchObject({
       privateProofStatus: "AVAILABLE",
-      assets: [{ id: "asset-3", blobUrl: null, downloadUrl: "/api/bookings/booking-1/media/asset-3/download" }],
+      assets: [{
+        id: "asset-3",
+        serviceId: "service-1",
+        blobUrl: null,
+        downloadUrl: "/api/bookings/booking-1/media/asset-3/download",
+      }],
     });
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: { in: ["asset-1", "asset-2", "asset-3"] } }) }),
