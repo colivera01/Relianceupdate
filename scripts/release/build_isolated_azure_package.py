@@ -9,6 +9,15 @@ import subprocess
 import sys
 
 
+# npm 7+ runs lifecycle scripts in parallel by default. Prisma's client and
+# engines postinstalls can then download the same engine set concurrently,
+# which makes an otherwise valid isolated build vulnerable to transient
+# connection resets. Keep lifecycle scripts on npm's supported foreground path
+# so the locked dependency install remains fresh while postinstalls run in a
+# deterministic sequence.
+NPM_CI_ARGS = ('ci', '--foreground-scripts', '--no-audit', '--no-fund')
+
+
 def run(args, cwd, env):
     subprocess.run([str(arg) for arg in args], cwd=cwd, env=env, check=True)
 
@@ -44,7 +53,7 @@ def main():
     npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
     if not npm:
         raise RuntimeError('npm is required by package-lock.json')
-    run([npm, 'ci', '--no-audit', '--no-fund'], build, env)
+    run([npm, *NPM_CI_ARGS], build, env)
     if os.name == 'nt':
         # npm omits other operating systems' optional native packages. Install
         # the same lockfile for Azure's target in a separate fresh scratch tree;
