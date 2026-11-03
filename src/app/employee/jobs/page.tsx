@@ -25,6 +25,7 @@ import {
   getEmployeeStageStep,
   getMissingEmployeeStagePrerequisite,
   getNextEmployeeCaptureStage,
+  removeEmployeeStageFeedback,
 } from "@/lib/employee-stage-capture";
 import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
@@ -1095,12 +1096,20 @@ export default function EmployeeJobsPage() {
       recorder.stop();
       return;
     }
+    const cameraContext = activeCameraContextRef.current;
+    const feedbackKey = cameraContext
+      ? `${cameraContext.job.id}:${cameraContext.stage}`
+      : recordingKey || recordingOpeningKey;
     mediaRecorderRef.current = null;
     recordingChunksRef.current = [];
     setRecordingKey(null);
+    setRecordingOpeningKey(null);
     setRecordingStarted(false);
     setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
     stopActiveCameraStream();
+    if (feedbackKey) {
+      setStageFeedback((current) => removeEmployeeStageFeedback(current, feedbackKey));
+    }
   };
 
   const requestLocationProof = async (

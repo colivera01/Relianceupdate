@@ -101,10 +101,14 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     setVendorAssentLocked(locked);
   }, []);
   const isVendorManagerWorkflow = isVendorManagerWorkflowPath(pathname);
+  const isVendorAccessRestricted =
+    errorCode === 'VENDOR_ACCOUNT_RESTRICTED' ||
+    errorCode === 'USER_ACCOUNT_RESTRICTED';
   const hasLiveVendorAccess =
     Boolean(vendorProfile?.id) ||
     approvalPending ||
     hasResolvedVendorContext;
+  const hasResolvedVendorAccessState = hasLiveVendorAccess || isVendorAccessRestricted;
   const isVendorOnboardingRoute =
     pathname === '/vendor/register' || pathname.startsWith('/vendor/invite/');
   const vendorSupportHref = buildVendorSupportHref(pathname);
@@ -177,7 +181,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!hasLiveVendorAccess && vendorProfileLoading) {
+  if (!hasResolvedVendorAccessState && vendorProfileLoading) {
     return (
       <div className="min-h-screen bg-slate-100 px-6 py-10">
         <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -190,7 +194,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!hasLiveVendorAccess) {
+  if (!hasResolvedVendorAccessState) {
     if (isVendorManagerWorkflow) {
       return (
         <VendorManagerRecoveryPanel
@@ -242,9 +246,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     .slice(0, 2)
     .join('')
     .toUpperCase() || 'V';
-  const shouldBlockVendorTools =
-    errorCode === 'VENDOR_ACCOUNT_RESTRICTED' ||
-    errorCode === 'USER_ACCOUNT_RESTRICTED';
+  const shouldBlockVendorTools = isVendorAccessRestricted;
   const content = shouldBlockVendorTools ? (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
       <h1 className="text-2xl font-semibold text-amber-950">

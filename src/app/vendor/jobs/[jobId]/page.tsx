@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CheckCircle2, ChevronLeft, ChevronRight, PlayCircle, RotateCcw } from "lucide-react";
@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
-import { getClientSessionHeaders } from "@/lib/client-session";
+import { getClientActorSessionKey, getClientSessionHeaders } from "@/lib/client-session";
 import { ManagerWorkRecordAttestation } from "@/components/vendor/ManagerWorkRecordAttestation";
 import { PackageVisibilityCard } from "@/components/service-video/PackageVisibilityCard";
 import { resolveVendorJobLifecyclePresentation } from "@/lib/vendor-job-lifecycle-presentation";
@@ -251,7 +251,12 @@ export default function VendorJobDetailPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = String(params?.jobId || "").trim();
   const { user } = useAuth();
-  const { data: profile, resolvedVendorId, loading: vendorProfileLoading } = useVendorProfile();
+  const {
+    data: profile,
+    resolvedVendorId,
+    loading: vendorProfileLoading,
+    refetch: refetchVendorProfile,
+  } = useVendorProfile();
   const vendorId = String(profile?.id || resolvedVendorId || "").trim();
   const userId =
     typeof user?.id === "string"
@@ -263,11 +268,13 @@ export default function VendorJobDetailPage() {
       : user?.id && typeof user.id === "object" && typeof (user.id as any).id === "number"
       ? String((user.id as any).id)
       : "";
+  const actorKey = getClientActorSessionKey(user);
 
   const [job, setJob] = useState<JobLike | null>(null);
   const [sessions, setSessions] = useState<SessionDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadErrorContextKey, setLoadErrorContextKey] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [role, setRole] = useState<string>("");
@@ -294,13 +301,78 @@ export default function VendorJobDetailPage() {
   const [serviceRequestSubmitting, setServiceRequestSubmitting] = useState(false);
   const serviceRequestIdempotencyRef = useRef<{ action: string; requestId: string } | null>(null);
   const [resolvingPlaybackStage, setResolvingPlaybackStage] = useState<string | null>(null);
-  const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
+  const [loadedContextKey, setLoadedContextKey] = useState("");
+  const headers = useMemo(() => getClientSessionHeaders(userId), [actorKey, userId]);
   const effectiveVendorId = String(vendorId || "").trim();
+  const currentContextKey = actorKey && effectiveVendorId && jobId
+    ? `${actorKey}:${effectiveVendorId}:${jobId}`
+    : "";
+  const viewContextKey = actorKey
+    ? `${actorKey}:${effectiveVendorId || "no-vendor"}:${jobId || "no-job"}`
+    : "";
   const normalizedStatus = normalizeStatus(job?.status);
   const isManager = role === "MANAGER";
   const isEmployee = role === "EMPLOYEE";
   const correctionPending = String(job?.serviceVideoPackage?.status || "").toUpperCase() === "CORRECTION_REQUESTED";
   const lastAutoLoadKeyRef = useRef<string>("");
+  const loadRequestRef = useRef(0);
+  const activeContextKeyRef = useRef(viewContextKey);
+  activeContextKeyRef.current = viewContextKey;
+  const isActiveContext = useCallback(
+    (expectedContextKey: string) =>
+      Boolean(expectedContextKey) && activeContextKeyRef.current === expectedContextKey,
+    [],
+  );
+  const clearLoadedJobState = useCallback(() => {
+    setLoadedContextKey("");
+    setJob(null);
+    setSessions([]);
+    setRole("");
+    setManagerAttestationCurrent(false);
+    setActionError(null);
+    setActionMessage(null);
+    setAuditConfirmOpen(false);
+    setAuditAcknowledged(false);
+    setCorrectionOpen(false);
+    setCorrectionReason("");
+    setCorrectionStages([]);
+    setSubmitting(false);
+    setUploadingStage(null);
+    setPlaybackUrl("");
+    setPlaybackTitle("");
+    setPlaybackError("");
+    setPlaybackOpen(false);
+    setPlaybackStage(null);
+    setPlaybackCompleted(false);
+    setReviewedStages([]);
+    setResendingCompletedOrder(false);
+    setServiceOrderSending(false);
+    setServiceRequestDialog(null);
+    setServiceRequestReason("");
+    setServiceRequestProposedAt("");
+    setServiceRequestSubmitting(false);
+    setResolvingPlaybackStage(null);
+    serviceRequestIdempotencyRef.current = null;
+  }, []);
+  const setCurrentLoadError = useCallback((message: string | null) => {
+    setLoadError(message);
+    setLoadErrorContextKey(message ? viewContextKey : "");
+  }, [viewContextKey]);
+  const failClosedVendorView = useCallback((message?: string) => {
+    loadRequestRef.current += 1;
+    lastAutoLoadKeyRef.current = "";
+    clearLoadedJobState();
+    setLoading(false);
+    setCurrentLoadError(message || "Vendor access required. Sign in with an active vendor account and try again.");
+    void refetchVendorProfile();
+  }, [clearLoadedJobState, refetchVendorProfile, setCurrentLoadError]);
+  const handleAuthorizationFailure = useCallback((response: Response, payload?: Record<string, any>) => {
+    if (response.status !== 401 && response.status !== 403) return false;
+    failClosedVendorView(
+      String(payload?.error || payload?.message || "Vendor access required. Sign in with an active vendor account and try again."),
+    );
+    return true;
+  }, [failClosedVendorView]);
   const serviceRequestState = String(
     job?.requestLifecycle?.state ||
       (String(job?.source || '').toLowerCase() === 'customer_booking' && normalizedStatus === 'PENDING' ? 'REQUESTED' : '')
@@ -397,30 +469,52 @@ export default function VendorJobDetailPage() {
     });
   }, [allStagesExist, correctionPending, job, nextMissingStage, normalizedStatus]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!jobId) {
+      loadRequestRef.current += 1;
+      clearLoadedJobState();
       setLoading(false);
-      setLoadError("Missing job id.");
+      setCurrentLoadError("Missing job id.");
       return;
     }
     if (vendorProfileLoading) {
       return;
     }
     if (!effectiveVendorId) {
+      loadRequestRef.current += 1;
+      clearLoadedJobState();
       setLoading(false);
-      setLoadError("Vendor context unavailable. Refresh and try again.");
+      setCurrentLoadError("Vendor context unavailable. Refresh and try again.");
       return;
     }
+    if (!isActiveContext(currentContextKey)) return;
+    const requestId = ++loadRequestRef.current;
+    const requestContextKey = currentContextKey;
+    const isCurrentRequest = () =>
+      loadRequestRef.current === requestId &&
+      isActiveContext(requestContextKey);
     setLoading(true);
-    setLoadError(null);
+    setCurrentLoadError(null);
     try {
-      const contextRes = await fetch("/api/vendor/context", {
+      const contextRes = await fetch(`/api/vendor/context?vendorId=${encodeURIComponent(effectiveVendorId)}`, {
         method: "GET",
         headers,
         cache: "no-store",
       });
       const contextJson = await contextRes.json().catch(() => ({}));
-      setRole(String(contextJson?.role || "").trim().toUpperCase());
+      if (!isCurrentRequest()) return;
+      if (handleAuthorizationFailure(contextRes, contextJson)) return;
+      const contextVendorId = String(contextJson?.vendorId || "").trim();
+      const resolvedRole = String(contextJson?.role || "").trim().toUpperCase();
+      if (
+        !contextRes.ok ||
+        contextJson?.success !== true ||
+        !contextVendorId ||
+        contextVendorId !== effectiveVendorId ||
+        !resolvedRole
+      ) {
+        throw new Error(String(contextJson?.error || contextJson?.message || "Vendor access required."));
+      }
 
       const jobRes = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}`, {
         method: "GET",
@@ -428,16 +522,19 @@ export default function VendorJobDetailPage() {
         cache: "no-store",
       });
       const jobJson = await jobRes.json().catch(() => ({}));
+      if (!isCurrentRequest()) return;
+      if (handleAuthorizationFailure(jobRes, jobJson)) return;
       if (!jobRes.ok || !jobJson?.job) {
         throw new Error(String(jobJson?.error || "Failed to load job detail"));
       }
-      setJob(jobJson.job as JobLike);
 
       const sessionsRes = await fetch(
         `/api/vendors/${effectiveVendorId}/media/sessions?bookingId=${encodeURIComponent(jobId)}`,
         { method: "GET", headers, cache: "no-store" }
       );
       const sessionsJson = await sessionsRes.json().catch(() => ({}));
+      if (!isCurrentRequest()) return;
+      if (handleAuthorizationFailure(sessionsRes, sessionsJson)) return;
       if (!sessionsRes.ok) throw new Error(String(sessionsJson?.error || "Failed to load video sessions"));
       const baseSessions = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
       const details = await Promise.all(
@@ -450,37 +547,68 @@ export default function VendorJobDetailPage() {
             cache: "no-store",
           });
           const detailJson = await detailRes.json().catch(() => ({}));
+          if (handleAuthorizationFailure(detailRes, detailJson)) return null;
           if (!detailRes.ok) return null;
           return detailJson?.session as SessionDetails;
         })
       );
+      if (!isCurrentRequest()) return;
+      setRole(resolvedRole);
+      setJob(jobJson.job as JobLike);
       setSessions(details.filter((d): d is SessionDetails => Boolean(d)));
+      setLoadedContextKey(currentContextKey);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load job detail");
+      if (!isCurrentRequest()) return;
+      clearLoadedJobState();
+      setCurrentLoadError(e instanceof Error ? e.message : "Failed to load job detail");
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) setLoading(false);
     }
-  };
+  }, [
+    clearLoadedJobState,
+    currentContextKey,
+    effectiveVendorId,
+    handleAuthorizationFailure,
+    headers,
+    isActiveContext,
+    jobId,
+    setCurrentLoadError,
+    vendorProfileLoading,
+  ]);
+
+  useEffect(() => {
+    loadRequestRef.current += 1;
+    lastAutoLoadKeyRef.current = "";
+    clearLoadedJobState();
+    setCurrentLoadError(null);
+    setLoading(Boolean(jobId));
+  }, [actorKey, clearLoadedJobState, effectiveVendorId, jobId, setCurrentLoadError]);
 
   useEffect(() => {
     if (!jobId) {
       setLoading(false);
-      setLoadError("Missing job id.");
+      setCurrentLoadError("Missing job id.");
       return;
     }
     if (vendorProfileLoading || !effectiveVendorId) {
+      if (!vendorProfileLoading && !effectiveVendorId) {
+        setLoading(false);
+        setCurrentLoadError("Vendor context unavailable. Refresh and try again.");
+      }
       return;
     }
-    const loadKey = `${effectiveVendorId}:${jobId}`;
+    const loadKey = currentContextKey;
     if (lastAutoLoadKeyRef.current === loadKey) {
       return;
     }
     lastAutoLoadKeyRef.current = loadKey;
     void load();
-  }, [effectiveVendorId, jobId, vendorProfileLoading]);
+  }, [currentContextKey, effectiveVendorId, jobId, load, setCurrentLoadError, vendorProfileLoading]);
 
   const sendEmployeeServiceOrder = async () => {
     if (!effectiveVendorId || !jobId || !managerAttestationCurrent || serviceOrderSending) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     setServiceOrderSending(true);
     setActionMessage(null);
     setActionError(null);
@@ -494,6 +622,8 @@ export default function VendorJobDetailPage() {
         },
       );
       const body = await response.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(response, body)) return;
       if (!response.ok || body?.success === false) {
         throw new Error(actionErrorMessage(body, "The Service Order could not be sent."));
       }
@@ -508,6 +638,8 @@ export default function VendorJobDetailPage() {
 
   const watchStage = async (stageKey: ReviewStage) => {
     if (!effectiveVendorId) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     const session = stageMap.get(stageKey);
     const asset = session?.mediaAssets?.[0];
     if (!asset?.id) return;
@@ -520,6 +652,8 @@ export default function VendorJobDetailPage() {
         { method: "GET", headers, cache: "no-store" }
       );
       const json = await res.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(res, json)) return;
       const downloadUrl = String(json?.downloadUrl || json?.url || "").trim();
       if (!res.ok || !downloadUrl || !isRealAzureBlobHostUrl(downloadUrl)) {
         throw new Error(String(json?.error || "Video preview could not be loaded."));
@@ -552,6 +686,8 @@ export default function VendorJobDetailPage() {
 
   const uploadStage = async (stageKey: string, file: File, durationSeconds: number) => {
     if (!effectiveVendorId || !jobId) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     setUploadingStage(stageKey);
     setActionMessage(null);
     setActionError(null);
@@ -568,6 +704,8 @@ export default function VendorJobDetailPage() {
         }),
       });
       const sessionJson = await sessionRes.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(sessionRes, sessionJson)) return;
       if (!sessionRes.ok || !sessionJson?.session?.id) {
         throw new Error(String(sessionJson?.message || sessionJson?.error || "Failed to create stage session"));
       }
@@ -583,6 +721,8 @@ export default function VendorJobDetailPage() {
         }),
       });
       const initJson = await initRes.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(initRes, initJson)) return;
       if (!initRes.ok || !initJson?.sasUrl || !initJson?.assetId || !initJson?.blobKey) {
         throw new Error(String(initJson?.error || "Failed to initialize upload"));
       }
@@ -592,6 +732,7 @@ export default function VendorJobDetailPage() {
         headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": file.type || "video/mp4" },
         body: file,
       });
+      if (!isActiveContext(actionContextKey)) return;
       if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`);
 
       const completeRes = await fetch(`/api/vendors/${effectiveVendorId}/media/upload/complete`, {
@@ -608,6 +749,8 @@ export default function VendorJobDetailPage() {
         }),
       });
       const completeJson = await completeRes.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(completeRes, completeJson)) return;
       if (!completeRes.ok || !completeJson?.success) {
         throw new Error(String(completeJson?.error || "Failed to finalize upload"));
       }
@@ -618,6 +761,8 @@ export default function VendorJobDetailPage() {
         body: JSON.stringify({ stage: stageKey }),
       });
       const stageJson = await stageRes.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(stageRes, stageJson)) return;
       if (!stageRes.ok || !stageJson?.success) {
         throw new Error(String(stageJson?.error || "Failed to mark stage complete"));
       }
@@ -649,6 +794,8 @@ export default function VendorJobDetailPage() {
 
   const submitForManagerReview = async () => {
     if (!jobId) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     setSubmitting(true);
     setActionMessage(null);
     setActionError(null);
@@ -658,6 +805,8 @@ export default function VendorJobDetailPage() {
         headers: { ...headers, "Content-Type": "application/json" },
       });
       const json = await res.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(res, json)) return;
       if (!res.ok) throw new Error(String(json?.error || "Failed to submit"));
       setActionMessage("Submitted for manager review.");
       await load();
@@ -670,6 +819,8 @@ export default function VendorJobDetailPage() {
 
   const approveCompletion = async () => {
     if (!effectiveVendorId || !jobId || !job?.serviceVideoPackage) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     if (!allStagesReviewed) {
       setActionError("Review all three current stage videos before submitting this package to Reliance Audit.");
       return;
@@ -692,6 +843,8 @@ export default function VendorJobDetailPage() {
         }),
       });
       const json = await res.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(res, json)) return;
       if (!res.ok) throw new Error(actionErrorMessage(json, "The package could not be submitted for Reliance Audit."));
       setAuditConfirmOpen(false);
       setAuditAcknowledged(false);
@@ -714,6 +867,8 @@ export default function VendorJobDetailPage() {
 
   const requestStageCorrection = async () => {
     if (!effectiveVendorId || !jobId || !job?.serviceVideoPackage) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     const reason = String(correctionReason || "").trim();
     if (correctionStages.length === 0) {
       setActionError("Select at least one video stage that needs correction.");
@@ -738,6 +893,8 @@ export default function VendorJobDetailPage() {
         }),
       });
       const json = await res.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(res, json)) return;
       if (!res.ok) throw new Error(actionErrorMessage(json, "The correction request could not be sent."));
       setCorrectionOpen(false);
       setCorrectionReason("");
@@ -753,6 +910,8 @@ export default function VendorJobDetailPage() {
 
   const resendCompletedWorkOrder = async () => {
     if (!effectiveVendorId || !jobId) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     setResendingCompletedOrder(true);
     setActionMessage(null);
     setActionError(null);
@@ -763,6 +922,8 @@ export default function VendorJobDetailPage() {
         body: JSON.stringify({ action: "RESEND_COMPLETED_WORK_ORDER" }),
       });
       const json = await res.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(res, json)) return;
       if (!res.ok || !json?.success) {
         throw new Error(String(json?.message || json?.error || "Failed to resend Private Service Record access"));
       }
@@ -776,6 +937,8 @@ export default function VendorJobDetailPage() {
 
   const respondToServiceRequest = async (action: 'ACCEPT_SERVICE_REQUEST' | 'DECLINE_SERVICE_REQUEST' | 'COUNTER_SERVICE_REQUEST') => {
     if (!effectiveVendorId || !jobId || serviceRequestSubmitting) return;
+    const actionContextKey = currentContextKey;
+    if (!isActiveContext(actionContextKey)) return;
     const reason = serviceRequestReason.trim();
     if (action !== 'ACCEPT_SERVICE_REQUEST' && reason.length < 3) {
       setActionError('Add a short explanation (at least 3 characters) so the customer understands your response.');
@@ -811,6 +974,8 @@ export default function VendorJobDetailPage() {
         }),
       });
       const body = await response.json().catch(() => ({}));
+      if (!isActiveContext(actionContextKey)) return;
+      if (handleAuthorizationFailure(response, body)) return;
       if (!response.ok) throw new Error(String(body?.message || body?.error || 'Unable to respond to this service request.'));
       setActionMessage(String(body?.message || (action === 'ACCEPT_SERVICE_REQUEST'
         ? 'Service request accepted. The customer has been notified.'
@@ -928,6 +1093,12 @@ export default function VendorJobDetailPage() {
       .map((event) => event.label);
   }, [job, normalizedStatus, packageStageMap, stageMap]);
 
+  const hasCurrentLoadedContext = Boolean(
+    currentContextKey && loadedContextKey === currentContextKey,
+  );
+  const currentLoadError = loadErrorContextKey === viewContextKey ? loadError : null;
+  const showLoading = loading || (!hasCurrentLoadedContext && !currentLoadError);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full space-y-6">
@@ -937,7 +1108,7 @@ export default function VendorJobDetailPage() {
           </Link>
         </div>
 
-        {loading ? (
+        {showLoading ? (
           <Card>
             <CardContent className="p-6 space-y-3">
               <div className="h-5 w-40 rounded bg-gray-200 animate-pulse" />
@@ -946,18 +1117,18 @@ export default function VendorJobDetailPage() {
             </CardContent>
           </Card>
         ) : null}
-        {loadError ? (
+        {currentLoadError ? (
           <Card>
             <CardContent className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg space-y-2">
               <p className="font-semibold">We couldn't load this job.</p>
-              <p>{loadError}</p>
+              <p>{currentLoadError}</p>
               <Button size="sm" variant="outline" onClick={() => void load()}>
                 Retry
               </Button>
             </CardContent>
           </Card>
         ) : null}
-        {actionError ? (
+        {hasCurrentLoadedContext && actionError ? (
           <Card>
             <CardContent className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -972,9 +1143,9 @@ export default function VendorJobDetailPage() {
             </CardContent>
           </Card>
         ) : null}
-        {actionMessage ? <Card><CardContent className="p-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">{actionMessage}</CardContent></Card> : null}
+        {hasCurrentLoadedContext && actionMessage ? <Card><CardContent className="p-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">{actionMessage}</CardContent></Card> : null}
 
-        {job ? (
+        {hasCurrentLoadedContext && job ? (
           <>
             <Card>
               <CardContent className="p-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1144,11 +1315,14 @@ export default function VendorJobDetailPage() {
               <Card>
                 <CardContent className="p-5">
                   <ManagerWorkRecordAttestation
+                    key={`${actorKey}:${effectiveVendorId}:${job.id}`}
+                    actorKey={actorKey}
                     vendorId={effectiveVendorId}
                     bookingId={job.id}
                     headers={headers}
                     serviceOrderCurrent={job.recordingCompliance?.serviceOrderCurrent === true}
                     onStatusChange={setManagerAttestationCurrent}
+                    onAuthorizationFailure={failClosedVendorView}
                   />
                   {managerAttestationCurrent &&
                   job.recordingCompliance?.serviceOrderCurrent !== true &&

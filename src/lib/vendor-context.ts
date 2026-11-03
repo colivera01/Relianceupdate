@@ -59,14 +59,11 @@ function toVendorAccessContext(
   };
 }
 
-function normalizeMembershipStatus(status: unknown, approvedAt: unknown): "ACTIVE" | "PENDING" | "DENIED" | "REVOKED" | "UNKNOWN" {
+function normalizeMembershipStatus(status: unknown, _approvedAt: unknown): "ACTIVE" | "PENDING" | "DENIED" | "REVOKED" | "UNKNOWN" {
   const normalized = String(status || "").trim().toUpperCase();
   if (normalized === "ACTIVE" || normalized === "PENDING" || normalized === "DENIED" || normalized === "REVOKED") {
-    // Data-drift fallback: approvedAt set but status left as pending.
-    if (normalized === "PENDING" && approvedAt) return "ACTIVE";
     return normalized;
   }
-  if (approvedAt) return "ACTIVE";
   return "UNKNOWN";
 }
 

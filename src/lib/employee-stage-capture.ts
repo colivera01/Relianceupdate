@@ -82,3 +82,13 @@ export function getEmployeeCaptureSupportCopy(device: EmployeeCaptureDevice | nu
   }
   return "Use the phone camera for a short clip that clearly shows this stage. You can retake the stage on-site before moving on.";
 }
+
+export function removeEmployeeStageFeedback<T>(
+  feedback: Record<string, T>,
+  key: string | null | undefined,
+): Record<string, T> {
+  if (!key || !feedback[key]) return feedback;
+  const next = { ...feedback };
+  delete next[key];
+  return next;
+}

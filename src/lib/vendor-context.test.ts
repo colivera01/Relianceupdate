@@ -79,4 +79,102 @@ describe("resolveVendorAccessForUser", () => {
     expect(access.state).toBe("NONE");
     expect((prisma as any).vendorMembership.findMany).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps a pending membership pending even when legacy data has approvedAt", async () => {
+    vi.mocked((prisma as any).vendorMembership.findMany).mockResolvedValue([
+      {
+        id: "membership-pending",
+        vendorId: "vendor-1",
+        status: "PENDING",
+        role: "MANAGER",
+        requestedAt: new Date("2026-08-02T00:00:00.000Z"),
+        approvedAt: new Date("2026-08-02T00:01:00.000Z"),
+        vendor: {
+          id: "vendor-1",
+          businessName: "Pending Vendor",
+          name: "Pending Vendor",
+          accountStatus: "active",
+        },
+      },
+    ]);
+
+    const access = await resolveVendorAccessForUser("user-1");
+
+    expect(access).toMatchObject({
+      state: "PENDING",
+      vendorId: "vendor-1",
+      membershipId: "membership-pending",
+      membershipStatus: "PENDING",
+    });
+  });
+
+  it("does not infer active authority from approvedAt when membership status is unknown", async () => {
+    vi.mocked((prisma as any).vendorMembership.findMany).mockResolvedValue([
+      {
+        id: "membership-unknown",
+        vendorId: "vendor-1",
+        status: "LEGACY_UNKNOWN",
+        role: "MANAGER",
+        requestedAt: new Date("2026-08-02T00:00:00.000Z"),
+        approvedAt: new Date("2026-08-02T00:01:00.000Z"),
+        vendor: {
+          id: "vendor-1",
+          businessName: "Unknown Vendor",
+          name: "Unknown Vendor",
+          accountStatus: "active",
+        },
+      },
+    ]);
+
+    const access = await resolveVendorAccessForUser("user-1");
+
+    expect(access).toMatchObject({
+      state: "NONE",
+      vendorId: null,
+      membershipId: null,
+      membershipStatus: null,
+    });
+  });
+
+  it("ranks a literal active membership ahead of pending legacy drift", async () => {
+    vi.mocked((prisma as any).vendorMembership.findMany).mockResolvedValue([
+      {
+        id: "membership-pending",
+        vendorId: "vendor-pending",
+        status: "PENDING",
+        role: "MANAGER",
+        requestedAt: new Date("2026-08-03T00:00:00.000Z"),
+        approvedAt: new Date("2026-08-03T00:01:00.000Z"),
+        vendor: {
+          id: "vendor-pending",
+          businessName: "Pending Vendor",
+          name: "Pending Vendor",
+          accountStatus: "active",
+        },
+      },
+      {
+        id: "membership-active",
+        vendorId: "vendor-active",
+        status: "ACTIVE",
+        role: "EMPLOYEE",
+        requestedAt: new Date("2026-08-01T00:00:00.000Z"),
+        approvedAt: new Date("2026-08-01T00:01:00.000Z"),
+        vendor: {
+          id: "vendor-active",
+          businessName: "Active Vendor",
+          name: "Active Vendor",
+          accountStatus: "active",
+        },
+      },
+    ]);
+
+    const access = await resolveVendorAccessForUser("user-1");
+
+    expect(access).toMatchObject({
+      state: "ACTIVE",
+      vendorId: "vendor-active",
+      membershipId: "membership-active",
+      membershipStatus: "ACTIVE",
+    });
+  });
 });

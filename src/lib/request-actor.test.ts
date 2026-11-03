@@ -32,7 +32,7 @@ describe("canonical request actor", () => {
       email: "user-1@example.test",
       accountStatus: "active",
       platformRoleGrants: [{ role: "ADMIN" }],
-      memberships: [{ id: "m-1", vendorId: "v-1", role: "MANAGER" }],
+      memberships: [{ id: "m-1", vendorId: "v-1", role: "MANAGER", status: "ACTIVE" }],
     });
 
     const { resolveRequestActor } = await import("./request-actor");
@@ -146,6 +146,7 @@ describe("canonical request actor", () => {
               status: "ACTIVE",
               vendor: { accountStatus: "active" },
             },
+            select: expect.objectContaining({ status: true }),
           }),
         }),
       })
@@ -182,6 +183,32 @@ describe("canonical request actor", () => {
     );
   });
 
+  it.each(["PENDING", "LEGACY_UNKNOWN"])(
+    "does not derive protected vendor authority from %s membership drift with approvedAt",
+    async (status) => {
+      prismaMocks.user.findUnique.mockResolvedValue({
+        id: "user-membership-drift",
+        email: "user-membership-drift@example.test",
+        accountStatus: "active",
+        platformRoleGrants: [],
+        memberships: [
+          {
+            id: "m-drift",
+            vendorId: "vendor-a",
+            role: "MANAGER",
+            status,
+            approvedAt: new Date("2026-08-17T10:00:00.000Z"),
+          },
+        ],
+      });
+
+      const { resolveRequestActor } = await import("./request-actor");
+      const actor = await resolveRequestActor(signedRequest("user-membership-drift"));
+
+      expect(actor?.vendorMemberships).toEqual([]);
+    },
+  );
+
   it("rejects an idle-expired vendor session after rebuilding database authority", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
@@ -196,7 +223,7 @@ describe("canonical request actor", () => {
       email: "user-9@example.test",
       accountStatus: "active",
       platformRoleGrants: [],
-      memberships: [{ id: "m-9", vendorId: "vendor-a", role: "MANAGER" }],
+      memberships: [{ id: "m-9", vendorId: "vendor-a", role: "MANAGER", status: "ACTIVE" }],
     });
     prismaMocks.vendorMembership.findMany.mockResolvedValue([
       {

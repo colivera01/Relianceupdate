@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, CheckCircle2, ClipboardCheck, Loader2 } from "lucide-react";
 import { resolveVendorServiceOrderPresentation } from "@/lib/vendor-service-order-presentation";
 
@@ -24,51 +24,84 @@ type View = {
 };
 
 export function ManagerWorkRecordAttestation(props: {
+  actorKey: string;
   vendorId: string;
   bookingId: string;
   headers: Record<string, string>;
   serviceOrderCurrent: boolean;
   onStatusChange?: (current: boolean) => void;
+  onAuthorizationFailure?: (message?: string) => void;
 }) {
   const [view, setView] = useState<View | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const activeRef = useRef(true);
   const serviceOrderPresentation = resolveVendorServiceOrderPresentation({
     serviceOrderCurrent: props.serviceOrderCurrent,
     serviceOrderAnyReleased: props.serviceOrderCurrent,
     managerAttestationCurrent: view?.status.current === true,
   });
 
-  async function load() {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
+    setView(null);
+    setConfirmed(false);
     props.onStatusChange?.(false);
     try {
+      if (!props.actorKey.trim()) {
+        throw new Error("Vendor session context unavailable. Please sign in again.");
+      }
       const response = await fetch(
         `/api/vendors/${encodeURIComponent(props.vendorId)}/jobs/${encodeURIComponent(props.bookingId)}/manager-attestation`,
-        { headers: props.headers, cache: "no-store" },
+        { headers: props.headers, cache: "no-store", signal },
       );
       const body = await response.json().catch(() => ({}));
+      if (signal?.aborted) return;
+      if (response.status === 401 || response.status === 403) {
+        props.onAuthorizationFailure?.(
+          String(body?.error || body?.message || "Vendor access required. Sign in with an active vendor account and try again."),
+        );
+      }
       if (!response.ok || body?.success === false) {
         throw new Error(body?.error || "Manager attestation could not be loaded.");
       }
       setView(body as View);
       props.onStatusChange?.(body?.status?.current === true);
     } catch (nextError) {
+      if (signal?.aborted || (nextError instanceof Error && nextError.name === "AbortError")) {
+        return;
+      }
+      setView(null);
+      setConfirmed(false);
+      props.onStatusChange?.(false);
       setError(nextError instanceof Error ? nextError.message : "Manager attestation could not be loaded.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  }
+  }, [
+    props.actorKey,
+    props.bookingId,
+    props.headers,
+    props.onAuthorizationFailure,
+    props.onStatusChange,
+    props.vendorId,
+  ]);
 
   useEffect(() => {
-    void load();
-  }, [props.bookingId, props.vendorId]);
+    const controller = new AbortController();
+    activeRef.current = true;
+    void load(controller.signal);
+    return () => {
+      activeRef.current = false;
+      controller.abort();
+    };
+  }, [load]);
 
   async function submit() {
-    if (!view || !confirmed) return;
+    if (!activeRef.current || !view || !confirmed) return;
     setWorking(true);
     setError("");
     try {
@@ -86,6 +119,12 @@ export function ManagerWorkRecordAttestation(props: {
         },
       );
       const body = await response.json().catch(() => ({}));
+      if (!activeRef.current) return;
+      if (response.status === 401 || response.status === 403) {
+        props.onAuthorizationFailure?.(
+          String(body?.error || body?.message || "Vendor access required. Sign in with an active vendor account and try again."),
+        );
+      }
       if (!response.ok || body?.success === false) {
         throw new Error(body?.error || "Manager attestation could not be saved.");
       }
@@ -93,7 +132,7 @@ export function ManagerWorkRecordAttestation(props: {
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Manager attestation could not be saved.");
     } finally {
-      setWorking(false);
+      if (activeRef.current) setWorking(false);
     }
   }
 

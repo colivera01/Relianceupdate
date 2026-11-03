@@ -10,6 +10,7 @@ import {
   getEmployeeStageStep,
   getMissingEmployeeStagePrerequisite,
   getNextEmployeeCaptureStage,
+  removeEmployeeStageFeedback,
 } from "@/lib/employee-stage-capture";
 
 describe("employee-stage-capture", () => {
@@ -137,5 +138,18 @@ describe("employee-stage-capture", () => {
         deviceType: "PHONE",
       })
     ).toContain("phone camera");
+  });
+
+  it("clears only the canceled camera stage feedback", () => {
+    const feedback = {
+      "job-1:INTRO": { status: "uploading" },
+      "job-1:IN_PROGRESS": { status: "saved" },
+    };
+
+    expect(removeEmployeeStageFeedback(feedback, "job-1:INTRO")).toEqual({
+      "job-1:IN_PROGRESS": { status: "saved" },
+    });
+    expect(removeEmployeeStageFeedback(feedback, null)).toBe(feedback);
+    expect(removeEmployeeStageFeedback(feedback, "job-1:COMPLETED")).toBe(feedback);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { VendorProfileResponse, VendorProfile, VendorProfileUpdateRequest } from "@/types/vendor";
-import { getClientSessionHeaders } from "@/lib/client-session";
+import { getClientActorSessionKey, getClientSessionHeaders } from "@/lib/client-session";
 import { useAuth } from "@/contexts/AuthContext";
 
 type VendorProfileFetchResult = {
@@ -10,7 +10,7 @@ type VendorProfileFetchResult = {
   payload: Record<string, any>;
 };
 
-const profileFetchInFlightByUserId = new Map<string, Promise<VendorProfileFetchResult>>();
+const profileFetchInFlightByActorKey = new Map<string, Promise<VendorProfileFetchResult>>();
 const VENDOR_CONTEXT_CACHE_KEY_PREFIX = "vendorContextCache:";
 
 type VendorContextResponse = {
@@ -45,11 +45,11 @@ function normalizeUserId(value: unknown): string | null {
 }
 
 async function fetchVendorProfileOnce(
-  userId: string,
+  actorKey: string,
   headers: Record<string, string>
 ): Promise<VendorProfileFetchResult> {
-  const key = String(userId);
-  const existing = profileFetchInFlightByUserId.get(key);
+  const key = String(actorKey);
+  const existing = profileFetchInFlightByActorKey.get(key);
   if (existing) return existing;
 
   const request = (async () => {
@@ -66,11 +66,11 @@ async function fetchVendorProfileOnce(
     };
   })();
 
-  profileFetchInFlightByUserId.set(key, request);
+  profileFetchInFlightByActorKey.set(key, request);
   try {
     return await request;
   } finally {
-    profileFetchInFlightByUserId.delete(key);
+    profileFetchInFlightByActorKey.delete(key);
   }
 }
 
@@ -218,16 +218,23 @@ function buildFallbackVendorProfile(vendorId: string, businessName?: string | nu
 export function useVendorProfile() {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const userId = normalizeUserId(user?.id);
+  const actorKey = getClientActorSessionKey(user);
   const [data, setData] = useState<VendorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingActorKey, setSavingActorKey] = useState("");
   const [approvalPending, setApprovalPending] = useState(false);
   const [lastResolvedVendorId, setLastResolvedVendorId] = useState<string | null>(null);
   const [hasResolvedVendorContext, setHasResolvedVendorContext] = useState(false);
-  const inFlightFetchRef = useRef<Promise<void> | null>(null);
+  const [profileOwnerActorKey, setProfileOwnerActorKey] = useState("");
+  const [checkedActorKey, setCheckedActorKey] = useState("");
+  const inFlightFetchRef = useRef<{ actorKey: string; promise: Promise<void> } | null>(null);
   const requestCounterRef = useRef(0);
+  const updateRequestCounterRef = useRef(0);
+  const activeActorKeyRef = useRef(actorKey);
+  activeActorKeyRef.current = actorKey;
 
   const fetchProfile = useCallback(async () => {
     if (authLoading) {
@@ -240,30 +247,27 @@ export function useVendorProfile() {
       setApprovalPending(false);
       setLastResolvedVendorId(null);
       setHasResolvedVendorContext(false);
+      setProfileOwnerActorKey("");
+      setCheckedActorKey("");
       setLoading(false);
       setError("Vendor session context unavailable. Please sign in again.");
       setErrorCode("VENDOR_SESSION_CONTEXT_UNAVAILABLE");
       return;
     }
 
-    if (inFlightFetchRef.current) {
+    if (inFlightFetchRef.current?.actorKey === actorKey) {
       if (process.env.NODE_ENV !== "production") {
         console.info("[useVendorProfile] fetchProfile:deduped");
       }
-      return inFlightFetchRef.current;
+      return inFlightFetchRef.current.promise;
     }
 
     const requestId = ++requestCounterRef.current;
     const task = (async () => {
       const cachedContext = readVendorContextCache(userId);
-      if (cachedContext?.vendorId) {
-        setLastResolvedVendorId(cachedContext.vendorId);
-        setHasResolvedVendorContext(true);
-        setData((prev) => {
-          if (prev?.id) return prev;
-          return buildFallbackVendorProfile(cachedContext.vendorId, cachedContext.businessName);
-        });
-      }
+      const isCurrentRequest = () =>
+        requestCounterRef.current === requestId &&
+        activeActorKeyRef.current === actorKey;
 
       setLoading(true);
       setError(null);
@@ -286,7 +290,8 @@ export function useVendorProfile() {
           });
         }
 
-        const { ok, status, payload } = await fetchVendorProfileOnce(userId, headers);
+        const { ok, status, payload } = await fetchVendorProfileOnce(actorKey, headers);
+        if (!isCurrentRequest()) return;
         if (!ok) {
           if (process.env.NODE_ENV !== "production") {
             console.warn("[useVendorProfile] fetchProfile:failed", {
@@ -301,28 +306,32 @@ export function useVendorProfile() {
             String(payload?.error || payload?.message || "").trim() ||
             `Request failed with status ${status}`;
           const code = String(payload?.code || "").trim() || null;
-          if (status === 401) {
+          if (status === 401 || status === 403) {
             setData(null);
-            setError(message || "Vendor session context unavailable. Please sign in again.");
-            setErrorCode(code || "VENDOR_SESSION_CONTEXT_UNAVAILABLE");
-            setHasResolvedVendorContext(false);
-            setLastResolvedVendorId(null);
             clearVendorContextCache(userId);
-            return;
-          }
-          if (status === 403 && (payload?.code === "VENDOR_PENDING_APPROVAL" || payload?.code === "MEMBERSHIP_PENDING_APPROVAL")) {
-            setApprovalPending(true);
-            setData(null);
-            setError(String(payload?.error || "Vendor membership pending approval"));
-            setErrorCode(String(payload?.code || "MEMBERSHIP_PENDING_APPROVAL"));
             setHasResolvedVendorContext(false);
             setLastResolvedVendorId(null);
+            setProfileOwnerActorKey("");
+            if (
+              status === 403 &&
+              (payload?.code === "VENDOR_PENDING_APPROVAL" ||
+                payload?.code === "MEMBERSHIP_PENDING_APPROVAL")
+            ) {
+              setApprovalPending(true);
+              setError(String(payload?.error || "Vendor membership pending approval"));
+              setErrorCode(String(payload?.code || "MEMBERSHIP_PENDING_APPROVAL"));
+            } else {
+              setApprovalPending(false);
+              setError(message || "Vendor session context unavailable. Please sign in again.");
+              setErrorCode(code || "VENDOR_SESSION_CONTEXT_UNAVAILABLE");
+            }
             return;
           }
 
           // Non-blocking fallback: try lightweight vendor context resolution
           // so vendor pages can still load vendor-scoped data by vendorId.
           const fallbackContext = await fetchVendorContext(headers).catch(() => null);
+          if (!isCurrentRequest()) return;
           if (process.env.NODE_ENV !== "production") {
             console.info("[useVendorProfile] fetchProfile:context-fallback", {
               requestId,
@@ -335,28 +344,33 @@ export function useVendorProfile() {
           }
 
           if (fallbackContext?.success && fallbackContext.vendorId) {
+            const fallbackVendorId = String(fallbackContext.vendorId);
+            const cachedBusinessName =
+              cachedContext?.vendorId === fallbackVendorId
+                ? cachedContext.businessName
+                : null;
             setHasResolvedVendorContext(true);
-            setLastResolvedVendorId(String(fallbackContext.vendorId));
+            setLastResolvedVendorId(fallbackVendorId);
+            setProfileOwnerActorKey(actorKey);
             setData((prev) => {
-              if (prev?.id) return prev;
+              if (String(prev?.id || "") === fallbackVendorId) return prev;
               return buildFallbackVendorProfile(
-                String(fallbackContext.vendorId),
-                fallbackContext.businessName || cachedContext?.businessName || null
+                fallbackVendorId,
+                fallbackContext.businessName || cachedBusinessName
               );
             });
             writeVendorContextCache(
               userId,
-              String(fallbackContext.vendorId),
+              fallbackVendorId,
               fallbackContext.businessName || null,
               fallbackContext.role || null
             );
-          } else if (cachedContext?.vendorId) {
-            setHasResolvedVendorContext(true);
-            setLastResolvedVendorId(cachedContext.vendorId);
-            setData((prev) => {
-              if (prev?.id) return prev;
-              return buildFallbackVendorProfile(cachedContext.vendorId, cachedContext.businessName);
-            });
+          } else {
+            setData(null);
+            setHasResolvedVendorContext(false);
+            setLastResolvedVendorId(null);
+            setProfileOwnerActorKey("");
+            clearVendorContextCache(userId);
           }
 
           setErrorCode(code || "VENDOR_PROFILE_UNAVAILABLE");
@@ -379,6 +393,7 @@ export function useVendorProfile() {
           setErrorCode(null);
           setHasResolvedVendorContext(true);
           setLastResolvedVendorId(String(json.profile.id));
+          setProfileOwnerActorKey(actorKey);
           writeVendorContextCache(
             userId,
             String(json.profile.id),
@@ -389,6 +404,7 @@ export function useVendorProfile() {
           throw new Error("Invalid response format");
         }
       } catch (err) {
+        if (!isCurrentRequest()) return;
         if (process.env.NODE_ENV !== "production") {
           console.error("[useVendorProfile] fetchProfile:error", {
             requestId,
@@ -396,20 +412,38 @@ export function useVendorProfile() {
             message: err instanceof Error ? err.message : String(err),
           });
         }
+        setData(null);
+        setHasResolvedVendorContext(false);
+        setLastResolvedVendorId(null);
+        setProfileOwnerActorKey("");
+        clearVendorContextCache(userId);
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
-        setLoading(false);
+        if (isCurrentRequest()) {
+          setCheckedActorKey(actorKey);
+          setLoading(false);
+        }
       }
     })();
 
-    inFlightFetchRef.current = task.finally(() => {
-      inFlightFetchRef.current = null;
+    const flight = { actorKey, promise: Promise.resolve() as Promise<void> };
+    flight.promise = task.finally(() => {
+      if (inFlightFetchRef.current === flight) {
+        inFlightFetchRef.current = null;
+      }
     });
-    return inFlightFetchRef.current;
-  }, [authLoading, isAuthenticated, userId]);
+    inFlightFetchRef.current = flight;
+    return flight.promise;
+  }, [actorKey, authLoading, isAuthenticated, userId]);
 
   const updateProfile = useCallback(async (updates: VendorProfileUpdateRequest) => {
+    const updateRequestId = ++updateRequestCounterRef.current;
+    const updateActorKey = actorKey;
+    const isCurrentUpdate = () =>
+      updateRequestCounterRef.current === updateRequestId &&
+      activeActorKeyRef.current === updateActorKey;
     setSaving(true);
+    setSavingActorKey(updateActorKey);
     setError(null);
     setErrorCode(null);
 
@@ -428,6 +462,9 @@ export function useVendorProfile() {
         body: JSON.stringify(updates),
         cache: "no-store",
       });
+      if (!isCurrentUpdate()) {
+        throw new Error("Vendor session changed before the profile update completed.");
+      }
 
       if (!res.ok) {
         const payload = await res.json().catch(() => ({} as Record<string, any>));
@@ -435,14 +472,25 @@ export function useVendorProfile() {
           String(payload?.error || payload?.message || "").trim() ||
           `Request failed with status ${res.status}`;
         const code = String(payload?.code || "").trim() || null;
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 403) {
+          setData(null);
+          setHasResolvedVendorContext(false);
+          setLastResolvedVendorId(null);
+          setProfileOwnerActorKey("");
+          setCheckedActorKey(actorKey);
+          clearVendorContextCache(userId);
+          if (
+            res.status === 403 &&
+            (payload?.code === "VENDOR_PENDING_APPROVAL" ||
+              payload?.code === "MEMBERSHIP_PENDING_APPROVAL")
+          ) {
+            setApprovalPending(true);
+            setErrorCode(String(payload?.code || "MEMBERSHIP_PENDING_APPROVAL"));
+            throw new Error(String(payload?.error || "Vendor membership pending approval"));
+          }
+          setApprovalPending(false);
           setErrorCode(code || "VENDOR_SESSION_CONTEXT_UNAVAILABLE");
-          throw new Error("Vendor session context unavailable. Please sign in again.");
-        }
-        if (res.status === 403 && (payload?.code === "VENDOR_PENDING_APPROVAL" || payload?.code === "MEMBERSHIP_PENDING_APPROVAL")) {
-          setApprovalPending(true);
-          setErrorCode(String(payload?.code || "MEMBERSHIP_PENDING_APPROVAL"));
-          throw new Error(String(payload?.error || "Vendor membership pending approval"));
+          throw new Error(message || "Vendor session context unavailable. Please sign in again.");
         }
         setErrorCode(code);
         throw new Error(message);
@@ -452,32 +500,52 @@ export function useVendorProfile() {
       if (json.success && json.profile) {
         setData(json.profile);
         setApprovalPending(false);
+        setProfileOwnerActorKey(actorKey);
+        setCheckedActorKey(actorKey);
+        setHasResolvedVendorContext(true);
+        setLastResolvedVendorId(String(json.profile.id));
+        writeVendorContextCache(
+          userId,
+          String(json.profile.id),
+          json.profile.businessName || json.profile.name || null,
+          null
+        );
         return json.profile;
       } else {
         throw new Error("Invalid response format");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      setError(errorMessage);
+      if (isCurrentUpdate()) setError(errorMessage);
       throw err; // Re-throw so component can handle
     } finally {
-      setSaving(false);
+      if (updateRequestCounterRef.current === updateRequestId) {
+        setSaving(false);
+        setSavingActorKey("");
+      }
     }
-  }, [isAuthenticated, userId]);
+  }, [actorKey, isAuthenticated, userId]);
 
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
 
-  return { 
-    data, 
-    loading, 
-    error, 
-    errorCode,
-    saving,
-    approvalPending,
-    hasResolvedVendorContext,
-    resolvedVendorId: data?.id ? String(data.id) : lastResolvedVendorId,
+  const isCurrentActorChecked = !authLoading && Boolean(actorKey) && checkedActorKey === actorKey;
+  const hasCurrentActorProfile = isCurrentActorChecked && profileOwnerActorKey === actorKey;
+
+  return {
+    data: hasCurrentActorProfile ? data : null,
+    loading: loading || (Boolean(actorKey) && !isCurrentActorChecked),
+    error: isCurrentActorChecked ? error : null,
+    errorCode: isCurrentActorChecked ? errorCode : null,
+    saving: saving && savingActorKey === actorKey,
+    approvalPending: isCurrentActorChecked ? approvalPending : false,
+    hasResolvedVendorContext: hasCurrentActorProfile && hasResolvedVendorContext,
+    resolvedVendorId: hasCurrentActorProfile
+      ? data?.id
+        ? String(data.id)
+        : lastResolvedVendorId
+      : null,
     refetch: fetchProfile,
     updateProfile,
   };

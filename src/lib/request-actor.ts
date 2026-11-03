@@ -91,6 +91,7 @@ export async function resolveRequestActor(
           id: true,
           vendorId: true,
           role: true,
+          status: true,
         },
       },
     },
@@ -116,6 +117,10 @@ export async function resolveRequestActor(
     .filter((role: string): role is PlatformRole => role === "ADMIN");
 
   const vendorMemberships = (user.memberships || [])
+    .filter(
+      (membership: any) =>
+        String(membership.status || "").trim().toUpperCase() === "ACTIVE"
+    )
     .map((membership: any) => ({
       id: String(membership.id),
       vendorId: String(membership.vendorId),
