@@ -330,7 +330,7 @@ function submitHelperText(job: EmployeeJob): string | null {
   if (correctionRequested && correctionReplacementsReady && job.canMarkComplete) {
     return "All requested replacements are saved. Send the corrected videos back to your manager.";
   }
-  if (correctionRequested) return "Manager requested changes. Retake the needed stage, then send the videos back.";
+  if (correctionRequested) return "Manager requested changes. Retake every requested stage, then send the videos back.";
   if (normalized === "AWAITING_REVIEW") return "All 3 stage videos are uploaded. Manager review is in progress.";
   if (normalized === "COMPLETED") return "All 3 stage videos are complete and manager-approved.";
   if (!job.canMarkComplete) return "Complete all 3 stage videos first.";
@@ -2168,7 +2168,7 @@ export default function EmployeeJobsPage() {
                 <p className="mt-2 text-xs leading-5 text-amber-100/80">
                   {correctionReplacementsReady
                     ? "All requested replacement videos are saved. Send the corrected videos back for manager review."
-                    : "Retake the stage your manager called out, then send the corrected videos back for review."}
+                    : "Retake every stage your manager called out, then send the corrected videos back for review."}
                 </p>
                 {job.rejectedAt ? (
                   <p className="mt-1 text-[11px] text-amber-100/70">

@@ -1101,6 +1101,15 @@ export async function requestServiceVideoCorrection(input: {
   reason: string;
 }) {
   return prisma.$transaction(async (tx: any) => {
+    const booking = await tx.booking.findFirst({
+      where: {
+        id: input.bookingId,
+        vendorId: input.vendorId,
+        status: "AWAITING_REVIEW",
+      },
+      select: { customerMetadata: true },
+    });
+    if (!booking) throw new Error("SERVICE_VIDEO_BOOKING_NOT_REVIEWABLE");
     const pkg = await tx.serviceVideoPackageEvidence.findFirst({ where: { bookingId: input.bookingId, vendorId: input.vendorId, isCurrent: true, status: "AWAITING_MANAGER_REVIEW" } });
     if (!pkg) throw new Error("SERVICE_VIDEO_PACKAGE_NOT_REVIEWABLE");
     if (
@@ -1135,8 +1144,22 @@ export async function requestServiceVideoCorrection(input: {
     await tx.serviceVideoPackageEvidence.update({ where: { id: pkg.id }, data: { status: "CORRECTION_REQUESTED", managerDecisionId: decision.id } });
     await tx.serviceVideoStageEvidence.updateMany({ where: { id: { in: stageRows.map((row: any) => row.id) } }, data: { uploadState: "REJECTED" } });
     await tx.mediaAsset.updateMany({ where: { id: { in: stageRows.map((row: any) => row.mediaAssetId) } }, data: { uploadState: "REJECTED", moderationStatus: "rejected", visibilityStatus: "private", moderationReason: input.reason } });
-    return { package: pkg, decision };
-  });
+    const updatedBooking = await tx.booking.update({
+      where: { id: input.bookingId },
+      data: {
+        status: "IN_PROGRESS",
+        customerMetadata: setOperationalPhaseOnMetadataJson(
+          booking.customerMetadata,
+          "IN_PROGRESS",
+        ),
+        rejectionReason: input.reason,
+        rejectedAt: null,
+        rejectedBy: input.managerUserId,
+      },
+      select: { id: true, status: true, updatedAt: true },
+    });
+    return { package: pkg, decision, booking: updatedBooking };
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function approvePrivateServiceVideoPackage(input: {

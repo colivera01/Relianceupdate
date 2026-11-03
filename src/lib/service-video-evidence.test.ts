@@ -368,6 +368,14 @@ describe("Private Service Video evidence", () => {
   it("binds a correction request to the exact reviewed package and selected stage evidence", async () => {
     const { requestServiceVideoCorrection } = await import("./service-video-evidence");
     const tx = {
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({ customerMetadata: null }),
+        update: vi.fn().mockResolvedValue({
+          id: "booking-1",
+          status: "IN_PROGRESS",
+          updatedAt: new Date("2026-11-03T03:26:36.000Z"),
+        }),
+      },
       serviceVideoPackageEvidence: {
         findFirst: vi.fn().mockResolvedValue({
           id: "package-1",
@@ -405,11 +413,75 @@ describe("Private Service Video evidence", () => {
       where: { id: { in: ["stage-3"] } },
       data: { uploadState: "REJECTED" },
     });
+    expect(tx.booking.update).toHaveBeenCalledWith({
+      where: { id: "booking-1" },
+      data: {
+        status: "IN_PROGRESS",
+        customerMetadata: expect.any(String),
+        rejectionReason: "Show the completed result clearly.",
+        rejectedAt: null,
+        rejectedBy: "manager-1",
+      },
+      select: { id: true, status: true, updatedAt: true },
+    });
+    expect(JSON.parse(tx.booking.update.mock.calls[0][0].data.customerMetadata)).toMatchObject({
+      reliance_ops: { operational_phase: "IN_PROGRESS" },
+    });
+  });
+
+  it("fails the correction transaction when the Booking transition cannot commit", async () => {
+    const { requestServiceVideoCorrection } = await import("./service-video-evidence");
+    const tx = {
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({ customerMetadata: null }),
+        update: vi.fn().mockRejectedValue(new Error("BOOKING_UPDATE_FAILED")),
+      },
+      serviceVideoPackageEvidence: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "package-1",
+          version: 1,
+          packageHash: "package-hash",
+          stageEvidenceJson: JSON.stringify(packageRows),
+        }),
+        update: vi.fn().mockResolvedValue({ id: "package-1" }),
+      },
+      serviceVideoStageEvidence: {
+        findMany: vi.fn().mockResolvedValue([stages[2]]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      serviceVideoManagerDecisionEvidence: {
+        create: vi.fn().mockResolvedValue({ id: "decision-1" }),
+      },
+      mediaAsset: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: (db: typeof tx) => unknown) => callback(tx));
+
+    await expect(requestServiceVideoCorrection({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      managerUserId: "manager-1",
+      managerMembershipId: "manager-membership-1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 1,
+      stages: ["COMPLETED"],
+      reason: "Show the completed result clearly.",
+    })).rejects.toThrow("BOOKING_UPDATE_FAILED");
+
+    expect(hoisted.prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" },
+    );
+    expect(tx.booking.update).toHaveBeenCalledOnce();
   });
 
   it("rejects a stale correction request before writing evidence", async () => {
     const { requestServiceVideoCorrection } = await import("./service-video-evidence");
     const tx = {
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({ customerMetadata: null }),
+      },
       serviceVideoPackageEvidence: {
         findFirst: vi.fn().mockResolvedValue({
           id: "package-2",

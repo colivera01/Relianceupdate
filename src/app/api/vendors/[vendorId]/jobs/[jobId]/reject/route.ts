@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
-import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { requestServiceVideoCorrection, REQUIRED_SERVICE_VIDEO_STAGES, type ServiceVideoStage } from "@/lib/service-video-evidence";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
+import { VENDOR_JOB_VIDEO_STAGE_LABELS } from "@/lib/vendor-job-video-stages";
 import { sendJobRejectionNotification } from "@/lib/notifications/send-job-rejection";
 
 interface RouteParams {
@@ -99,16 +99,6 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       stages,
       reason: correctionReason,
     });
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: {
-        status: "IN_PROGRESS",
-        customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "IN_PROGRESS"),
-        rejectionReason: correctionReason,
-        rejectedAt: null,
-        rejectedBy: manager.userId,
-      },
-    });
 
     await recordLifecycleAudit({
       actionType: "service_video_correction_requested",
@@ -136,6 +126,9 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         })
       : [];
     const baseUrl = String(process.env.APP_BASE_URL || new URL(request.url).origin).replace(/\/+$/, "");
+    const requestedStageLabels = stages
+      .map((stage) => VENDOR_JOB_VIDEO_STAGE_LABELS[stage])
+      .join(", ");
     const notifications = [];
     for (const member of assignedMembers) {
       const token = createEmployeeCaptureToken({ vendorId, bookingId: booking.id, membershipId: member.id });
@@ -152,7 +145,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         employeeJobLink,
         vendorName: String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor"),
         jobTitle: String(booking.title || booking.service?.name || "Service order"),
-        rejectionReason: `${correctionReason} Stages: ${stages.join(", ")}.`,
+        rejectionReason: `${correctionReason} Requested stages: ${requestedStageLabels}.`,
       });
       notifications.push({ membershipId: member.id, ...result });
     }
@@ -182,6 +175,15 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         {
           error: "This review page no longer matches the current Service Video package. Reload before requesting a correction.",
           code: "SERVICE_VIDEO_PACKAGE_VERSION_MISMATCH",
+        },
+        { status: 409 },
+      );
+    }
+    if (error?.message === "SERVICE_VIDEO_BOOKING_NOT_REVIEWABLE") {
+      return NextResponse.json(
+        {
+          error: "This work record is no longer awaiting Manager review. Reload before requesting a correction.",
+          code: "INVALID_CORRECTION_STATUS",
         },
         { status: 409 },
       );

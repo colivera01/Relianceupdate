@@ -703,10 +703,21 @@ function BookingMediaDetailPageContent() {
               </div>
             ) : null}
 
-            <ol className="mt-6 grid gap-3 text-sm sm:grid-cols-3" aria-label="Service request progress">
+            <ol className="mt-6 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4" aria-label="Service request progress">
               <li className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950"><span className="font-semibold">1. Request sent</span><span className="mt-1 block text-emerald-800">Your details were shared securely.</span></li>
               <li className={`rounded-lg border p-3 ${customerRecord.request.state === 'REQUESTED' ? 'border-blue-300 bg-blue-50 text-blue-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}><span className="font-semibold">2. Business responds</span><span className="mt-1 block opacity-80">Accepts, declines, or proposes a time.</span></li>
               <li className={`rounded-lg border p-3 ${['ACCEPTED', 'SCHEDULED', 'IN_PROGRESS'].includes(customerRecord.request.state) ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><span className="font-semibold">3. Appointment scheduled</span><span className="mt-1 block opacity-80">Only after the time is accepted.</span></li>
+              <li
+                aria-current={customerRecord.request.state === 'IN_PROGRESS' ? 'step' : undefined}
+                className={`rounded-lg border p-3 ${customerRecord.request.state === 'IN_PROGRESS' ? 'border-blue-300 bg-blue-50 text-blue-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+              >
+                <span className="font-semibold">4. Service in progress</span>
+                <span className="mt-1 block opacity-80">
+                  {customerRecord.request.state === 'IN_PROGRESS'
+                    ? 'The business is working on this service.'
+                    : 'Begins after the scheduled appointment starts.'}
+                </span>
+              </li>
             </ol>
           </section>
         ) : null}

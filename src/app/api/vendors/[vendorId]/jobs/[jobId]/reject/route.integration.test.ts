@@ -148,29 +148,48 @@ describe("vendor job reject integration", () => {
       service: { name: "Breaker Replacement" },
       vendor: { businessName: "Electro LLC", name: "Electro LLC" },
     });
-    hoisted.bookingUpdate.mockResolvedValue({
-      id: "job1",
-      status: "IN_PROGRESS",
-    });
     const { req, ctx } = postReq("v1", "job1", { rejectionReason: "Missing clear completed walkthrough." });
     const res = await POST(req, ctx as any);
     expect(res.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
-      where: { id: "job1" },
-      data: {
-        status: "IN_PROGRESS",
-        customerMetadata: expect.any(String),
-        rejectionReason: "Missing clear completed walkthrough.",
-        rejectedAt: null,
-        rejectedBy: "manager-1",
-      },
-    });
-    expect(JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata)).toMatchObject({
-      reliance_ops: { operational_phase: "IN_PROGRESS" },
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.requestServiceVideoCorrection).toHaveBeenCalledWith({
+      bookingId: "job1",
+      vendorId: "v1",
+      managerUserId: "manager-1",
+      managerMembershipId: "m1",
+      expectedPackageId: "package-1",
+      expectedPackageVersion: 1,
+      stages: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+      reason: "Missing clear completed walkthrough.",
     });
     const json = await toJson(res);
     expect(json.code).toBe("SERVICE_VIDEO_CORRECTION_REQUESTED");
     expect(json.success).toBe(true);
+  });
+
+  it("returns 409 when the transactional Booking state is no longer reviewable", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      status: "AWAITING_REVIEW",
+      title: "Breaker Replacement",
+      customerMetadata: null,
+      service: { name: "Breaker Replacement" },
+      vendor: { businessName: "Electro LLC", name: "Electro LLC" },
+    });
+    hoisted.requestServiceVideoCorrection.mockRejectedValueOnce(
+      new Error("SERVICE_VIDEO_BOOKING_NOT_REVIEWABLE"),
+    );
+
+    const { req, ctx } = postReq("v1", "job1", {
+      rejectionReason: "Show the completed result clearly.",
+    });
+    const res = await POST(req, ctx as any);
+
+    expect(res.status).toBe(409);
+    expect(await toJson(res)).toMatchObject({
+      code: "INVALID_CORRECTION_STATUS",
+    });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
   it("returns only the selected stage to the Employee", async () => {
@@ -261,9 +280,14 @@ describe("vendor job reject integration", () => {
         employeePhone: "4075550123",
         vendorName: "Electro LLC",
         jobTitle: "Breaker Replacement",
-        rejectionReason: "Final result needs a clear wide shot. Stages: INTRO, IN_PROGRESS, COMPLETED.",
+        rejectionReason:
+          "Final result needs a clear wide shot. Requested stages: Starting Condition, Work in Progress, Final Result.",
       })
     );
+    const notificationInput = hoisted.sendJobRejectionNotification.mock.calls[0][0];
+    expect(notificationInput.rejectionReason).not.toContain("INTRO");
+    expect(notificationInput.rejectionReason).not.toContain("IN_PROGRESS");
+    expect(notificationInput.rejectionReason).not.toContain("COMPLETED");
     expect(hoisted.sendJobRejectionNotification.mock.calls[0][0].employeeJobLink).toContain(
       "/employee/jobs?jobId=job1&ct="
     );

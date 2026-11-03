@@ -25,6 +25,7 @@ import {
 } from "@/lib/stage-video-guidance";
 import { resolveManagerStageAssetState } from "@/lib/service-video-manager-stage-state";
 import { formatRelianceDateTime } from "@/lib/reliance-date-time";
+import { resolveVendorCorrectionNotificationFeedback } from "@/lib/vendor-correction-notification-feedback";
 import {
   dateAndTimeInZone,
   DEFAULT_SERVICE_TIME_ZONE,
@@ -277,6 +278,7 @@ export default function VendorJobDetailPage() {
   const [loadErrorContextKey, setLoadErrorContextKey] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionWarning, setActionWarning] = useState<string | null>(null);
   const [role, setRole] = useState<string>("");
   const [auditConfirmOpen, setAuditConfirmOpen] = useState(false);
   const [auditAcknowledged, setAuditAcknowledged] = useState(false);
@@ -331,6 +333,7 @@ export default function VendorJobDetailPage() {
     setManagerAttestationCurrent(false);
     setActionError(null);
     setActionMessage(null);
+    setActionWarning(null);
     setAuditConfirmOpen(false);
     setAuditAcknowledged(false);
     setCorrectionOpen(false);
@@ -798,6 +801,7 @@ export default function VendorJobDetailPage() {
     if (!isActiveContext(actionContextKey)) return;
     setSubmitting(true);
     setActionMessage(null);
+    setActionWarning(null);
     setActionError(null);
     try {
       const res = await fetch(`/api/employee/jobs/${jobId}/complete`, {
@@ -831,6 +835,7 @@ export default function VendorJobDetailPage() {
     }
     setSubmitting(true);
     setActionMessage(null);
+    setActionWarning(null);
     setActionError(null);
     try {
       const res = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/approve`, {
@@ -880,6 +885,7 @@ export default function VendorJobDetailPage() {
     }
     setSubmitting(true);
     setActionMessage(null);
+    setActionWarning(null);
     setActionError(null);
     try {
       const res = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/reject`, {
@@ -899,7 +905,9 @@ export default function VendorJobDetailPage() {
       setCorrectionOpen(false);
       setCorrectionReason("");
       setCorrectionStages([]);
-      setActionMessage("The selected video stages were returned to the Employee for correction.");
+      const notificationFeedback = resolveVendorCorrectionNotificationFeedback(json);
+      setActionMessage(notificationFeedback.message);
+      setActionWarning(notificationFeedback.warning);
       await load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "The correction request could not be sent.");
@@ -1144,6 +1152,21 @@ export default function VendorJobDetailPage() {
           </Card>
         ) : null}
         {hasCurrentLoadedContext && actionMessage ? <Card><CardContent className="p-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">{actionMessage}</CardContent></Card> : null}
+        {hasCurrentLoadedContext && actionWarning ? (
+          <Card>
+            <CardContent role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-semibold">Correction saved; employee notification needs attention.</p>
+                  <p className="mt-1">{actionWarning}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setActionWarning(null)}>
+                  Dismiss
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {hasCurrentLoadedContext && job ? (
           <>

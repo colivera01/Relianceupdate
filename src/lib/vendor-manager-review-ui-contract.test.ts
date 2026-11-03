@@ -31,6 +31,17 @@ describe("Vendor Manager review UI contract", () => {
     expect(page).not.toContain("Reject Work Order");
   });
 
+  it("distinguishes a saved correction from failed employee notification delivery", () => {
+    const page = source("src/app/vendor/jobs/[jobId]/page.tsx");
+
+    expect(page).toContain("resolveVendorCorrectionNotificationFeedback(json)");
+    expect(page).toContain("Correction saved; employee notification needs attention.");
+    expect(page).toContain("setActionWarning(notificationFeedback.warning)");
+    expect(page).not.toContain(
+      'setActionMessage("The selected video stages were returned to the Employee for correction.")',
+    );
+  });
+
   it("keeps load failures separate from Manager action failures", () => {
     const page = source("src/app/vendor/jobs/[jobId]/page.tsx");
 

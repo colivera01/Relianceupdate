@@ -65,7 +65,7 @@ export async function sendJobRejectionNotification(
       `Job: ${jobTitle}`,
       `Reason: ${rejectionReason}`,
       "",
-      "Open your service order link, replace the video stage that needs correction, and submit the package again:",
+      "Open your service order link, replace every requested video stage, and submit the package again:",
       link,
       "",
       "This secure link only opens the Reliance service order assigned to you.",
@@ -86,7 +86,7 @@ export async function sendJobRejectionNotification(
         <p style="margin:0 0 10px;color:#ffffff;font-size:15px;font-weight:800;">What to do next:</p>
         <ol style="margin:0 0 18px 20px;padding:0;">
           <li>Open the secure service order link.</li>
-          <li>Replace the stage video that needs correction.</li>
+          <li>Replace every requested video stage.</li>
           <li>Submit the package again for manager review.</li>
         </ol>
         <p style="margin:0;">This secure link only opens the Reliance service order assigned to you.</p>
@@ -120,7 +120,7 @@ export async function sendJobRejectionNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance: ${vendorName} requested changes for ${jobTitle}. Reason: ${rejectionReason}. Open your service order link to replace the needed video stage and resubmit: ${link} Reply STOP to opt out.`;
+    const body = `Reliance: ${vendorName} requested changes for ${jobTitle}. Reason: ${rejectionReason}. Open your service order link to replace every requested video stage and resubmit: ${link} Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",

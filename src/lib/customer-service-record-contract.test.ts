@@ -57,4 +57,13 @@ describe("completed customer Service Record contract", () => {
     expect(recordsPage).toContain("Leave a review");
     expect(recordsPage).toContain("Service Video:");
   });
+
+  it("shows the current in-progress lifecycle step without exposing internal correction details", () => {
+    expect(detailPage).toContain("sm:grid-cols-2 lg:grid-cols-4");
+    expect(detailPage).toContain("4. Service in progress");
+    expect(detailPage).toContain("aria-current={customerRecord.request.state === 'IN_PROGRESS' ? 'step' : undefined}");
+    expect(detailPage).toContain("The business is working on this service.");
+    expect(detailPage).not.toContain("Manager requested changes");
+    expect(detailPage).not.toContain("correctionRequestedStages");
+  });
 });
