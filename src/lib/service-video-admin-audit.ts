@@ -187,8 +187,16 @@ async function loadBoundStageEvidence(
 async function assertPackageRecordingAuthorizationsCurrent(
   db: any,
   stageRows: any[],
-  scope: { bookingId: string; vendorId: string; actorKind: string },
+  scope: {
+    bookingId: string;
+    vendorId: string;
+    actorKind: "VENDOR_MANAGER" | "RELIANCE_ADMIN";
+  },
 ) {
+  const acceptedPostCaptureBlockCode =
+    scope.actorKind === "RELIANCE_ADMIN"
+      ? ("ADMIN_AUDIT_IN_PROGRESS" as const)
+      : ("MANAGER_REVIEW_IN_PROGRESS" as const);
   try {
     for (const stage of stageRows) {
       await assertRecordingAuthorizationCurrent(db, {
@@ -199,7 +207,7 @@ async function assertPackageRecordingAuthorizationsCurrent(
         stage: String(stage.stage).toUpperCase() as ServiceVideoStage,
         surface: "admin_evidence",
         actorKind: scope.actorKind,
-        acceptedPostCaptureBlockCode: "MANAGER_REVIEW_IN_PROGRESS",
+        acceptedPostCaptureBlockCode,
       });
     }
   } catch {

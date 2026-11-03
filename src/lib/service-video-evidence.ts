@@ -318,7 +318,9 @@ export async function assertRecordingAuthorizationCurrent(
     stage: ServiceVideoStage;
     surface: RecordingGateSurface;
     actorKind?: string | null;
-    acceptedPostCaptureBlockCode?: "MANAGER_REVIEW_IN_PROGRESS";
+    acceptedPostCaptureBlockCode?:
+      | "MANAGER_REVIEW_IN_PROGRESS"
+      | "ADMIN_AUDIT_IN_PROGRESS";
     now?: Date;
   },
 ) {
@@ -445,14 +447,19 @@ export async function assertRecordingAuthorizationCurrent(
     now: input.now,
     db,
   });
-  const expectedManagerReviewLock =
-    input.acceptedPostCaptureBlockCode === "MANAGER_REVIEW_IN_PROGRESS" &&
+  const expectedPostCaptureReviewLock =
     input.surface === "admin_evidence" &&
-    input.actorKind === "VENDOR_MANAGER" &&
-    gate.blockCode === "MANAGER_REVIEW_IN_PROGRESS" &&
-    gate.recordingUnlocked === false;
+    gate.recordingUnlocked === false &&
+    (
+      (input.actorKind === "VENDOR_MANAGER" &&
+        input.acceptedPostCaptureBlockCode === "MANAGER_REVIEW_IN_PROGRESS" &&
+        gate.blockCode === "MANAGER_REVIEW_IN_PROGRESS") ||
+      (input.actorKind === "RELIANCE_ADMIN" &&
+        input.acceptedPostCaptureBlockCode === "ADMIN_AUDIT_IN_PROGRESS" &&
+        gate.blockCode === "ADMIN_AUDIT_IN_PROGRESS")
+    );
   if (
-    ((!gate.recordingUnlocked || gate.blockCode) && !expectedManagerReviewLock) ||
+    ((!gate.recordingUnlocked || gate.blockCode) && !expectedPostCaptureReviewLock) ||
     gate.assessmentId !== evidence.assessmentId ||
     gate.assessmentGeneration !== evidence.assessmentGeneration ||
     gate.scopeHash !== evidence.scopeHash ||
