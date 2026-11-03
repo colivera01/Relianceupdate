@@ -49,6 +49,22 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.responsibleParticipant).toBe("Vendor manager");
   });
 
+  it("hands a completed Manager-submitted package to Reliance Audit", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "COMPLETED",
+      operationalPhase: "AWAITING_ADMIN_REVIEW",
+      permissionRequired: true,
+      permissionState: "ALLOWED",
+      assigned: true,
+      allVideosPresent: true,
+    });
+
+    expect(state.label).toBe("Reliance Audit pending");
+    expect(state.responsibleParticipant).toBe("Reliance admin");
+    expect(state.detail).toContain("Customer Private Service Record access remains locked until PASS");
+    expect(state.resolution).toContain("Admin PASS or terminal Admin REJECT");
+  });
+
   it("shows a pending stage correction before generic upload progress", () => {
     const state = resolveVendorJobLifecyclePresentation({
       status: "IN_PROGRESS",

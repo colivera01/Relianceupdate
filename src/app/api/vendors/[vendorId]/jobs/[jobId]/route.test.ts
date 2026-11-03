@@ -130,6 +130,118 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
     });
   });
 
+  it("keeps a completed Manager-submitted package in Reliance Audit review", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-awaiting-admin",
+      title: "Outlet Installation",
+      clientName: "Reliance Demo Customer",
+      status: "COMPLETED",
+      date: new Date("2026-11-03T16:00:00.000Z"),
+      createdAt: new Date("2026-11-03T15:00:00.000Z"),
+      updatedAt: new Date("2026-11-03T18:42:24.000Z"),
+      customerMetadata: JSON.stringify({
+        reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" },
+        vendor_job_assigned_employees: ["Bradley Coopers"],
+      }),
+      rejectionReason: null,
+      rejectedAt: null,
+      service: { name: "Outlet Installation" },
+      user: {
+        name: "Reliance Demo Customer",
+        email: "customer@example.com",
+        phone: null,
+      },
+    } as any);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue({
+      id: "package-2",
+      version: 2,
+      status: "AWAITING_ADMIN_REVIEW",
+      stageEvidenceJson: "[]",
+      submittedAt: new Date("2026-11-03T18:42:24.000Z"),
+      createdAt: new Date("2026-11-03T18:42:23.000Z"),
+      adminAuditDecisionId: null,
+      audioExpected: false,
+      audioConformance: "CONFORMING",
+      audioEvidenceVersion: "service-video-audio-evidence-v1",
+    });
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-awaiting-admin"),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-awaiting-admin" }) },
+    );
+
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        status: "COMPLETED",
+        operationalPhase: "AWAITING_ADMIN_REVIEW",
+        serviceVideoPackage: {
+          id: "package-2",
+          version: 2,
+          status: "AWAITING_ADMIN_REVIEW",
+        },
+      },
+    });
+  });
+
+  it("keeps a Private-approved completed package operationally complete", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-private-approved",
+      title: "Outlet Installation",
+      clientName: "Reliance Demo Customer",
+      status: "COMPLETED",
+      date: new Date("2026-11-03T16:00:00.000Z"),
+      createdAt: new Date("2026-11-03T15:00:00.000Z"),
+      updatedAt: new Date("2026-11-03T19:00:00.000Z"),
+      customerMetadata: JSON.stringify({
+        reliance_ops: { operational_phase: "COMPLETED" },
+        vendor_job_assigned_employees: ["Bradley Coopers"],
+      }),
+      rejectionReason: null,
+      rejectedAt: null,
+      service: { name: "Outlet Installation" },
+      user: {
+        name: "Reliance Demo Customer",
+        email: "customer@example.com",
+        phone: null,
+      },
+    } as any);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue({
+      id: "package-private",
+      version: 2,
+      status: "PRIVATE_APPROVED",
+      stageEvidenceJson: "[]",
+      submittedAt: new Date("2026-11-03T18:42:24.000Z"),
+      createdAt: new Date("2026-11-03T18:42:23.000Z"),
+      adminAuditDecisionId: "decision-pass",
+      audioExpected: false,
+      audioConformance: "CONFORMING",
+      audioEvidenceVersion: "service-video-audio-evidence-v1",
+    });
+    vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue({
+      decision: "PASS",
+      rejectionCategory: null,
+      reason: "Private-only beta package.",
+      decidedAt: new Date("2026-11-03T19:00:00.000Z"),
+      packageVersion: 2,
+    });
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-private-approved"),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-private-approved" }) },
+    );
+
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        status: "COMPLETED",
+        operationalPhase: "COMPLETED",
+        serviceVideoPackage: { id: "package-private", status: "PRIVATE_APPROVED" },
+        adminAuditDecision: { decision: "PASS", packageVersion: 2 },
+      },
+    });
+  });
+
   it("returns the canonical exact-context Service Order release state", async () => {
     vi.mocked(prisma.booking.findFirst).mockResolvedValue({
       id: "job-current-release",

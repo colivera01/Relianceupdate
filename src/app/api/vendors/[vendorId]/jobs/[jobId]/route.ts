@@ -275,11 +275,22 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         scopeHash: permissionGate.scopeHash ?? null,
       },
     );
+    const currentPackageStatus = String(currentServiceVideoPackage?.status || "")
+      .trim()
+      .toUpperCase();
+    const hasCompleteStagedPackage = ["AWAITING_ADMIN_REVIEW", "PRIVATE_APPROVED"].includes(
+      currentPackageStatus,
+    );
+    const hasAdminApprovedStagedPackage =
+      currentPackageStatus === "PRIVATE_APPROVED" ||
+      String(adminAuditDecision?.decision || "").trim().toUpperCase() === "PASS";
     const operationalPhase = resolveOperationalPhase({
       bookingStatus: booking.status,
       customerMetadata: booking.customerMetadata,
       linkedMediaCount: 0,
       assignedEmployees,
+      hasCompleteStagedPackage,
+      hasAdminApprovedStagedPackage,
     });
 
     return NextResponse.json({
