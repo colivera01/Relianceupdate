@@ -2,6 +2,7 @@
 """Produce a candidate only. No Azure access, database access, or deployment."""
 import argparse
 from contextlib import contextmanager
+from dataclasses import dataclass
 import gzip
 import hashlib
 import http.client
@@ -27,14 +28,29 @@ import urllib.request
 # deterministic sequence.
 NPM_CI_ARGS = ('ci', '--foreground-scripts', '--no-audit', '--no-fund')
 PRISMA_ENGINE_ORIGIN = 'https://binaries.prisma.sh'
-PRISMA_SCHEMA_ENGINE_REMOTE_NAME = 'schema-engine.exe'
-PRISMA_SCHEMA_ENGINE_CACHE_NAME = 'schema-engine'
 PRISMA_DOWNLOAD_ATTEMPTS = 4
 PRISMA_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 PRISMA_MAX_CHECKSUM_BYTES = 1024
 PRISMA_MAX_COMPRESSED_ENGINE_BYTES = 64 * 1024 * 1024
 PRISMA_MAX_RAW_ENGINE_BYTES = 128 * 1024 * 1024
 SHA256_RECORD = re.compile(r'^([0-9a-fA-F]{64})(?:[ \t]+[^\r\n]+)?\r?\n?$')
+
+
+@dataclass(frozen=True)
+class PrismaEngineArtifact:
+    binary_target: str
+    remote_name: str
+    cache_name: str
+
+
+PRISMA_GENERATOR_BINARY_TARGETS = ('native', 'debian-openssl-3.0.x')
+PRISMA_REQUIRED_ENGINE_ARTIFACTS = (
+    PrismaEngineArtifact('windows', 'schema-engine.exe', 'schema-engine'),
+    PrismaEngineArtifact('windows', 'query_engine.dll.node', 'libquery-engine'),
+    PrismaEngineArtifact(
+        'debian-openssl-3.0.x', 'libquery_engine.so.node', 'libquery-engine'
+    ),
+)
 
 
 def locked_prisma_engine_commit(lockfile: Path) -> str:
@@ -56,6 +72,25 @@ def locked_prisma_engine_commit(lockfile: Path) -> str:
     if not match:
         raise RuntimeError('Prisma engine commit is not a locked 40-character hash')
     return match.group(1)
+
+
+def validate_prisma_generator_contract(schema: Path) -> None:
+    text = schema.read_text(encoding='utf-8')
+    generator = re.search(r'generator\s+client\s*\{(?P<body>.*?)^\}', text, re.MULTILINE | re.DOTALL)
+    if not generator:
+        raise RuntimeError('Prisma client generator block is missing')
+    body = generator.group('body')
+    targets_match = re.search(r'binaryTargets\s*=\s*\[(?P<targets>[^\]]*)\]', body)
+    if not targets_match:
+        raise RuntimeError('Prisma client binaryTargets are missing')
+    target_source = targets_match.group('targets')
+    targets = tuple(re.findall(r'"([^"]+)"', target_source))
+    unparsed = re.sub(r'"[^"]+"', '', target_source)
+    if re.sub(r'[\s,]', '', unparsed) or targets != PRISMA_GENERATOR_BINARY_TARGETS:
+        raise RuntimeError('Prisma client binaryTargets changed; update the release engine contract')
+    engine_type = re.search(r'engineType\s*=\s*"([^"]+)"', body)
+    if not engine_type or engine_type.group(1) != 'library':
+        raise RuntimeError('Prisma client engineType must remain library for this release contract')
 
 
 def _validate_official_prisma_url(url: str) -> None:
@@ -173,29 +208,34 @@ def _download_official_file(
         partial.unlink(missing_ok=True)
 
 
-def bootstrap_windows_prisma_schema_engine(
-    lockfile: Path,
+def bootstrap_prisma_engine_artifact(
+    engine_commit: str,
     cache_root: Path,
+    artifact: PrismaEngineArtifact,
     *,
     opener=urllib.request.urlopen,
     sleeper=time.sleep,
 ) -> Path:
-    engine_commit = locked_prisma_engine_commit(lockfile)
-    cache_directory = cache_root / 'prisma' / 'master' / engine_commit / 'windows'
-    cache_directory.mkdir(parents=True, exist_ok=False)
+    cache_directory = (
+        cache_root / 'prisma' / 'master' / engine_commit / artifact.binary_target
+    )
+    cache_directory.mkdir(parents=True, exist_ok=True)
     remote_base = (
-        f'{PRISMA_ENGINE_ORIGIN}/all_commits/{engine_commit}/windows/'
-        f'{PRISMA_SCHEMA_ENGINE_REMOTE_NAME}'
+        f'{PRISMA_ENGINE_ORIGIN}/all_commits/{engine_commit}/'
+        f'{artifact.binary_target}/{artifact.remote_name}'
     )
     expected_raw = _official_sha256(remote_base + '.sha256', opener=opener, sleeper=sleeper)
     expected_compressed = _official_sha256(
         remote_base + '.gz.sha256', opener=opener, sleeper=sleeper
     )
-    compressed = cache_directory / (PRISMA_SCHEMA_ENGINE_REMOTE_NAME + '.gz')
-    cached_engine = cache_directory / PRISMA_SCHEMA_ENGINE_CACHE_NAME
+    compressed = cache_directory / (artifact.remote_name + '.gz')
+    cached_engine = cache_directory / artifact.cache_name
     uncompressed_partial = cached_engine.with_name(cached_engine.name + '.partial')
     raw_hash_path = cached_engine.with_name(cached_engine.name + '.sha256')
     compressed_hash_path = cached_engine.with_name(cached_engine.name + '.gz.sha256')
+    for path in (compressed, cached_engine, uncompressed_partial, raw_hash_path, compressed_hash_path):
+        if path.exists():
+            raise RuntimeError('Prisma release cache contains an unexpected existing engine artifact')
     try:
         actual_compressed = _download_official_file(
             remote_base + '.gz',
@@ -231,6 +271,30 @@ def bootstrap_windows_prisma_schema_engine(
     finally:
         compressed.unlink(missing_ok=True)
         uncompressed_partial.unlink(missing_ok=True)
+
+
+def bootstrap_required_prisma_engines(
+    lockfile: Path,
+    schema: Path,
+    cache_root: Path,
+    *,
+    opener=urllib.request.urlopen,
+    sleeper=time.sleep,
+) -> tuple[Path, ...]:
+    validate_prisma_generator_contract(schema)
+    engine_commit = locked_prisma_engine_commit(lockfile)
+    cached = []
+    for artifact in PRISMA_REQUIRED_ENGINE_ARTIFACTS:
+        cached.append(
+            bootstrap_prisma_engine_artifact(
+                engine_commit,
+                cache_root,
+                artifact,
+                opener=opener,
+                sleeper=sleeper,
+            )
+        )
+    return tuple(cached)
 
 
 @contextmanager
@@ -289,40 +353,44 @@ def main():
         with fresh_prisma_cache(prisma_cache_path) as prisma_cache:
             env['CACHE_DIR'] = str(prisma_cache)
             try:
-                # Seed exactly one official, checksum-verified engine. Prisma
-                # independently validates the raw cache hash, then downloads
-                # only its query engine instead of opening both transfers at once.
-                bootstrap_windows_prisma_schema_engine(
-                    build / 'package-lock.json', prisma_cache
+                # Seed only the exact official, checksum-verified engines required
+                # by this locked Windows build and its Azure Linux binaryTarget.
+                # Prisma independently validates each raw cache hash.
+                bootstrap_required_prisma_engines(
+                    build / 'package-lock.json',
+                    build / 'prisma/schema.prisma',
+                    prisma_cache,
                 )
                 run([npm, *NPM_CI_ARGS], build, env)
+                # npm omits other operating systems' optional native packages.
+                # Install the same lockfile for Azure's target in a separate
+                # fresh scratch tree; copy only its Linux-native packages,
+                # never Prisma/generated contents.
+                target = build.parent / f'.release-linux-target-{args.commit[:12]}'
+                if target.exists():
+                    raise RuntimeError('Linux target dependency scratch path must be new')
+                target.mkdir()
+                for name in ('package.json', 'package-lock.json'):
+                    shutil.copy2(build / name, target / name)
+                run([npm, 'ci', '--ignore-scripts', '--os=linux', '--cpu=x64', '--libc=glibc', '--no-audit', '--no-fund'], target, env)
+                lock = json.loads((build / 'package-lock.json').read_text(encoding='utf-8'))
+                for relative, package in lock['packages'].items():
+                    if 'linux' not in package.get('os', []) or 'x64' not in package.get('cpu', []):
+                        continue
+                    if package.get('libc') and 'glibc' not in package['libc']:
+                        continue
+                    installed = target / relative
+                    destination = build / relative
+                    if not installed.is_dir() or destination.exists():
+                        raise RuntimeError(f'Unexpected target-native dependency state: {relative}')
+                    shutil.copytree(installed, destination)
+                shutil.rmtree(target)
+                run(['node', 'node_modules/prisma/build/index.js', 'generate', '--schema=prisma/schema.prisma'], build, env)
             finally:
                 env.pop('CACHE_DIR', None)
-        # npm omits other operating systems' optional native packages. Install
-        # the same lockfile for Azure's target in a separate fresh scratch tree;
-        # copy only its Linux-native packages, never Prisma/generated contents.
-        target = build.parent / f'.release-linux-target-{args.commit[:12]}'
-        if target.exists():
-            raise RuntimeError('Linux target dependency scratch path must be new')
-        target.mkdir()
-        for name in ('package.json', 'package-lock.json'):
-            shutil.copy2(build / name, target / name)
-        run([npm, 'ci', '--ignore-scripts', '--os=linux', '--cpu=x64', '--libc=glibc', '--no-audit', '--no-fund'], target, env)
-        lock = json.loads((build / 'package-lock.json').read_text(encoding='utf-8'))
-        for relative, package in lock['packages'].items():
-            if 'linux' not in package.get('os', []) or 'x64' not in package.get('cpu', []):
-                continue
-            if package.get('libc') and 'glibc' not in package['libc']:
-                continue
-            installed = target / relative
-            destination = build / relative
-            if not installed.is_dir() or destination.exists():
-                raise RuntimeError(f'Unexpected target-native dependency state: {relative}')
-            shutil.copytree(installed, destination)
-        shutil.rmtree(target)
     else:
         run([npm, *NPM_CI_ARGS], build, env)
-    run(['node', 'node_modules/prisma/build/index.js', 'generate', '--schema=prisma/schema.prisma'], build, env)
+        run(['node', 'node_modules/prisma/build/index.js', 'generate', '--schema=prisma/schema.prisma'], build, env)
     verifier = build / 'scripts/release/verify_prisma_artifact.cjs'
     manifest = build / 'prisma-artifact-manifest.json'
     run(['node', verifier, '--mode', 'create', '--root', build, '--schema', build / 'prisma/schema.prisma', '--lockfile', build / 'package-lock.json', '--commit', args.commit, '--output', manifest], build, env)
