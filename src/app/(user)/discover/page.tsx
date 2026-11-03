@@ -11,6 +11,7 @@ import { useAddFavorite, useFavoritesOptional, useRemoveFavorite } from '@/hooks
 import { ProofFirstCard } from '@/components/public/ProofFirstCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
+import { buildCustomerVendorProfileHref } from '@/lib/public-vendor-navigation';
 import type { DiscoverServiceResult } from '@/types/api';
 
 type CustomerLocationProfile = {
@@ -338,7 +339,7 @@ export default function UserDiscoverPage() {
         key={item.serviceId}
         item={item}
         proofHref={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
-        providerHref={`/vendors/${item.vendorId}`}
+        providerHref={buildCustomerVendorProfileHref(item.vendorId)}
         compact={Boolean(item.distanceMiles)}
         secondaryAction={
           <Button

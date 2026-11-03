@@ -2,13 +2,20 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowLeft, CalendarDays, Filter, Star } from 'lucide-react';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import {
+  buildVendorProfileHref,
+  buildVendorSubpageHref,
+  isCustomerWorkspaceReturnPath,
+  sanitizeVendorReturnLabel,
+  sanitizeVendorReturnPath,
+} from '@/lib/public-vendor-navigation';
 
 type PublicService = { serviceId: string; serviceName: string };
 type PublicReview = {
@@ -33,23 +40,46 @@ const PAGE_SIZE = 12;
 
 export default function VendorPublicReviewsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const vendorId = String(params?.vendorId || '');
   const { user } = useAuth();
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
+  const requestedReturnTo = sanitizeVendorReturnPath(searchParams?.get('returnTo'));
+  const hasCustomerProfile =
+    user?.userType === 'customer' ||
+    user?.userType === 'both' ||
+    Boolean(user?.availableProfiles?.includes('customer'));
+  const returnTo = requestedReturnTo || (hasCustomerProfile ? '/discover' : '/browse');
+  const returnLabel = sanitizeVendorReturnLabel(searchParams?.get('returnLabel')) || 'Back to Explore Work';
+  const isCustomerReturnContext = Boolean(
+    isSignedIn && hasCustomerProfile && isCustomerWorkspaceReturnPath(returnTo)
+  );
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
-  const accountHref = user?.userType === 'admin'
-    ? '/admin/dashboard'
-    : isVendorAccount
-      ? '/vendor/dashboard'
+  const accountHref = isCustomerReturnContext
+    ? '/user-dashboard'
+    : user?.userType === 'admin'
+      ? '/admin/dashboard'
+      : isVendorAccount
+        ? '/vendor/dashboard'
+        : isSignedIn
+          ? '/user-dashboard'
+          : '/auth/login';
+  const accountLabel = isCustomerReturnContext
+    ? 'Customer Dashboard'
+    : user?.userType === 'admin'
+      ? 'Admin Dashboard'
       : isSignedIn
-        ? '/user-dashboard'
-        : '/auth/login';
-  const accountLabel = user?.userType === 'admin'
-    ? 'Admin Dashboard'
-    : isSignedIn
-      ? (isVendorAccount ? 'Vendor Workspace' : 'My Account')
-      : 'Sign In';
+        ? (isVendorAccount ? 'Vendor Workspace' : 'My Account')
+        : 'Sign In';
+  const customerHeaderLinks = [
+    { href: '/user-dashboard', label: 'Customer Home' },
+    { href: '/discover', label: 'Explore Work' },
+    {
+      href: '/customer/support?returnTo=%2Fdiscover&returnLabel=Back%20to%20Explore%20Work',
+      label: 'Help',
+    },
+  ];
 
   const [vendorName, setVendorName] = useState('Provider');
   const [services, setServices] = useState<PublicService[]>([]);
@@ -130,25 +160,41 @@ export default function VendorPublicReviewsPage() {
     setSort('newest');
   };
   const hasFilters = Boolean(rating || serviceId || from || to || sort !== 'newest');
-  const footerLinks = isSignedIn
-    ? [{ href: accountHref, label: accountLabel }, { href: '/favorites', label: 'Saved Businesses' }]
-    : undefined;
+  const vendorHref = buildVendorProfileHref(vendorId, returnTo, returnLabel);
+  const reviewsHref = buildVendorSubpageHref(vendorId, 'reviews', returnTo, returnLabel);
+  const customerFooterExploreLinks = [
+    { href: returnTo, label: returnLabel },
+    { href: '/user-dashboard', label: 'Customer Home' },
+    {
+      href: `/customer/support?returnTo=${encodeURIComponent(reviewsHref)}&returnLabel=${encodeURIComponent('Back to provider reviews')}`,
+      label: 'Help',
+    },
+  ].filter((link, index, links) => links.findIndex((candidate) => candidate.href === link.href) === index);
+  const footerLinks = isCustomerReturnContext
+    ? [
+        { href: '/user-dashboard', label: 'Customer Dashboard' },
+        ...(returnTo === '/user-dashboard' ? [] : [{ href: returnTo, label: returnLabel }]),
+      ]
+    : isSignedIn
+      ? [{ href: accountHref, label: accountLabel }, { href: '/favorites', label: 'Saved Businesses' }]
+      : undefined;
 
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] text-white">
       <div className="px-4 pt-4 sm:px-6 lg:px-8">
         <PublicSiteHeader
           tone="dark"
+          links={isCustomerReturnContext ? customerHeaderLinks : undefined}
           secondaryHref={accountHref}
           secondaryLabel={accountLabel}
-          ctaHref="/browse"
-          ctaLabel="Explore Work"
+          ctaHref={isCustomerReturnContext ? returnTo : '/browse'}
+          ctaLabel={isCustomerReturnContext ? returnLabel : 'Explore Work'}
         />
       </div>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Link
-          href={`/vendors/${vendorId}`}
+          href={vendorHref}
           className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/6 px-4 py-2 text-sm font-semibold text-white/84 transition hover:bg-white/10 hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -251,12 +297,12 @@ export default function VendorPublicReviewsPage() {
                       triggerLabel={isSignedIn ? 'Report' : 'Sign in to report'}
                       title="Report this review"
                       description="Tell us if this review seems inappropriate, unsafe, or misleading."
-                      signInHref={`/auth/login?next=${encodeURIComponent(`/vendors/${vendorId}/reviews`)}`}
+                      signInHref={`/auth/login?next=${encodeURIComponent(reviewsHref)}`}
                       className="text-xs font-medium text-white/48 underline-offset-4 hover:text-red-300 hover:underline"
                     />
                   </div>
                   {review.serviceId && review.serviceName ? (
-                    <Link href={`/service/${review.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}/reviews`)}&returnLabel=Back%20to%20Reviews`} className="mt-4 inline-flex rounded-full border border-blue-300/20 bg-blue-400/10 px-3 py-1.5 text-xs font-semibold text-blue-100 hover:bg-blue-400/16">
+                    <Link href={`/service/${review.serviceId}?returnTo=${encodeURIComponent(reviewsHref)}&returnLabel=Back%20to%20Reviews`} className="mt-4 inline-flex rounded-full border border-blue-300/20 bg-blue-400/10 px-3 py-1.5 text-xs font-semibold text-blue-100 hover:bg-blue-400/16">
                       {review.serviceName}
                     </Link>
                   ) : null}
@@ -276,7 +322,11 @@ export default function VendorPublicReviewsPage() {
         </section>
       </main>
 
-      <PublicSiteFooter accountLinksOverride={footerLinks} accountHeading={isSignedIn ? 'Your account' : undefined} />
+      <PublicSiteFooter
+        accountLinksOverride={footerLinks}
+        accountHeading={isCustomerReturnContext ? 'Customer account' : isSignedIn ? 'Your account' : undefined}
+        exploreLinksOverride={isCustomerReturnContext ? customerFooterExploreLinks : undefined}
+      />
     </div>
   );
 }

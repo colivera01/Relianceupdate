@@ -25,6 +25,7 @@ type FooterLink = {
 };
 
 type PublicSiteFooterProps = {
+  exploreLinksOverride?: FooterLink[];
   accountLinksOverride?: FooterLink[];
   accountHeading?: string;
 };
@@ -36,10 +37,12 @@ const legalLinks = [
 ];
 
 export function PublicSiteFooter({
+  exploreLinksOverride,
   accountLinksOverride,
   accountHeading = "Accounts",
 }: PublicSiteFooterProps = {}) {
-  const displayedAccountLinks = accountLinksOverride || accountLinks;
+  const displayedExploreLinks = exploreLinksOverride ?? exploreLinks;
+  const displayedAccountLinks = accountLinksOverride ?? accountLinks;
 
   return (
     <footer className="overflow-hidden border-t border-white/8 bg-[linear-gradient(180deg,#04070d,#02050b)]">
@@ -62,7 +65,7 @@ export function PublicSiteFooter({
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.28em] text-white/48">Explore</div>
             <div className="mt-6 space-y-4">
-              {exploreLinks.map((link) => (
+              {displayedExploreLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}

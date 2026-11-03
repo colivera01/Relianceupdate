@@ -45,6 +45,53 @@ describe('proof-first platform shell', () => {
     expect(customerSidebar).not.toContain('Browse Services');
   });
 
+  it('preserves the signed-in customer workspace when opening a public provider profile', () => {
+    const customerDiscover = read('src/app/(user)/discover/page.tsx');
+    const customerFavorites = read('src/app/(user)/favorites/page.tsx');
+    const publicProfile = read('src/app/vendors/[vendorId]/page.tsx');
+    const publicServices = read('src/app/vendors/[vendorId]/services/page.tsx');
+    const publicReviews = read('src/app/vendors/[vendorId]/reviews/page.tsx');
+
+    expect(customerDiscover).toContain('buildCustomerVendorProfileHref(item.vendorId)');
+    expect(customerFavorites.match(/buildVendorProfileHref\(item\.vendorId, '\/favorites', 'Back to Favorites'\)/g)).toHaveLength(2);
+    expect(customerFavorites).not.toContain('href={`/vendors/${item.vendorId}`}');
+    expect(publicProfile).toContain('isCustomerWorkspaceReturnPath(returnTo)');
+    expect(publicProfile).toContain('Your customer account is still active');
+    expect(publicProfile).toContain('Provider profiles use the public view, so the customer sidebar is temporarily hidden.');
+    expect(publicProfile).toContain('Customer Dashboard');
+    expect(publicProfile).toContain("const headerExploreHref = isCustomerReturnContext ? returnTo : '/browse'");
+    expect(publicProfile).toContain('href={returnTo}');
+    expect(publicProfile).toContain('exploreLinksOverride={isCustomerReturnContext ? customerFooterExploreLinks : undefined}');
+    expect(publicProfile).toContain("{ href: '/user-dashboard', label: 'Customer Dashboard' }");
+    expect(publicProfile).toContain("...(returnTo === '/user-dashboard' ? [] : [{ href: returnTo, label: returnLabel }])");
+    expect(publicProfile).toContain("buildVendorSubpageHref(vendorId, 'services', returnTo, returnLabel)");
+    expect(publicProfile).toContain("buildVendorSubpageHref(vendorId, 'reviews', returnTo, returnLabel)");
+
+    for (const nestedPage of [publicServices, publicReviews]) {
+      expect(nestedPage).toContain("sanitizeVendorReturnPath(searchParams?.get('returnTo'))");
+      expect(nestedPage).toContain('isCustomerWorkspaceReturnPath(returnTo)');
+      expect(nestedPage).toContain('buildVendorProfileHref(vendorId, returnTo, returnLabel)');
+      expect(nestedPage).toMatch(/isCustomerReturnContext\s*\?\s*'\/user-dashboard'/);
+      expect(nestedPage).toContain("ctaHref={isCustomerReturnContext ? returnTo : '/browse'}");
+      expect(nestedPage).toContain('links={isCustomerReturnContext ? customerHeaderLinks : undefined}');
+      expect(nestedPage).toContain('exploreLinksOverride={isCustomerReturnContext ? customerFooterExploreLinks : undefined}');
+    }
+    expect(publicServices).toContain("buildVendorSubpageHref(vendorId, 'services', returnTo, returnLabel)");
+    expect(publicReviews).toContain("buildVendorSubpageHref(vendorId, 'reviews', returnTo, returnLabel)");
+  });
+
+  it('keeps service-detail return paths local and its footer account-aware', () => {
+    const servicePage = read('src/app/(user)/service/[serviceId]/page.tsx');
+    const publicNavigation = read('src/lib/public-vendor-navigation.ts');
+
+    expect(publicNavigation).toContain('return sanitizeAuthNextPath(value)');
+    expect(servicePage).toContain("sanitizePublicReturnPath(searchParams?.get('returnTo') || null)");
+    expect(servicePage).toContain('hasCustomerWorkspaceReturnContext(returnTo)');
+    expect(servicePage).toContain('accountLinksOverride={serviceFooterAccountLinks}');
+    expect(servicePage).toContain('exploreLinksOverride={serviceFooterExploreLinks}');
+    expect(servicePage).not.toContain('<PublicSiteFooter />');
+  });
+
   it('does not expose superseded catalog or marketplace framing in active shell copy', () => {
     const combined = renderedShellSources.map(read).join('\n');
 

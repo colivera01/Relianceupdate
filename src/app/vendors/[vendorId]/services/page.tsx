@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Clock, Search, SlidersHorizontal } from 'lucide-react';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  buildVendorProfileHref,
+  buildVendorSubpageHref,
+  isCustomerWorkspaceReturnPath,
+  sanitizeVendorReturnLabel,
+  sanitizeVendorReturnPath,
+} from '@/lib/public-vendor-navigation';
 import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
 
 type PublicService = {
@@ -49,6 +56,7 @@ function formatPrice(value: number | null): string | null {
 
 export default function PublicVendorServicesPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const vendorId = String(params?.vendorId || '');
   const { user } = useAuth();
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
@@ -59,9 +67,21 @@ export default function PublicVendorServicesPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('name');
 
   const isSignedIn = Boolean(user?.id);
+  const requestedReturnTo = sanitizeVendorReturnPath(searchParams?.get('returnTo'));
+  const hasCustomerProfile =
+    user?.userType === 'customer' ||
+    user?.userType === 'both' ||
+    Boolean(user?.availableProfiles?.includes('customer'));
+  const returnTo = requestedReturnTo || (hasCustomerProfile ? '/discover' : '/browse');
+  const returnLabel = sanitizeVendorReturnLabel(searchParams?.get('returnLabel')) || 'Back to Explore Work';
+  const isCustomerReturnContext = Boolean(
+    isSignedIn && hasCustomerProfile && isCustomerWorkspaceReturnPath(returnTo)
+  );
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
   const accountHref =
-    user?.userType === 'admin'
+    isCustomerReturnContext
+      ? '/user-dashboard'
+      : user?.userType === 'admin'
       ? '/admin/dashboard'
       : isVendorAccount
         ? '/vendor/dashboard'
@@ -69,13 +89,23 @@ export default function PublicVendorServicesPage() {
           ? '/user-dashboard'
           : '/auth/login';
   const accountLabel =
-    user?.userType === 'admin'
+    isCustomerReturnContext
+      ? 'Customer Dashboard'
+      : user?.userType === 'admin'
       ? 'Admin Dashboard'
       : isVendorAccount
         ? 'Vendor Workspace'
         : isSignedIn
           ? 'My Account'
           : 'Sign In';
+  const customerHeaderLinks = [
+    { href: '/user-dashboard', label: 'Customer Home' },
+    { href: '/discover', label: 'Explore Work' },
+    {
+      href: '/customer/support?returnTo=%2Fdiscover&returnLabel=Back%20to%20Explore%20Work',
+      label: 'Help',
+    },
+  ];
 
   const loadServices = useCallback(async () => {
     if (!vendorId) return;
@@ -148,8 +178,22 @@ export default function PublicVendorServicesPage() {
   }, [mediaFilter, query, services, sortOrder]);
 
   const vendor = payload?.vendor || null;
-  const vendorHref = `/vendors/${vendorId}`;
-  const footerLinks = isVendorAccount
+  const vendorHref = buildVendorProfileHref(vendorId, returnTo, returnLabel);
+  const servicesHref = buildVendorSubpageHref(vendorId, 'services', returnTo, returnLabel);
+  const customerFooterExploreLinks = [
+    { href: returnTo, label: returnLabel },
+    { href: '/user-dashboard', label: 'Customer Home' },
+    {
+      href: `/customer/support?returnTo=${encodeURIComponent(servicesHref)}&returnLabel=${encodeURIComponent('Back to provider services')}`,
+      label: 'Help',
+    },
+  ].filter((link, index, links) => links.findIndex((candidate) => candidate.href === link.href) === index);
+  const footerLinks = isCustomerReturnContext
+    ? [
+        { href: '/user-dashboard', label: 'Customer Dashboard' },
+        ...(returnTo === '/user-dashboard' ? [] : [{ href: returnTo, label: returnLabel }]),
+      ]
+    : isVendorAccount
     ? [
         { href: '/vendor/dashboard', label: 'Vendor Dashboard' },
         { href: '/vendor/profile', label: 'Profile & Settings' },
@@ -167,8 +211,9 @@ export default function PublicVendorServicesPage() {
           <PublicSiteHeader
             tone="dark"
             className="mb-10"
-            ctaHref="/browse"
-            ctaLabel="Explore Work"
+            links={isCustomerReturnContext ? customerHeaderLinks : undefined}
+            ctaHref={isCustomerReturnContext ? returnTo : '/browse'}
+            ctaLabel={isCustomerReturnContext ? returnLabel : 'Explore Work'}
             secondaryHref={accountHref}
             secondaryLabel={accountLabel}
           />
@@ -315,7 +360,7 @@ export default function PublicVendorServicesPage() {
               <section className="mt-7 grid gap-6 md:grid-cols-2 xl:grid-cols-3" aria-label="Public services">
                 {visibleServices.map((service) => {
                   const price = formatPrice(service.price);
-                  const returnTo = `/vendors/${vendorId}/services`;
+                  const serviceReturnTo = servicesHref;
                   return (
                     <article
                       key={service.serviceId}
@@ -354,7 +399,7 @@ export default function PublicVendorServicesPage() {
                           )}
                         </div>
                         <Link
-                          href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent('Back to all services')}`}
+                          href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(serviceReturnTo)}&returnLabel=${encodeURIComponent('Back to all services')}`}
                           className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-4 py-3 text-center text-sm font-semibold text-white transition hover:brightness-110"
                         >
                           View service &amp; public work
@@ -370,7 +415,10 @@ export default function PublicVendorServicesPage() {
       </main>
 
       <PublicSiteFooter
-        accountHeading={isVendorAccount ? 'Vendor workspace' : isSignedIn ? 'Account' : undefined}
+        accountHeading={
+          isCustomerReturnContext ? 'Customer account' : isVendorAccount ? 'Vendor workspace' : isSignedIn ? 'Account' : undefined
+        }
+        exploreLinksOverride={isCustomerReturnContext ? customerFooterExploreLinks : undefined}
         accountLinksOverride={footerLinks}
       />
     </div>

@@ -72,14 +72,18 @@ describe("canonical Public written-review routes", () => {
         ],
       }),
     }));
-    expect(await response.json()).toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       success: true,
       reviews: [
-        { reviewId: "review-booking", bookingId: "booking-1", mediaSessionId: null },
-        { reviewId: "review-session", bookingId: "booking-2", mediaSessionId: "session-1" },
+        { reviewId: "review-booking", serviceId: "service-1", vendorId: "vendor-1" },
+        { reviewId: "review-session", serviceId: "service-1", vendorId: "vendor-1" },
       ],
       meta: { eligibilityRule: expect.stringContaining("booking or media session") },
     });
+    expect(body.reviews).toHaveLength(2);
+    expect(body.reviews.every((review: Record<string, unknown>) => !("bookingId" in review))).toBe(true);
+    expect(body.reviews.every((review: Record<string, unknown>) => !("mediaSessionId" in review))).toBe(true);
   });
 
   it("limits Vendor public comments to the canonical written-comment and countable-identity contract", async () => {

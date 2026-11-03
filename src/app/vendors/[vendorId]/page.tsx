@@ -13,6 +13,12 @@ import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
 import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import {
+  buildVendorSubpageHref,
+  isCustomerWorkspaceReturnPath,
+  sanitizeVendorReturnLabel,
+  sanitizeVendorReturnPath,
+} from '@/lib/public-vendor-navigation';
 import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButton';
@@ -102,19 +108,6 @@ interface PublicVendorReview {
 const PUBLIC_VENDOR_RETRY_ATTEMPTS = 3;
 const PUBLIC_VENDOR_RETRY_DELAY_MS = 1_200;
 
-function sanitizeReturnPath(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith('/')) return null;
-  if (value.startsWith('//')) return null;
-  return value;
-}
-
-function sanitizeReturnLabel(value: string | null): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  return trimmed ? trimmed.replace(/Explore Proof/gi, 'Explore Work') : null;
-}
-
 export default function PublicVendorProfilePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -124,13 +117,63 @@ export default function PublicVendorProfilePage() {
   const isSignedIn = Boolean(userId);
   const requestedVendorPreview = searchParams?.get('preview') === 'vendor';
   const [isVendorPreview, setIsVendorPreview] = useState(false);
-  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Work';
+  const requestedReturnTo = sanitizeVendorReturnPath(searchParams?.get('returnTo') || null);
+  const hasCustomerProfile =
+    user?.userType === 'customer' ||
+    user?.userType === 'both' ||
+    Boolean(user?.availableProfiles?.includes('customer'));
+  const defaultCustomerReturn = Boolean(hasCustomerProfile && !requestedVendorPreview);
+  const returnTo = requestedReturnTo || (defaultCustomerReturn ? '/discover' : '/browse');
+  const returnLabel = sanitizeVendorReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Work';
+  const isCustomerReturnContext = Boolean(
+    isSignedIn &&
+    !requestedVendorPreview &&
+    hasCustomerProfile &&
+    isCustomerWorkspaceReturnPath(returnTo)
+  );
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
   const signedInAccountHref =
     user?.userType === 'admin' ? '/admin/dashboard' : isVendorAccount ? '/vendor/dashboard' : '/user-dashboard';
-  const headerAccountHref = isVendorPreview ? '/vendor/dashboard' : isSignedIn ? signedInAccountHref : '/auth/login';
-  const headerAccountLabel = isVendorPreview ? 'Vendor Workspace' : isSignedIn ? 'My Account' : 'Sign In';
+  const headerAccountHref = isVendorPreview
+    ? '/vendor/dashboard'
+    : isCustomerReturnContext
+      ? '/user-dashboard'
+      : isSignedIn
+        ? signedInAccountHref
+        : '/auth/login';
+  const headerAccountLabel = isVendorPreview
+    ? 'Vendor Workspace'
+    : isCustomerReturnContext
+      ? 'Customer Dashboard'
+      : isSignedIn
+        ? 'My Account'
+        : 'Sign In';
+  const headerLinks = isCustomerReturnContext
+    ? [
+        { href: '/user-dashboard', label: 'Customer Home' },
+        { href: '/discover', label: 'Explore Work' },
+        {
+          href: '/customer/support?returnTo=%2Fdiscover&returnLabel=Back%20to%20Explore%20Work',
+          label: 'Help',
+        },
+      ]
+    : [
+        { href: '/', label: 'Home' },
+        { href: '/browse', label: 'Explore Work' },
+        { href: '/help', label: 'Help' },
+      ];
+  const headerExploreHref = isCustomerReturnContext ? returnTo : '/browse';
+  const headerExploreLabel = isCustomerReturnContext ? returnLabel : 'Explore Work';
+  const customerFooterExploreLinks = [
+    { href: returnTo, label: returnLabel },
+    { href: '/user-dashboard', label: 'Customer Home' },
+    {
+      href: `/customer/support?returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent(returnLabel)}`,
+      label: 'Help',
+    },
+  ].filter((link, index, links) => links.findIndex((candidate) => candidate.href === link.href) === index);
+  const vendorServicesHref = buildVendorSubpageHref(vendorId, 'services', returnTo, returnLabel);
+  const vendorReviewsHref = buildVendorSubpageHref(vendorId, 'reviews', returnTo, returnLabel);
 
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -278,13 +321,9 @@ export default function PublicVendorProfilePage() {
           <PublicSiteHeader
             tone="dark"
             className="mb-10"
-            links={[
-              { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Explore Work' },
-              { href: '/help', label: 'Help' },
-            ]}
-            ctaHref="/browse"
-            ctaLabel="Explore Work"
+            links={headerLinks}
+            ctaHref={headerExploreHref}
+            ctaLabel={headerExploreLabel}
             secondaryHref={headerAccountHref}
             secondaryLabel={headerAccountLabel}
           />
@@ -310,6 +349,41 @@ export default function PublicVendorProfilePage() {
               <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">
                 <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                 Signed-in customer view
+              </div>
+            </div>
+          ) : null}
+
+          {isCustomerReturnContext ? (
+            <div
+              className="mb-6 flex flex-col gap-4 rounded-[24px] border border-emerald-300/25 bg-emerald-400/10 px-5 py-4 text-white shadow-[0_18px_55px_rgba(2,8,23,0.28)] backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between"
+              data-testid="customer-public-provider-context"
+              role="status"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-200/20 bg-emerald-300/10">
+                  <CheckCircle2 aria-hidden="true" className="h-5 w-5 text-emerald-100" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Your customer account is still active</p>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/72">
+                    Provider profiles use the public view, so the customer sidebar is temporarily hidden. Return to
+                    your previous customer page or Customer Dashboard to restore your full account navigation.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={returnTo}
+                  className="inline-flex min-h-10 items-center justify-center rounded-full bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200"
+                >
+                  {returnLabel}
+                </Link>
+                <Link
+                  href="/user-dashboard"
+                  className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/14"
+                >
+                  Customer Dashboard
+                </Link>
               </div>
             </div>
           ) : null}
@@ -420,7 +494,7 @@ export default function PublicVendorProfilePage() {
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-3">
                   <Link
-                    href={`/vendors/${vendorId}/reviews`}
+                    href={vendorReviewsHref}
                     aria-label="View all verified ratings and published customer reviews"
                     className="group rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-blue-200/30 hover:bg-white/12"
                   >
@@ -442,7 +516,7 @@ export default function PublicVendorProfilePage() {
                     <div className="mt-3 text-xs font-semibold text-blue-100">View ratings and feedback →</div>
                   </Link>
                   <Link
-                    href={`/vendors/${vendorId}/services`}
+                    href={vendorServicesHref}
                     aria-label={`View all ${services.length} public-approved services`}
                     className="group rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-blue-200/30 hover:bg-white/12"
                   >
@@ -739,7 +813,7 @@ export default function PublicVendorProfilePage() {
                 {services.length > 0 ? (
                   <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
                     <Link
-                      href={`/vendors/${vendorId}/services`}
+                      href={vendorServicesHref}
                       className="inline-flex rounded-full bg-[var(--reliance-blue)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1a58db]"
                     >
                       View all {services.length} service{services.length === 1 ? '' : 's'}
@@ -891,7 +965,7 @@ export default function PublicVendorProfilePage() {
                 {reviewTotal > 0 ? (
                   <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
                     <Link
-                      href={`/vendors/${vendorId}/reviews`}
+                      href={vendorReviewsHref}
                       className="inline-flex rounded-full bg-[var(--reliance-blue)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1a58db]"
                     >
                       View all {reviewTotal} customer review{reviewTotal === 1 ? '' : 's'}
@@ -908,7 +982,10 @@ export default function PublicVendorProfilePage() {
       ) : null}
 
       <PublicSiteFooter
-        accountHeading={isVendorPreview ? 'Vendor workspace' : undefined}
+        accountHeading={
+          isVendorPreview ? 'Vendor workspace' : isCustomerReturnContext ? 'Customer account' : undefined
+        }
+        exploreLinksOverride={isCustomerReturnContext ? customerFooterExploreLinks : undefined}
         accountLinksOverride={
           isVendorPreview
             ? [
@@ -916,6 +993,11 @@ export default function PublicVendorProfilePage() {
                 { href: '/vendor/profile', label: 'Profile & Settings' },
                 { href: '/vendor/services', label: 'Manage Services' },
               ]
+            : isCustomerReturnContext
+              ? [
+                  { href: '/user-dashboard', label: 'Customer Dashboard' },
+                  ...(returnTo === '/user-dashboard' ? [] : [{ href: returnTo, label: returnLabel }]),
+                ]
             : isSignedIn
               ? [{ href: signedInAccountHref, label: 'My Account' }]
               : undefined

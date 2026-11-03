@@ -79,8 +79,6 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         select: {
           id: true,
           vendorId: true,
-          bookingId: true,
-          mediaSessionId: true,
           rating: true,
           comment: true,
           createdAt: true,
@@ -99,8 +97,6 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         reviewId: review.id,
         serviceId: service.id,
         vendorId: review.vendorId,
-        bookingId: review.bookingId,
-        mediaSessionId: review.mediaSessionId,
         rating: review.rating,
         comment: cleanPublicReviewComment(review.comment),
         createdAt: review.createdAt,

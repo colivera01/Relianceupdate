@@ -14,6 +14,11 @@ import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
 import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel';
 import { tutorialGuides } from '@/lib/user-guidance';
+import {
+  hasCustomerWorkspaceReturnContext,
+  sanitizePublicReturnPath,
+  sanitizeVendorReturnLabel,
+} from '@/lib/public-vendor-navigation';
 import { 
   MapPin, 
   Star, 
@@ -27,19 +32,6 @@ import {
   Shield,
   Clock as TimeIcon
 } from 'lucide-react';
-
-function sanitizeReturnPath(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith('/')) return null;
-  if (value.startsWith('//')) return null;
-  return value;
-}
-
-function sanitizeReturnLabel(value: string | null): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  return trimmed ? trimmed.replace(/Explore Proof/gi, 'Explore Work') : null;
-}
 
 const SERVICE_DETAIL_TIMEOUT_MS = 30_000;
 const SERVICE_DETAIL_RETRY_ATTEMPTS = 3;
@@ -68,8 +60,8 @@ function formatMediaTimestamp(value: string | null | undefined): string | null {
 function ServiceDetailLoadingState() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
+  const returnTo = sanitizePublicReturnPath(searchParams?.get('returnTo') || null);
+  const returnLabel = sanitizeVendorReturnLabel(searchParams?.get('returnLabel') || null);
   const resolvedBackHref = returnTo || (user?.id ? '/discover' : '/');
   const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Explore Work' : 'Back to Home Page');
 
@@ -145,8 +137,8 @@ function ServiceDetailPageContent() {
   const { user } = useAuth();
   const serviceId = String(params?.serviceId ?? "");
   const isSignedIn = Boolean(user?.id);
-  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
+  const returnTo = sanitizePublicReturnPath(searchParams?.get('returnTo') || null);
+  const returnLabel = sanitizeVendorReturnLabel(searchParams?.get('returnLabel') || null);
 
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'photos'>('overview');
@@ -393,6 +385,48 @@ function ServiceDetailPageContent() {
   };
   const resolvedBackHref = returnTo || (isSignedIn ? '/discover' : '/');
   const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Explore Work' : 'Back to Home Page');
+  const hasCustomerProfile =
+    user?.userType === 'customer' ||
+    user?.userType === 'both' ||
+    Boolean(user?.availableProfiles?.includes('customer'));
+  const isCustomerReturnContext = Boolean(
+    isSignedIn &&
+    hasCustomerProfile &&
+    (!returnTo || hasCustomerWorkspaceReturnContext(returnTo))
+  );
+  const isVendorOnlyAccount = user?.userType === 'vendor' && !hasCustomerProfile;
+  const serviceAccountHref =
+    user?.userType === 'admin'
+      ? '/admin/dashboard'
+      : isVendorOnlyAccount
+        ? '/vendor/dashboard'
+        : hasCustomerProfile
+          ? '/user-dashboard'
+          : '/';
+  const serviceAccountLabel =
+    user?.userType === 'admin'
+      ? 'Admin Dashboard'
+      : isVendorOnlyAccount
+        ? 'Vendor Workspace'
+        : hasCustomerProfile
+          ? 'Customer Dashboard'
+          : 'My Account';
+  const serviceFooterAccountLinks = isSignedIn
+    ? [
+        { href: serviceAccountHref, label: serviceAccountLabel },
+        ...(hasCustomerProfile ? [{ href: '/discover', label: 'Customer Explore Work' }] : []),
+      ].filter((link, index, links) => links.findIndex((candidate) => candidate.href === link.href) === index)
+    : undefined;
+  const serviceFooterExploreLinks = isCustomerReturnContext
+    ? [
+        { href: resolvedBackHref, label: resolvedBackLabel },
+        { href: '/user-dashboard', label: 'Customer Home' },
+        {
+          href: `/customer/support?returnTo=${encodeURIComponent(`/service/${serviceId}`)}&returnLabel=${encodeURIComponent('Back to Service Details')}`,
+          label: 'Help',
+        },
+      ].filter((link, index, links) => links.findIndex((candidate) => candidate.href === link.href) === index)
+    : undefined;
   const handleBack = () => {
     router.push(resolvedBackHref);
   };
@@ -1219,7 +1253,11 @@ function ServiceDetailPageContent() {
         </div>
       </div>
 
-      <PublicSiteFooter />
+      <PublicSiteFooter
+        exploreLinksOverride={serviceFooterExploreLinks}
+        accountHeading={isCustomerReturnContext ? 'Customer account' : isSignedIn ? 'Your account' : undefined}
+        accountLinksOverride={serviceFooterAccountLinks}
+      />
     </div>
   );
 }

@@ -9,10 +9,11 @@ import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducati
 import { ProofFirstCard } from '@/components/public/ProofFirstCard';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
-import { Search, SlidersHorizontal, X, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, SlidersHorizontal, X, MapPin, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAuth } from '@/contexts/AuthContext';
 import { tutorialGuides } from '@/lib/user-guidance';
+import { resolvePublicBrowseNavigation } from '@/lib/public-browse-navigation';
 import {
   PROMOTION_BROWSE_SECTION_EXPLAINER,
   PROMOTION_BROWSE_SECTION_TITLE,
@@ -31,6 +32,8 @@ const PROOF_CARD_DISPLAY_RANK: Record<string, number> = {
 const CATEGORY_DECORATION: Record<string, { icon: string; description: string }> = {
   automotive: { icon: '🚗', description: 'Vehicle and transportation services' },
   'home services': { icon: '🏠', description: 'Home maintenance and improvement' },
+  electrician: { icon: '⚡', description: 'Electrical installation, repair, and safety services' },
+  electrical: { icon: '⚡', description: 'Electrical installation, repair, and safety services' },
   technology: { icon: '💻', description: 'Tech support and digital services' },
   'health & wellness': { icon: '💊', description: 'Personal wellness services' },
   beauty: { icon: '💄', description: 'Beauty and personal care services' },
@@ -51,10 +54,6 @@ function parseOptionalNumber(value: string | null): number | null {
   if (value == null || value.trim() === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function hasCustomerProfileAccess(userType: string | undefined): boolean {
-  return userType === 'customer' || userType === 'both';
 }
 
 export default function PublicBrowsePage() {
@@ -83,8 +82,17 @@ export default function PublicBrowsePage() {
   const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false);
   const [proofDemoEnabled, setProofDemoEnabled] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
   const didHydrateFromUrl = useRef(false);
   const didAutoApplyDistanceSort = useRef(false);
+  const browseNavigation = useMemo(
+    () =>
+      resolvePublicBrowseNavigation({
+        isAuthenticated: !authLoading && isAuthenticated && Boolean(user),
+        userType: user?.userType,
+      }),
+    [authLoading, isAuthenticated, user]
+  );
 
   useEffect(() => {
     if (didHydrateFromUrl.current || typeof window === 'undefined') return;
@@ -169,7 +177,7 @@ export default function PublicBrowsePage() {
 
   useEffect(() => {
     if (authLoading || !hasHydratedFromUrl) return;
-    if (!isAuthenticated || !user || !hasCustomerProfileAccess(user.userType)) {
+    if (!browseNavigation.hasCustomerAccount || !user) {
       setSavedLocationChecked(true);
       return;
     }
@@ -207,7 +215,7 @@ export default function PublicBrowsePage() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, hasHydratedFromUrl, isAuthenticated, user]);
+  }, [authLoading, browseNavigation.hasCustomerAccount, hasHydratedFromUrl, user]);
 
   useEffect(() => {
     if (!hasHydratedFromUrl || typeof window === 'undefined') return;
@@ -375,20 +383,28 @@ export default function PublicBrowsePage() {
     setShowFilters(false);
   };
 
-  const handleShareService = (serviceId: string, serviceName: string) => {
+  const handleShareService = async (serviceId: string, serviceName: string) => {
     const url = `${window.location.origin}/service/${serviceId}`;
     const text = `Check out ${serviceName} on Reliance!`;
+    setShareStatus(null);
 
-    if (navigator.share) {
-      navigator.share({ title: serviceName, text, url }).catch(() => {
-        // Ignore share cancellation.
-      });
-      return;
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: serviceName, text, url });
+        setShareStatus(`${serviceName} was shared.`);
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      }
     }
 
-    navigator.clipboard.writeText(`${text} ${url}`).catch(() => {
-      // Clipboard unavailable in some contexts.
-    });
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('CLIPBOARD_UNAVAILABLE');
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      setShareStatus(`A link to ${serviceName} was copied to your clipboard.`);
+    } catch {
+      setShareStatus('Reliance could not open sharing or copy the link. Open the service details and copy the page address instead.');
+    }
   };
 
   return (
@@ -398,18 +414,74 @@ export default function PublicBrowsePage() {
         <div className="relative mx-auto max-w-7xl px-4 pb-6 pt-6 sm:px-6 lg:px-8">
           <PublicSiteHeader
             tone="dark"
-            className="mb-10"
+            className="mb-6"
             links={[
               { href: '/', label: 'Home' },
               { href: '/help', label: 'Help' },
             ]}
-            ctaHref="/auth/register?type=user"
-            ctaLabel="Create Account"
+            secondaryHref={browseNavigation.accountHref}
+            secondaryLabel={browseNavigation.accountLabel}
+            ctaHref={browseNavigation.primaryHref}
+            ctaLabel={browseNavigation.primaryLabel}
           />
+
+          {!authLoading ? (
+            <div
+              data-testid="public-browse-account-context"
+              className="mb-10 flex flex-col gap-4 rounded-[24px] border border-blue-200/20 bg-blue-400/10 px-5 py-4 text-white shadow-[0_18px_55px_rgba(2,8,23,0.20)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-blue-200/20 bg-blue-300/10">
+                  <ShieldCheck aria-hidden="true" className="h-5 w-5 text-blue-100" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {browseNavigation.isSignedIn
+                      ? 'You are still signed in — this is the public browsing view'
+                      : 'Public browsing — no account required'}
+                  </p>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-white/74">
+                    {browseNavigation.mode === 'customer'
+                      ? 'This page shows the same public-approved provider information any visitor can see. Open Customer Explore Work to restore your account navigation, favorites, and Service Records.'
+                      : browseNavigation.isSignedIn
+                      ? 'This page shows only public-approved provider information. Use the workspace button to return to your signed-in tools.'
+                      : 'Anyone can browse public provider profiles, Services Offered, customer-shared Service Videos, public reviews, and public trust context. Sign in is required to save services, request service, or manage Service Records.'}
+                  </p>
+                </div>
+              </div>
+              {browseNavigation.mode === 'customer' ? (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Link
+                    href="/user-dashboard"
+                    className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/20 bg-white/8 px-4 py-2 text-sm font-semibold text-white hover:bg-white/14"
+                  >
+                    My Account
+                  </Link>
+                  <Link
+                    href="/discover"
+                    className="inline-flex min-h-10 items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+                  >
+                    Customer Explore Work
+                  </Link>
+                </div>
+              ) : browseNavigation.isSignedIn ? (
+                <Link
+                  href={browseNavigation.primaryHref}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+                >
+                  {browseNavigation.primaryLabel}
+                </Link>
+              ) : (
+                <span className="inline-flex w-fit shrink-0 rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+                  Public details only
+                </span>
+              )}
+            </div>
+          ) : null}
 
           <div className="grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
             <div className="max-w-2xl">
-              <h1 className="font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl">
+              <h1 className="font-display text-4xl font-semibold leading-[0.96] text-white sm:text-6xl">
                 Explore real completed work before you <span className="text-[var(--reliance-blue-soft)]">choose who to trust</span>
               </h1>
               <p className="mt-5 max-w-xl text-lg leading-8 text-white/72">
@@ -439,14 +511,26 @@ export default function PublicBrowsePage() {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="reliance-light-card -mt-24 rounded-[32px] p-6 sm:p-7 mb-10 relative z-10">
-          <div className="grid md:grid-cols-4 gap-4">
+        <div className="reliance-light-card -mt-16 rounded-[32px] p-6 sm:-mt-24 sm:p-7 mb-10 relative z-10">
+          <form
+            role="search"
+            aria-label="Search public work and providers"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSearchSubmit();
+            }}
+            className="grid gap-4 md:grid-cols-4"
+          >
             <div className="md:col-span-2">
+              <label htmlFor="browse-search" className="sr-only">
+                Search completed work, providers, or services offered
+              </label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                 <input
+                  id="browse-search"
                   type="text"
-                  placeholder="Search completed work, providers, reviews, or services offered"
+                  placeholder="Search completed work, providers, or services offered"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -459,7 +543,11 @@ export default function PublicBrowsePage() {
               </div>
             </div>
             <div>
+              <label htmlFor="browse-category" className="sr-only">
+                Filter by service category
+              </label>
               <select
+                id="browse-category"
                 data-testid="browse-category-select"
                 value={selectedCategory}
                 onChange={(e) => {
@@ -491,26 +579,30 @@ export default function PublicBrowsePage() {
             </div>
             <div className="flex gap-2">
               <Button
-                onClick={handleSearchSubmit}
+                type="submit"
                 className="flex-1 rounded-2xl bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
               >
                 Search
               </Button>
               <Button
+                type="button"
                 onClick={() => setShowFilters((prev) => !prev)}
                 aria-label="Toggle browse filters"
+                aria-expanded={showFilters}
+                aria-controls="browse-advanced-filters"
                 className="rounded-2xl bg-[var(--reliance-midnight)] text-white hover:bg-[#10203a]"
               >
                 <SlidersHorizontal className="h-4 w-4" />
               </Button>
             </div>
-          </div>
+          </form>
 
           {showFilters && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
+            <div id="browse-advanced-filters" className="mt-6 pt-6 border-t border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Service Filters</h3>
                 <button
+                  type="button"
                   onClick={clearFilters}
                   className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
@@ -520,8 +612,9 @@ export default function PublicBrowsePage() {
               </div>
               <div className={`grid gap-4 ${hasEffectiveCoordinateOrigin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+                  <label htmlFor="browse-sort" className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
                   <select
+                    id="browse-sort"
                     value={sortBy}
                     onChange={(e) => {
                       setSortBy(e.target.value as BrowseSort);
@@ -536,8 +629,9 @@ export default function PublicBrowsePage() {
                 </div>
                 {hasEffectiveCoordinateOrigin ? (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Distance</label>
+                    <label htmlFor="browse-radius" className="block text-sm font-medium text-gray-700 mb-2">Distance</label>
                     <select
+                      id="browse-radius"
                       data-testid="browse-radius-select"
                       value={radiusMiles ?? 'any'}
                       onChange={(e) => {
@@ -594,7 +688,7 @@ export default function PublicBrowsePage() {
                     : 'Checking whether a saved address is available for this session.'}
                 </p>
                 {browserLocationMessage ? (
-                  <p className="mt-2 text-sm font-medium text-amber-700">{browserLocationMessage}</p>
+                  <p role="status" className="mt-2 text-sm font-medium text-amber-700">{browserLocationMessage}</p>
                 ) : null}
               </div>
             </div>
@@ -631,14 +725,30 @@ export default function PublicBrowsePage() {
                 >
                   {browserLocationLoading ? 'Checking location...' : 'Use my location'}
                 </Button>
-                <Link href={isAuthenticated ? "/profile-settings" : "/auth/register?type=user"} className="text-sm font-semibold text-blue-700 hover:text-blue-800">
-                  {isAuthenticated ? 'Manage saved address' : 'Add an address later'}
-                </Link>
+                {browseNavigation.hasCustomerAccount ? (
+                  <Link href="/profile-settings" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                    Manage saved address
+                  </Link>
+                ) : browseNavigation.isSignedIn ? (
+                  <span className="text-sm text-slate-600">Saved addresses are available in the customer account.</span>
+                ) : (
+                  <Link href="/auth/register?type=user" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                    Add an address later
+                  </Link>
+                )}
               </div>
             ) : (
-              <Link href={isAuthenticated ? "/profile-settings" : "/auth/register?type=user"} className="text-sm font-semibold text-blue-700 hover:text-blue-800">
-                {isAuthenticated ? 'Manage saved address' : 'Save an address later'}
-              </Link>
+              browseNavigation.hasCustomerAccount ? (
+                <Link href="/profile-settings" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                  Manage saved address
+                </Link>
+              ) : browseNavigation.isSignedIn ? (
+                <span className="text-sm text-slate-600">Saved addresses are available in the customer account.</span>
+              ) : (
+                <Link href="/auth/register?type=user" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                  Save an address later
+                </Link>
+              )
             )}
           </div>
         </div>
@@ -664,8 +774,8 @@ export default function PublicBrowsePage() {
                 <ProofFirstCard
                   key={item.promotion?.campaignId || item.serviceId}
                   item={item}
-                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse%20Services`}
-                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse%20Services`}
+                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
                 />
               ))}
             </div>
@@ -677,7 +787,7 @@ export default function PublicBrowsePage() {
             <h2 className="font-display text-3xl font-semibold text-slate-950">Service Categories</h2>
           </div>
           {categoryCardsLoading ? (
-            <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <Card key={i} className="rounded-[26px] border-slate-200 bg-white">
                   <CardContent className="p-4 h-24 flex flex-col justify-center">
@@ -698,12 +808,18 @@ export default function PublicBrowsePage() {
               No public service categories are available yet. Categories appear when an exact Service Video is approved for Public viewing.
             </div>
           ) : (
-            <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div
+              className={
+                categories.length === 1
+                  ? 'grid gap-4 sm:grid-cols-[minmax(0,20rem)] sm:justify-center'
+                  : 'grid gap-4 md:grid-cols-3 lg:grid-cols-6'
+              }
+            >
               {categories.map((category) => {
                 const decoration =
                   CATEGORY_DECORATION[category.label.toLowerCase()] ||
                   CATEGORY_DECORATION[category.key] ||
-                  { icon: '*', description: 'More services are still being grouped here' };
+                  { icon: '🛠️', description: 'Skilled local services' };
                 const decorationDescription =
                   category.key === 'plumbing' || category.label.toLowerCase() === 'plumbing'
                     ? 'Drain, leak, and fixture services'
@@ -712,24 +828,33 @@ export default function PublicBrowsePage() {
                 return (
                   <Card
                     key={category.key}
-                    className={`text-center hover:-translate-y-1 hover:shadow-[0_22px_55px_rgba(7,16,38,0.14)] transition-all cursor-pointer group rounded-[26px] border-2 bg-white ${
+                    className={`text-center hover:-translate-y-1 hover:shadow-[0_22px_55px_rgba(7,16,38,0.14)] transition-all rounded-[26px] border-2 bg-white ${
                       selectedCategory === category.label
                         ? 'border-blue-500 bg-blue-50/80 shadow-md shadow-blue-100'
                         : 'border-white hover:border-blue-200'
                     }`}
-                    onClick={() => handleCategoryClick(category.label)}
                   >
-                    <CardContent className="p-4">
-                      <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">
-                        {decoration.icon}
-                      </div>
-                      <h3 className="font-semibold text-gray-900 mb-1">{category.label}</h3>
-                      <p className="text-sm text-gray-600 mb-1">{category.serviceCount} services</p>
-                      <p className="text-xs text-gray-500">{decorationDescription}</p>
-                      {selectedCategory === category.label ? (
-                        <p className="text-[11px] mt-2 text-blue-700 font-medium">Selected filter</p>
-                      ) : null}
-                    </CardContent>
+                    <button
+                      type="button"
+                      aria-pressed={selectedCategory === category.label}
+                      aria-label={`Filter by ${category.label}, ${category.serviceCount} ${category.serviceCount === 1 ? 'service' : 'services'}`}
+                      onClick={() => handleCategoryClick(category.label)}
+                      className="group h-full w-full rounded-[24px] text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                    >
+                      <span className="block p-4">
+                        <span aria-hidden="true" className="mb-2 block text-3xl transition-transform group-hover:scale-110">
+                          {decoration.icon}
+                        </span>
+                        <span className="mb-1 block font-semibold text-gray-900">{category.label}</span>
+                        <span className="mb-1 block text-sm text-gray-600">
+                          {category.serviceCount} {category.serviceCount === 1 ? 'service' : 'services'}
+                        </span>
+                        <span className="block text-xs text-gray-500">{decorationDescription}</span>
+                        {selectedCategory === category.label ? (
+                          <span className="mt-2 block text-[11px] font-medium text-blue-700">Selected filter</span>
+                        ) : null}
+                      </span>
+                    </button>
                   </Card>
                 );
               })}
@@ -753,8 +878,18 @@ export default function PublicBrowsePage() {
 
           <TrustScoreEducationCard className="mb-6" />
 
+          {shareStatus ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900"
+            >
+              {shareStatus}
+            </div>
+          ) : null}
+
           {browseResultsLoading ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <Card key={i} className="rounded-[28px] border-slate-200 bg-white">
                   <div className="h-48 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)] rounded-t-[28px]" />
@@ -794,17 +929,25 @@ export default function PublicBrowsePage() {
               </button>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div
+              className={
+                displayResults.length === 1
+                  ? 'grid gap-6 md:grid-cols-[minmax(0,32rem)] md:justify-center'
+                  : 'grid gap-6 md:grid-cols-2 lg:grid-cols-3'
+              }
+            >
               {displayResults.map((item) => (
                 <ProofFirstCard
                   key={item.serviceId}
                   item={item}
-                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Work`}
-                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Work`}
+                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
                   secondaryAction={
                     <Button
                       size="sm"
+                      type="button"
                       variant="outline"
+                      aria-label={`Share ${item.serviceName}`}
                       className="border-white/15 bg-white/[0.04] text-white hover:bg-white/[0.08]"
                       onClick={() => handleShareService(item.serviceId, item.serviceName)}
                     >
@@ -817,7 +960,7 @@ export default function PublicBrowsePage() {
           )}
 
           {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-center gap-3">
+            <nav aria-label="Browse result pages" className="mt-6 flex items-center justify-center gap-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -839,26 +982,79 @@ export default function PublicBrowsePage() {
                 Next
                 <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
-            </div>
+            </nav>
           )}
         </div>
 
         <div className="mb-8">
-            <div className="reliance-light-card rounded-[28px] p-6 shadow-sm">
+          <div className="reliance-light-card rounded-[28px] p-6 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-blue-900 mb-2">Ready for your next step?</h3>
-                <p className="text-blue-700 text-sm">Create a free account to save work examples, contact providers, and manage your Service Records.</p>
+                <h3 className="text-lg font-semibold text-blue-900 mb-2">
+                  {browseNavigation.mode === 'customer'
+                    ? 'Continue in your customer account'
+                    : browseNavigation.isSignedIn
+                    ? 'Return to your workspace'
+                    : 'Ready for your next step?'}
+                </h3>
+                <p className="text-blue-700 text-sm">
+                  {browseNavigation.mode === 'customer'
+                    ? 'Customer Explore Work includes your account navigation, favorites, saved address, and Service Records.'
+                    : browseNavigation.isSignedIn
+                    ? 'Your workspace and account tools remain available while you browse public work.'
+                    : 'Create a free customer account to save work examples, request service, and manage your Service Records.'}
+                </p>
               </div>
-              <Link href="/auth/register?type=user" className="w-full sm:w-auto">
-                <Button className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto">Sign Up Now</Button>
-              </Link>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                {!browseNavigation.isSignedIn ? (
+                  <Button asChild variant="outline" className="w-full sm:w-auto">
+                    <Link href="/auth/login?next=%2Fbrowse">Sign In</Link>
+                  </Button>
+                ) : null}
+                <Button asChild className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto">
+                  <Link href={browseNavigation.primaryHref}>
+                    {browseNavigation.isSignedIn ? browseNavigation.primaryLabel : 'Create Free Customer Account'}
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <PublicSiteFooter />
+      <PublicSiteFooter
+        accountHeading={
+          browseNavigation.mode === 'customer'
+            ? 'Customer account'
+            : browseNavigation.mode === 'vendor'
+            ? 'Vendor workspace'
+            : browseNavigation.mode === 'admin'
+            ? 'Admin workspace'
+            : browseNavigation.isSignedIn
+            ? 'Account'
+            : undefined
+        }
+        accountLinksOverride={
+          browseNavigation.isSignedIn
+            ? browseNavigation.mode === 'customer'
+              ? [
+                  { href: '/user-dashboard', label: 'My Account' },
+                  { href: '/discover', label: 'Customer Explore Work' },
+                  { href: '/my-bookings', label: 'My Service Records' },
+                ]
+              : [{ href: browseNavigation.accountHref, label: browseNavigation.primaryLabel }]
+            : undefined
+        }
+        exploreLinksOverride={
+          browseNavigation.mode === 'customer'
+            ? [
+                { href: '/', label: 'Home' },
+                { href: '/discover', label: 'Customer Explore Work' },
+                { href: '/customer/support?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse', label: 'Help' },
+              ]
+            : undefined
+        }
+      />
     </div>
   );
 }

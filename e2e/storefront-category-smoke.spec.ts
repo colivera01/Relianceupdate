@@ -85,26 +85,22 @@ test('public storefront category deep link opens filtered browse results', async
   await page.goto('/browse?category=Other%20Services');
   await expect(page).toHaveURL(/\/browse\?category=Other(?:%20|\+)Services$/);
 
-  await expect(
-    page.getByText('Compare customer reviews, public service videos, and disclosure-friendly promoted placements without losing the organic marketplace underneath.')
-  ).toBeVisible();
-  await expect(page.getByText('Customer Reviews', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Service Videos', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Clear Promoted Labels', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Counts are backend-derived public inventory')).toHaveCount(0);
-  await expect(page.getByText('Distance filter is not available yet in backend discovery.')).toHaveCount(0);
+  await expect(page.getByText('Public browsing — no account required')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign In' }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Create Account' }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Explore real completed work before you choose who to trust/i })).toBeVisible();
   await expect(page.getByTestId('browse-category-select')).toHaveValue('Other Services', {
     timeout: 30_000,
   });
   await page.getByRole('button', { name: 'Toggle browse filters' }).click();
-  await expect(page.getByRole('heading', { name: 'Browse Filters' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Service Filters' })).toBeVisible();
   await expect(
     page.getByText('Distance filters unlock automatically once a browse location is set.')
   ).toBeVisible();
   await expect(page.getByTestId('browse-radius-select')).toHaveCount(0);
   await expect(page.locator('option[value="price_asc"]')).toHaveCount(0);
   await expect(page.locator('option[value="price_desc"]')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Browse trusted services with a clearer signal stack' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Completed work and provider context' })).toBeVisible();
   await expect(page.getByText('Selected filter')).toBeVisible();
 
   await expect(page.getByRole('heading', { name: 'Brooklyn Move-In Cleaning' })).toBeVisible({
@@ -113,7 +109,7 @@ test('public storefront category deep link opens filtered browse results', async
   await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' }).first()).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/\$\d/);
 
-  await page.getByPlaceholder('What service do you need?').fill('Metro');
+  await page.getByPlaceholder('Search completed work, providers, or services offered').fill('Metro');
   await page.getByRole('button', { name: 'Search' }).click();
   await page.waitForURL(/q=Metro/, { timeout: 30_000 });
   await expect(page).toHaveURL(/category=Other(?:\+|%20)Services/);
@@ -162,7 +158,7 @@ test('public browse shows real distance only with coordinate origin', async ({ p
 
   await page.getByTestId('browse-radius-select').selectOption('10');
   await expect(page).toHaveURL(/radiusMiles=10/);
-  await expect(page.getByRole('heading', { name: 'No services found' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'No matching service results' })).toBeVisible({
     timeout: 30_000,
   });
 
@@ -284,6 +280,10 @@ test('signed-in customer browse uses saved location without browser prompt', asy
   });
 
   await page.goto('/browse?q=Metro%20Apartment');
+
+  await expect(page.getByText('You are still signed in — this is the public browsing view')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'My Account' }).first()).toHaveAttribute('href', '/user-dashboard');
+  await expect(page.getByRole('link', { name: 'Customer Explore Work' }).first()).toHaveAttribute('href', '/discover');
 
   await expect(page.getByText('Showing results near your saved address')).toBeVisible({
     timeout: 30_000,
