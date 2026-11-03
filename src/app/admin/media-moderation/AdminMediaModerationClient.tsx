@@ -237,7 +237,7 @@ function formatJobBookingStatus(status: string | null | undefined): string {
     .join(' ');
 }
 
-function normalizeQueueVideo(row: Record<string, unknown>): QueueVideo {
+export function normalizeQueueVideo(row: Record<string, unknown>): QueueVideo {
   const stageKey = String(row.vendorJobVideoStageKey ?? 'LEGACY_OTHER');
   const stageLabel = String(row.vendorJobVideoStageLabel ?? 'Legacy / unspecified');
   const primary = Boolean(row.isPrimaryProofStageVideo);
@@ -266,13 +266,18 @@ function normalizeQueueVideo(row: Record<string, unknown>): QueueVideo {
     createdAt: String(row.createdAt ?? ''),
     mimeType: String(row.mimeType ?? ''),
     bytes: String(row.bytes ?? '0'),
+    audioExpected: Boolean(row.audioExpected),
+    audioPresence: row.audioPresence != null ? String(row.audioPresence) : undefined,
+    audioTrackCount: row.audioTrackCount != null ? Number(row.audioTrackCount) : null,
+    audioCodec: row.audioCodec != null ? String(row.audioCodec) : null,
+    audioEvidenceVersion: row.audioEvidenceVersion != null ? Number(row.audioEvidenceVersion) : undefined,
     previewRef: row.previewRef != null ? String(row.previewRef) : null,
     downloadRef: row.downloadRef != null ? String(row.downloadRef) : null,
     adminDownloadRef: row.adminDownloadRef != null ? String(row.adminDownloadRef) : null,
   };
 }
 
-function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
+export function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
   const rawVideosByStage =
     row.videosByStage && typeof row.videosByStage === 'object'
       ? (row.videosByStage as Record<string, Record<string, unknown> | null>)
@@ -283,6 +288,25 @@ function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
     if (!raw || typeof raw !== 'object') return null;
     return normalizeQueueVideo(raw);
   };
+
+  const rawAudioAudit =
+    row.audioAudit && typeof row.audioAudit === 'object'
+      ? (row.audioAudit as Record<string, unknown>)
+      : null;
+  const audioAuditStages = Array.isArray(rawAudioAudit?.stages)
+    ? rawAudioAudit.stages
+        .filter((stage): stage is Record<string, unknown> => Boolean(stage) && typeof stage === 'object')
+        .map((stage) => ({
+          stage: String(stage.stage ?? ''),
+          expected: Boolean(stage.expected),
+          presence: String(stage.presence ?? 'LEGACY_UNKNOWN'),
+          evidenceVersion: Number(stage.evidenceVersion ?? 1),
+        }))
+    : [];
+  const rawRecordingScope =
+    row.recordingScope && typeof row.recordingScope === 'object'
+      ? (row.recordingScope as Record<string, unknown>)
+      : null;
 
   return {
     packageId: String(row.packageId ?? ''),
@@ -308,6 +332,24 @@ function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
     managerSubmitterName: String(row.managerSubmitterName ?? 'Vendor manager'),
     managerSubmittedAt: row.managerSubmittedAt != null ? String(row.managerSubmittedAt) : null,
     managerAttestationHash: String(row.managerAttestationHash ?? ''),
+    audioAudit: rawAudioAudit
+      ? {
+          expected: Boolean(rawAudioAudit.expected),
+          conformance: String(rawAudioAudit.conformance ?? ''),
+          stages: audioAuditStages,
+        }
+      : undefined,
+    recordingScope: rawRecordingScope
+      ? {
+          contractVersion: String(rawRecordingScope.contractVersion ?? ''),
+          siteControl: String(rawRecordingScope.siteControl ?? ''),
+          intentionalParticipantPlan: String(rawRecordingScope.intentionalParticipantPlan ?? ''),
+          recordingBoundary: String(rawRecordingScope.recordingBoundary ?? ''),
+          prohibitedConditions: Array.isArray(rawRecordingScope.prohibitedConditions)
+            ? rawRecordingScope.prohibitedConditions.map((condition) => String(condition)).filter(Boolean)
+            : [],
+        }
+      : null,
     videosByStage: {
       INTRO: toStageVideo('INTRO'),
       IN_PROGRESS: toStageVideo('IN_PROGRESS'),
