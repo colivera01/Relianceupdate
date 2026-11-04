@@ -29,6 +29,13 @@ function pageRows<T>(rows: T[], page: number, limit: number) {
   };
 }
 
+function awaitingReviewStatus(record: any): string {
+  if (record.customer_record?.video?.state === 'READY') {
+    return 'Review access is not available yet. Open the Service Record for the current status.';
+  }
+  return 'Review will be available after an approved Service Video Package is available in your Private Service Record.';
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
@@ -95,7 +102,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         vendorName: String(record.vendor?.name || 'Service provider'),
         serviceName: String(record.service?.name || record.title || 'Service'),
         serviceDate: record.booking_date || null,
-        statusMessage: 'Review will be available when your Service Video is approved.',
+        statusMessage: awaitingReviewStatus(record),
         archived: Boolean(record.customer_record?.archived),
       }))
       .filter((row) => matchesSearch(row, search));

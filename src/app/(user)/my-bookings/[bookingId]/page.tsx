@@ -346,13 +346,22 @@ function BookingMediaDetailPageContent() {
   const vendorName = booking?.vendor?.business_name || booking?.vendor?.businessName || booking?.vendor?.name || 'Service provider';
   const existingReview = booking?.customerReview || null;
   const customerRecord = booking?.customerRecord || null;
+  const request = customerRecord?.request ?? {
+    state: 'UNKNOWN' as const,
+    label: 'Request status unavailable',
+    detail: 'The latest scheduling status is unavailable for this historical record.',
+    needsResponse: false,
+    responseReason: null,
+    proposedScheduledFor: null,
+    requestedScheduledFor: null,
+  };
   const completedRecord = customerRecord?.lifecycle === 'COMPLETED';
   const videoReady = completedRecord && customerRecord?.video.state === 'READY';
   const canReview = Boolean(customerRecord?.review.state === 'LEAVE_REVIEW' && booking?.vendor?.id && !existingReview);
   const supportHref = `/customer/support?returnTo=${encodeURIComponent(`/my-bookings/${bookingId}`)}&returnLabel=${encodeURIComponent('Back to service record')}`;
 
   const respondToCounteroffer = async (action: 'ACCEPT_COUNTEROFFER' | 'DECLINE_COUNTEROFFER') => {
-    if (requestResponseBusy || customerRecord?.request.state !== 'COUNTEROFFERED') return;
+    if (requestResponseBusy || request.state !== 'COUNTEROFFERED') return;
     setRequestResponseBusy(true);
     setRequestResponseError(null);
     if (counterResponseIdempotencyRef.current?.action !== action) {
@@ -631,7 +640,7 @@ function BookingMediaDetailPageContent() {
                 : customerRecord?.lifecycle === 'CANCELLED'
                   ? 'Cancelled Service Record'
                   : customerRecord?.lifecycle === 'UPCOMING'
-                    ? customerRecord.request.label
+                    ? request.label
                     : 'Service Record'}
           </p>
           <h1 id="service-heading" className="mt-2 text-3xl font-semibold text-slate-950">{serviceName}</h1>
@@ -645,7 +654,7 @@ function BookingMediaDetailPageContent() {
             <Calendar className="h-4 w-4" /> {completedRecord
               ? `Completed ${formatDate(booking?.booking_date)}`
               : booking?.booking_date
-                ? `${customerRecord?.request.state === 'REQUESTED' ? 'Requested for' : 'Appointment'} ${formatDate(booking.booking_date)}`
+                ? `${request.state === 'REQUESTED' ? 'Requested for' : 'Appointment'} ${formatDate(booking.booking_date)}`
                 : 'The business will propose an appointment time'}
           </p>
           {customerRecord?.cancellation ? (
@@ -662,24 +671,24 @@ function BookingMediaDetailPageContent() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Service request status</p>
-                <h2 id="request-status-heading" className="mt-1 text-2xl font-semibold text-slate-950">{customerRecord.request.label}</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{customerRecord.request.detail}</p>
+                <h2 id="request-status-heading" className="mt-1 text-2xl font-semibold text-slate-950">{request.label}</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{request.detail}</p>
               </div>
-              <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${customerRecord.request.needsResponse ? 'bg-amber-100 text-amber-900' : customerRecord.request.state === 'DECLINED' || customerRecord.request.state === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                {customerRecord.request.needsResponse ? 'Your response needed' : customerRecord.request.label}
+              <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${request.needsResponse ? 'bg-amber-100 text-amber-900' : request.state === 'DECLINED' || request.state === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                {request.needsResponse ? 'Your response needed' : request.label}
               </span>
             </div>
 
-            {customerRecord.request.responseReason ? (
+            {request.responseReason ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                <span className="font-semibold text-slate-950">Business note: </span>{customerRecord.request.responseReason}
+                <span className="font-semibold text-slate-950">Business note: </span>{request.responseReason}
               </div>
             ) : null}
 
-            {customerRecord.request.state === 'COUNTEROFFERED' ? (
+            {request.state === 'COUNTEROFFERED' ? (
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Proposed appointment</p>
-                <p className="mt-1 text-lg font-semibold text-amber-950">{formatDateTime(customerRecord.request.proposedScheduledFor)}</p>
+                <p className="mt-1 text-lg font-semibold text-amber-950">{formatDateTime(request.proposedScheduledFor)}</p>
                 <p className="mt-2 text-sm text-amber-900">Accepting schedules the appointment. Declining tells the business this time does not work; it does not silently confirm anything.</p>
                 <label htmlFor="counter-decline-reason" className="mt-4 block text-sm font-medium text-amber-950">Optional note if you decline</label>
                 <textarea
@@ -705,15 +714,15 @@ function BookingMediaDetailPageContent() {
 
             <ol className="mt-6 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4" aria-label="Service request progress">
               <li className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-950"><span className="font-semibold">1. Request sent</span><span className="mt-1 block text-emerald-800">Your details were shared securely.</span></li>
-              <li className={`rounded-lg border p-3 ${customerRecord.request.state === 'REQUESTED' ? 'border-blue-300 bg-blue-50 text-blue-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}><span className="font-semibold">2. Business responds</span><span className="mt-1 block opacity-80">Accepts, declines, or proposes a time.</span></li>
-              <li className={`rounded-lg border p-3 ${['ACCEPTED', 'SCHEDULED', 'IN_PROGRESS'].includes(customerRecord.request.state) ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><span className="font-semibold">3. Appointment scheduled</span><span className="mt-1 block opacity-80">Only after the time is accepted.</span></li>
+              <li className={`rounded-lg border p-3 ${request.state === 'REQUESTED' ? 'border-blue-300 bg-blue-50 text-blue-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}><span className="font-semibold">2. Business responds</span><span className="mt-1 block opacity-80">Accepts, declines, or proposes a time.</span></li>
+              <li className={`rounded-lg border p-3 ${['ACCEPTED', 'SCHEDULED', 'IN_PROGRESS'].includes(request.state) ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><span className="font-semibold">3. Appointment scheduled</span><span className="mt-1 block opacity-80">Only after the time is accepted.</span></li>
               <li
-                aria-current={customerRecord.request.state === 'IN_PROGRESS' ? 'step' : undefined}
-                className={`rounded-lg border p-3 ${customerRecord.request.state === 'IN_PROGRESS' ? 'border-blue-300 bg-blue-50 text-blue-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                aria-current={request.state === 'IN_PROGRESS' ? 'step' : undefined}
+                className={`rounded-lg border p-3 ${request.state === 'IN_PROGRESS' ? 'border-blue-300 bg-blue-50 text-blue-950' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
               >
                 <span className="font-semibold">4. Service in progress</span>
                 <span className="mt-1 block opacity-80">
-                  {customerRecord.request.state === 'IN_PROGRESS'
+                  {request.state === 'IN_PROGRESS'
                     ? 'The business is working on this service.'
                     : 'Begins after the scheduled appointment starts.'}
                 </span>
@@ -930,7 +939,7 @@ function BookingMediaDetailPageContent() {
               <div><dt className="font-medium text-slate-500">Status</dt><dd className="mt-1 text-slate-900">{customerRecord?.lifecycleLabel || 'Status unavailable'}</dd></div>
               <div><dt className="font-medium text-slate-500">Service</dt><dd className="mt-1 text-slate-900">{serviceName}</dd></div>
               <div><dt className="font-medium text-slate-500">Vendor</dt><dd className="mt-1 text-slate-900">{vendorName}</dd></div>
-              <div><dt className="font-medium text-slate-500">{completedRecord ? 'Completed' : customerRecord?.request.state === 'REQUESTED' ? 'Requested date' : 'Appointment date'}</dt><dd className="mt-1 text-slate-900">{booking?.booking_date ? formatDate(booking.booking_date) : 'Business will propose a time'}</dd></div>
+              <div><dt className="font-medium text-slate-500">{completedRecord ? 'Completed' : request.state === 'REQUESTED' ? 'Requested date' : 'Appointment date'}</dt><dd className="mt-1 text-slate-900">{booking?.booking_date ? formatDate(booking.booking_date) : 'Business will propose a time'}</dd></div>
               {videoReady ? <div><dt className="font-medium text-slate-500">Service Video</dt><dd className="mt-1 text-slate-900">Reliance approved</dd></div> : null}
               <div><dt className="font-medium text-slate-500">Assigned professional</dt><dd className="mt-1 text-slate-900">{assignedProfessional?.name || 'Not listed'}</dd></div>
               {booking?.notes?.trim() ? <div className="sm:col-span-2"><dt className="font-medium text-slate-500">Notes</dt><dd className="mt-1 text-slate-900">{booking.notes}</dd></div> : null}

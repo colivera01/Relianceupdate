@@ -3,8 +3,7 @@ import { addRegisteredUser, registeredUsers, syncRegisteredUsersFromDisk } from 
 import { prisma } from "@/server/db";
 import { accountStatusErrorBody, AccountStatusError, isUserAccountRestricted } from "@/lib/account-status";
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
-import { findDbCredentialByUserId, upsertDbCredential } from "@/lib/auth-credentials";
-import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
+import { findDbCredentialByUserId } from "@/lib/auth-credentials";
 import {
   authorizationErrorResponse,
   requireRequestActor,
@@ -40,6 +39,32 @@ function splitDisplayName(name: string | null | undefined) {
   const firstName = parts[0] || "";
   const lastName = parts.slice(1).join(" ") || "";
   return { firstName, lastName };
+}
+
+function normalizeEmail(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidPhone(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  return (
+    value.length <= 32 &&
+    /^\+?[0-9\s().-]+$/.test(value) &&
+    digits.length >= 10 &&
+    digits.length <= 15
+  );
+}
+
+function uniqueConstraintTarget(error: unknown): string | null {
+  if (String((error as any)?.code || "").toUpperCase() !== "P2002") return null;
+  const target = (error as any)?.meta?.target;
+  return Array.isArray(target)
+    ? target.map((value) => String(value || "")).join(" ").toLowerCase()
+    : String(target || "").toLowerCase();
 }
 
 export async function GET(request: NextRequest) {
@@ -215,6 +240,8 @@ export async function PUT(request: NextRequest) {
       select: {
         id: true,
         email: true,
+        name: true,
+        phone: true,
         profilePhoto: true,
         address: true,
         city: true,
@@ -246,13 +273,82 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const firstName = String(body?.firstName || "").trim();
-    const lastName = String(body?.lastName || "").trim();
+    const registryProfile = customerIndex !== -1 ? registeredUsers[customerIndex] : null;
+    const currentName = dbUser
+      ? splitDisplayName(dbUser.name)
+      : {
+          firstName: String(registryProfile?.firstName || "").trim(),
+          lastName: String(registryProfile?.lastName || "").trim(),
+        };
+    const firstName = body?.firstName !== undefined
+      ? String(body.firstName || "").trim()
+      : currentName.firstName;
+    const lastName = body?.lastName !== undefined
+      ? String(body.lastName || "").trim()
+      : currentName.lastName;
+    const phone = body?.phone !== undefined
+      ? String(body.phone || "").trim()
+      : String(dbUser?.phone || registryProfile?.phone || "").trim();
+    if (!firstName) {
+      return NextResponse.json(
+        { success: false, code: "PROFILE_FIRST_NAME_REQUIRED", error: "First name is required." },
+        { status: 422 }
+      );
+    }
+    if (!lastName) {
+      return NextResponse.json(
+        { success: false, code: "PROFILE_LAST_NAME_REQUIRED", error: "Last name is required." },
+        { status: 422 }
+      );
+    }
+    if (firstName.length > 100 || lastName.length > 100) {
+      return NextResponse.json(
+        { success: false, code: "PROFILE_NAME_TOO_LONG", error: "First and last names must each be 100 characters or fewer." },
+        { status: 422 }
+      );
+    }
+    if (!phone) {
+      return NextResponse.json(
+        { success: false, code: "PROFILE_PHONE_REQUIRED", error: "Phone number is required." },
+        { status: 422 }
+      );
+    }
+    if (!isValidPhone(phone)) {
+      return NextResponse.json(
+        { success: false, code: "PROFILE_PHONE_INVALID", error: "Enter a valid phone number." },
+        { status: 422 }
+      );
+    }
     const nextName = [firstName, lastName].filter(Boolean).join(" ") || undefined;
+    const submittedEmail = body?.email !== undefined ? normalizeEmail(body.email) : null;
+    if (submittedEmail !== null && !isValidEmail(submittedEmail)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PROFILE_EMAIL_INVALID",
+          error: "Enter a valid email address.",
+        },
+        { status: 422 }
+      );
+    }
+
+    const previousEmail = normalizeEmail(
+      dbUser?.email || (customerIndex !== -1 ? registeredUsers[customerIndex]?.email : "")
+    );
+    if (submittedEmail !== null && submittedEmail !== previousEmail) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PROFILE_EMAIL_CHANGE_REQUIRES_SUPPORT",
+          error: "Your sign-in email cannot be changed from Profile Settings. Contact Support & Help for assistance.",
+        },
+        { status: 422 }
+      );
+    }
+
     const profileUpdate = {
-      ...(nextName ? { name: nextName } : {}),
-      ...(body?.email !== undefined ? { email: String(body.email || "").trim() || null } : {}),
-      ...(body?.phone !== undefined ? { phone: String(body.phone || "").trim() || null } : {}),
+      ...(body?.firstName !== undefined || body?.lastName !== undefined ? { name: nextName } : {}),
+      ...(body?.phone !== undefined ? { phone } : {}),
       ...(body?.address !== undefined ? { address: String(body.address || "").trim() || null } : {}),
       ...(body?.city !== undefined ? { city: String(body.city || "").trim() || null } : {}),
       ...(body?.state !== undefined ? { state: String(body.state || "").trim() || null } : {}),
@@ -309,65 +405,32 @@ export async function PUT(request: NextRequest) {
           },
         })
       : null;
-
-    const nextEmail = String(
-      body?.email !== undefined ? body.email || "" : updatedDbUser?.email || dbUser?.email || ""
-    ).trim();
-    const previousEmail = String(dbUser?.email || "").trim();
-    const emailChanged = Boolean(nextEmail) && nextEmail.toLowerCase() !== previousEmail.toLowerCase();
-
-    let updatedCredential = dbUser ? await findDbCredentialByUserId(dbUser.id).catch(() => null) : null;
-    let verificationLinkPreview: string | undefined;
-    let verificationTokenPreview: string | undefined;
-    let emailDeliveryQueued: boolean | undefined;
-
-    if (updatedCredential && nextEmail) {
-      updatedCredential = await upsertDbCredential({
-        userId: dbUser!.id,
-        email: nextEmail,
-        passwordHash: updatedCredential.passwordHash,
-        emailVerifiedAt: emailChanged ? null : updatedCredential.emailVerifiedAt,
-      });
-      const refreshedCredential = updatedCredential!;
-
-      if (emailChanged) {
-        const credentialId = String(refreshedCredential.id);
-        const verification = await sendOrPreviewEmailVerification({
-          email: nextEmail,
-          credentialId,
-          recipientName: nextName || updatedDbUser?.name || null,
-          baseUrl: request.nextUrl.origin,
-        }).catch((error) => {
-          console.error("Customer profile verification email send error:", error);
-          return null;
-        });
-        emailDeliveryQueued = Boolean(verification?.sendResult.ok);
-        if (process.env.NODE_ENV !== "production") {
-          verificationLinkPreview = verification?.verificationLink;
-          verificationTokenPreview = verification?.verificationTokenPreview;
-        }
-      }
-    }
+    const updatedCredential = dbUser ? await findDbCredentialByUserId(dbUser.id).catch(() => null) : null;
 
     if (customerIndex !== -1) {
-      addRegisteredUser({
-        ...registeredUsers[customerIndex],
-        ...body,
-        id: dbUser?.id || registeredUsers[customerIndex]?.id || userId,
-        email: body?.email !== undefined ? String(body.email || "").trim() : dbUser?.email || registeredUsers[customerIndex]?.email || "",
-        firstName,
-        lastName,
-        phone: body?.phone !== undefined ? String(body.phone || "").trim() : registeredUsers[customerIndex]?.phone || "",
-        address: body?.address !== undefined ? String(body.address || "").trim() : registeredUsers[customerIndex]?.address || "",
-        city: body?.city !== undefined ? String(body.city || "").trim() : registeredUsers[customerIndex]?.city || "",
-        state: body?.state !== undefined ? String(body.state || "").trim() : registeredUsers[customerIndex]?.state || "",
-        zipCode: body?.zipCode !== undefined ? String(body.zipCode || "").trim() : registeredUsers[customerIndex]?.zipCode || "",
-        locationPreferenceEnabled:
-          body?.locationPreferenceEnabled !== undefined
-            ? Boolean(body.locationPreferenceEnabled)
-            : Boolean(registeredUsers[customerIndex]?.locationPreferenceEnabled),
-      });
-      syncRegisteredUsersFromDisk();
+      try {
+        addRegisteredUser({
+          ...registeredUsers[customerIndex],
+          ...body,
+          id: dbUser?.id || registeredUsers[customerIndex]?.id || userId,
+          email: previousEmail,
+          firstName,
+          lastName,
+          phone,
+          address: body?.address !== undefined ? String(body.address || "").trim() : registeredUsers[customerIndex]?.address || "",
+          city: body?.city !== undefined ? String(body.city || "").trim() : registeredUsers[customerIndex]?.city || "",
+          state: body?.state !== undefined ? String(body.state || "").trim() : registeredUsers[customerIndex]?.state || "",
+          zipCode: body?.zipCode !== undefined ? String(body.zipCode || "").trim() : registeredUsers[customerIndex]?.zipCode || "",
+          locationPreferenceEnabled:
+            body?.locationPreferenceEnabled !== undefined
+              ? Boolean(body.locationPreferenceEnabled)
+              : Boolean(registeredUsers[customerIndex]?.locationPreferenceEnabled),
+        });
+        syncRegisteredUsersFromDisk();
+      } catch (registryError) {
+        if (!dbUser) throw registryError;
+        console.error("Customer profile dev registry mirror failed after durable update:", registryError);
+      }
     }
 
     const splitName = splitDisplayName(updatedDbUser?.name);
@@ -407,19 +470,33 @@ export async function PUT(request: NextRequest) {
       success: true,
       message: "Profile updated successfully",
       profile,
-      ...(emailChanged
-        ? {
-            emailVerificationRequired: true,
-            emailDeliveryQueued: Boolean(emailDeliveryQueued),
-            ...(process.env.NODE_ENV !== "production" && verificationLinkPreview
-              ? { verificationLinkPreview, verificationTokenPreview }
-              : {}),
-          }
-        : {}),
     });
   } catch (error) {
     const authorizationResponse = authorizationErrorResponse(error);
     if (authorizationResponse) return authorizationResponse;
+    const conflictTarget = uniqueConstraintTarget(error);
+    if (conflictTarget !== null) {
+      if (conflictTarget.includes("phone")) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "PROFILE_PHONE_IN_USE",
+            error: "That phone number is already connected to another account.",
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          code: conflictTarget.includes("email") ? "PROFILE_EMAIL_IN_USE" : "PROFILE_CONFLICT",
+          error: conflictTarget.includes("email")
+            ? "That email address is already connected to another account."
+            : "Those profile details conflict with another account. Review them or contact Support & Help.",
+        },
+        { status: 409 }
+      );
+    }
     console.error("Error updating customer profile:", error);
     return NextResponse.json({ error: "Failed to update customer profile" }, { status: 500 });
   }

@@ -4,6 +4,8 @@ const hoisted = vi.hoisted(() => {
   const tokenUpdateMany = vi.fn();
   const create = vi.fn();
   const findUnique = vi.fn();
+  const findFirst = vi.fn();
+  const count = vi.fn();
   const authCredentialFindUnique = vi.fn();
   const authCredentialUpdateMany = vi.fn();
   const registrationEvidenceUpdateMany = vi.fn();
@@ -13,6 +15,8 @@ const hoisted = vi.hoisted(() => {
         updateMany: tokenUpdateMany,
         create,
         findUnique,
+        findFirst,
+        count,
       },
       authCredential: {
         findUnique: authCredentialFindUnique,
@@ -33,6 +37,8 @@ const hoisted = vi.hoisted(() => {
     tokenUpdateMany,
     create,
     findUnique,
+    findFirst,
+    count,
     authCredentialFindUnique,
     authCredentialUpdateMany,
     registrationEvidenceUpdateMany,
@@ -54,6 +60,10 @@ describe("auth email verification", () => {
     hoisted.tokenUpdateMany.mockReset();
     hoisted.create.mockReset();
     hoisted.findUnique.mockReset();
+    hoisted.findFirst.mockReset();
+    hoisted.count.mockReset();
+    hoisted.findFirst.mockResolvedValue(null);
+    hoisted.count.mockResolvedValue(0);
     hoisted.authCredentialFindUnique.mockReset();
     hoisted.authCredentialUpdateMany.mockReset();
     hoisted.registrationEvidenceUpdateMany.mockReset();
@@ -181,6 +191,43 @@ describe("auth email verification", () => {
       "next=%2Fmy-bookings%2Fbooking-1%3FvideoReady%3D1%26claimToken%3Dclaim-1"
     );
     expect(result.verificationTokenPreview).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("checks and claims a resend inside one serializable transaction", async () => {
+    const { sendOrPreviewRateLimitedEmailVerification } = await import("./auth-email-verification");
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "msg-rate-limited" });
+
+    const result = await sendOrPreviewRateLimitedEmailVerification({
+      email: "notify@example.com",
+      credentialId: "cred-rate-limited",
+      baseUrl: "https://beta.relianceonline.org",
+    });
+
+    expect(result.throttled).toBe(false);
+    expect(hoisted.findFirst).toHaveBeenCalledTimes(1);
+    expect(hoisted.count).toHaveBeenCalledTimes(1);
+    expect(hoisted.create).toHaveBeenCalledTimes(1);
+    expect(hoisted.sendEmail).toHaveBeenCalledTimes(1);
+    expect(hoisted.transaction).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" }
+    );
+  });
+
+  it("does not issue or send another link during the resend cooldown", async () => {
+    const { sendOrPreviewRateLimitedEmailVerification } = await import("./auth-email-verification");
+    hoisted.findFirst.mockResolvedValue({ createdAt: new Date() });
+    hoisted.count.mockResolvedValue(1);
+
+    await expect(sendOrPreviewRateLimitedEmailVerification({
+      email: "notify@example.com",
+      credentialId: "cred-rate-limited",
+      baseUrl: "https://beta.relianceonline.org",
+    })).resolves.toEqual({ throttled: true });
+
+    expect(hoisted.tokenUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.create).not.toHaveBeenCalled();
+    expect(hoisted.sendEmail).not.toHaveBeenCalled();
   });
 
   it("replaces an internal request origin with the configured public email host", async () => {

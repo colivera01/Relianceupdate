@@ -40,16 +40,15 @@ export function normalizePublicEmailBaseUrl(value?: string | null): string {
   try {
     const url = new URL(raw);
     const hostname = url.hostname.toLowerCase();
-    const isLocalHost =
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "::1" ||
-      hostname.endsWith(".local");
-    const isInternalContainerHost =
-      /^[a-f0-9]{12,}$/i.test(hostname) ||
-      (url.port === "8080" && !hostname.includes("relianceonline.org"));
-
-    if (isLocalHost || isInternalContainerHost) return "";
+    const isReliancePublicHost =
+      hostname === "relianceonline.org" || hostname.endsWith(".relianceonline.org");
+    if (
+      url.protocol !== "https:" ||
+      !isReliancePublicHost ||
+      (url.port && url.port !== "443") ||
+      url.username ||
+      url.password
+    ) return "";
     return `${url.protocol}//${url.host}`;
   } catch {
     return "";
@@ -59,10 +58,10 @@ export function normalizePublicEmailBaseUrl(value?: string | null): string {
 export function getPublicEmailBaseUrl(baseUrl?: string | null): string {
   const env = readNotificationEnv();
   return (
-    normalizePublicEmailBaseUrl(baseUrl) ||
     normalizePublicEmailBaseUrl(env.appBaseUrl) ||
     normalizePublicEmailBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
     normalizePublicEmailBaseUrl(process.env.NEXT_PUBLIC_BASE_URL) ||
+    normalizePublicEmailBaseUrl(baseUrl) ||
     DEFAULT_PUBLIC_APP_BASE_URL
   );
 }

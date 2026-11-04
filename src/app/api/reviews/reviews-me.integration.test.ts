@@ -40,11 +40,18 @@ function review(index: number) {
 describe('GET /api/reviews/me', () => {
   beforeEach(() => {
     h.records.mockReset().mockResolvedValue({
-      records: [{
-        id: 'ready-booking', title: 'Outlet Installation', booking_date: '2026-08-30',
-        service: { name: 'Outlet Installation' }, vendor: { id: 'vendor-1', name: 'Electro LLC' },
-        customer_record: { lifecycle: 'COMPLETED', archived: true, review: { state: 'LEAVE_REVIEW' } },
-      }],
+      records: [
+        {
+          id: 'ready-booking', title: 'Outlet Installation', booking_date: '2026-08-30',
+          service: { name: 'Outlet Installation' }, vendor: { id: 'vendor-1', name: 'Electro LLC' },
+          customer_record: { lifecycle: 'COMPLETED', archived: true, video: { state: 'READY' }, review: { state: 'LEAVE_REVIEW' } },
+        },
+        {
+          id: 'awaiting-booking', title: 'Panel Inspection', booking_date: '2026-08-31',
+          service: { name: 'Panel Inspection' }, vendor: { id: 'vendor-1', name: 'Electro LLC' },
+          customer_record: { lifecycle: 'COMPLETED', archived: false, video: { state: 'PREPARING' }, review: { state: 'UNAVAILABLE' } },
+        },
+      ],
     });
     h.reviews.mockReset().mockResolvedValue(Array.from({ length: 15 }, (_, index) => review(index + 1)));
   });
@@ -75,6 +82,16 @@ describe('GET /api/reviews/me', () => {
     const body = await response.json();
     expect(body.counts.submitted).toBe(1);
     expect(body.submitted[0].serviceName).toBe('Service 14');
+  });
+
+  it('explains review eligibility without implying that an unavailable package is already approved', async () => {
+    const response = await GET(new Request('http://localhost/api/reviews/me?limit=20'));
+    const body = await response.json();
+    expect(body.counts.awaiting).toBe(1);
+    expect(body.awaiting[0]).toMatchObject({
+      bookingId: 'awaiting-booking',
+      statusMessage: 'Review will be available after an approved Service Video Package is available in your Private Service Record.',
+    });
   });
 
   it('returns a safe correlated load error when the required record delegate fails', async () => {

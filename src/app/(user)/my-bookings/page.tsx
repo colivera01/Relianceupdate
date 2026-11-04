@@ -294,6 +294,15 @@ function MyServiceRecordsPageContent() {
             <div className="grid gap-4 lg:grid-cols-2">
               {records.map((record) => {
                 const state = record.customer_record;
+                const request = state.request ?? {
+                  state: 'UNKNOWN' as const,
+                  label: 'Request status unavailable',
+                  detail: 'Open the Service Record for the latest scheduling details.',
+                  needsResponse: false,
+                  responseReason: null,
+                  proposedScheduledFor: null,
+                  requestedScheduledFor: null,
+                };
                 const detailHref = `/my-bookings/${encodeURIComponent(record.id)}`;
                 return (
                   <article key={record.id} data-testid={`my-bookings-row-${record.id}`} className="rounded-md border border-white/12 bg-slate-950/65 p-5 text-white">
@@ -308,32 +317,32 @@ function MyServiceRecordsPageContent() {
 
                     <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-white/10 py-4 text-sm">
                       <div><dt className="text-white/45">Status</dt><dd className="mt-0.5 font-medium">{state.lifecycleLabel}</dd></div>
-                      <div><dt className="text-white/45">{state.request.state === 'REQUESTED' ? 'Requested date' : 'Appointment date'}</dt><dd className="mt-0.5 font-medium">{record.booking_date ? formatDate(record.booking_date) : 'Business will propose a time'}</dd></div>
+                      <div><dt className="text-white/45">{request.state === 'REQUESTED' ? 'Requested date' : 'Appointment date'}</dt><dd className="mt-0.5 font-medium">{record.booking_date ? formatDate(record.booking_date) : 'Business will propose a time'}</dd></div>
                       {state.lifecycle === 'COMPLETED' ? <div><dt className="text-white/45">Service Video:</dt><dd className="mt-0.5 font-medium">{state.video.label}</dd></div> : null}
                       {state.lifecycle === 'COMPLETED' ? <div><dt className="text-white/45">Review</dt><dd className="mt-0.5 font-medium">{state.review.label}</dd></div> : null}
                       {state.lifecycle === 'COMPLETED' && state.video.state === 'READY' ? <div><dt className="text-white/45">Visibility</dt><dd className="mt-0.5 font-medium">{state.visibility.label}</dd></div> : null}
                       <div><dt className="text-white/45">Reference</dt><dd className="mt-0.5 truncate font-mono text-xs">{record.id}</dd></div>
                     </dl>
 
-                    {state.request.state === 'REQUESTED' ? (
+                    {request.state === 'REQUESTED' ? (
                       <div className="mt-4 rounded-md border border-blue-300/25 bg-blue-300/10 px-3 py-3 text-sm text-blue-50">
                         <p className="font-semibold">Waiting for {record.vendor?.name || 'the business'}</p>
-                        <p className="mt-1 text-blue-100/80">{state.request.detail}</p>
+                        <p className="mt-1 text-blue-100/80">{request.detail}</p>
                       </div>
                     ) : null}
 
-                    {state.request.state === 'COUNTEROFFERED' ? (
+                    {request.state === 'COUNTEROFFERED' ? (
                       <div className="mt-4 rounded-md border border-amber-300/30 bg-amber-300/10 px-3 py-3 text-sm text-amber-50">
                         <p className="font-semibold">Your response is needed</p>
-                        <p className="mt-1">Proposed time: {formatDateTime(state.request.proposedScheduledFor)}</p>
-                        {state.request.responseReason ? <p className="mt-1 text-amber-100/80">Business note: {state.request.responseReason}</p> : null}
+                        <p className="mt-1">Proposed time: {formatDateTime(request.proposedScheduledFor)}</p>
+                        {request.responseReason ? <p className="mt-1 text-amber-100/80">Business note: {request.responseReason}</p> : null}
                       </div>
                     ) : null}
 
-                    {state.request.state === 'DECLINED' ? (
+                    {request.state === 'DECLINED' ? (
                       <div className="mt-4 rounded-md border border-red-300/25 bg-red-300/10 px-3 py-3 text-sm text-red-50">
-                        <p className="font-semibold">{state.request.label}</p>
-                        <p className="mt-1 text-red-100/80">{state.request.responseReason || state.request.detail}</p>
+                        <p className="font-semibold">{request.label}</p>
+                        <p className="mt-1 text-red-100/80">{request.responseReason || request.detail}</p>
                       </div>
                     ) : null}
 
@@ -361,7 +370,7 @@ function MyServiceRecordsPageContent() {
                     {state.legacyRestoreBlocked ? <p className="mt-4 text-sm text-white/60">Some status details are unavailable for this older record. It remains available to view, but its prior lifecycle cannot be safely restored. <Link href="/customer/support" className="font-medium text-blue-300 underline">Contact Support</Link>.</p> : null}
 
                     <div className="mt-5 flex flex-wrap items-center gap-2">
-                      <Link href={detailHref} className={`rounded-md px-3 py-2 text-sm font-semibold text-white ${state.request.needsResponse ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}>{state.request.needsResponse ? 'Review proposed time' : 'View Service Record'}</Link>
+                      <Link href={detailHref} className={`rounded-md px-3 py-2 text-sm font-semibold text-white ${request.needsResponse ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}>{request.needsResponse ? 'Review proposed time' : 'View Service Record'}</Link>
                       {state.review.state === 'LEAVE_REVIEW' ? <Link href={`${detailHref}?action=review&returnTo=${encodeURIComponent('/my-bookings')}#your-review`} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10">Leave a review</Link> : null}
                       {state.lifecycle === 'COMPLETED' && record.vendor?.id ? <VendorFavoriteButton vendorId={record.vendor.id} vendorName={record.vendor.name || 'Business'} tone="dark" /> : null}
                       {state.archiveEligible ? <button type="button" disabled={busyId === record.id} onClick={() => void changeOrganization(record, 'ARCHIVE')} className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-50"><Archive className="h-4 w-4" /> Archive Service Record</button> : null}

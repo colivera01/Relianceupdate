@@ -21,6 +21,7 @@ export function VendorFavoriteButton({
   const favorite = useVendorFavorite(vendorId);
   const serverSaved = favorite.data?.entityType === 'vendor';
   const [savedOverride, setSavedOverride] = useState<boolean | null>(null);
+  const [favoriteIdOverride, setFavoriteIdOverride] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusError, setStatusError] = useState(false);
   const saved = savedOverride ?? serverSaved;
@@ -31,7 +32,8 @@ export function VendorFavoriteButton({
 
   useEffect(() => {
     setSavedOverride(null);
-  }, [favorite.data?.favoriteId]);
+    setFavoriteIdOverride(null);
+  }, [favorite.data?.favoriteId, vendorId]);
 
   if (previewMode) {
     return (
@@ -41,7 +43,7 @@ export function VendorFavoriteButton({
           disabled
           className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold opacity-80 ${base} ${className}`}
         >
-          <Heart className="h-4 w-4" /> Save {vendorName}
+          <Heart aria-hidden="true" className="h-4 w-4" /> Save {vendorName}
         </button>
         <span className={tone === 'dark' ? 'text-xs text-white/58' : 'text-xs text-slate-500'}>
           Customer control - disabled while previewing your own business.
@@ -56,32 +58,43 @@ export function VendorFavoriteButton({
         href={`/auth/login?next=${encodeURIComponent(`/vendors/${vendorId}`)}`}
         className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold ${base} ${className}`}
       >
-        <Heart className="h-4 w-4" /> Save {vendorName}
+        <Heart aria-hidden="true" className="h-4 w-4" /> Save {vendorName}
       </Link>
     );
   }
 
   const handleToggle = async () => {
     const previous = saved;
+    const previousFavoriteId = favoriteIdOverride ?? favorite.data?.favoriteId ?? null;
     const nextSaved = !saved;
     setSavedOverride(nextSaved);
     setStatusMessage('');
     setStatusError(false);
     try {
-      if (saved && favorite.data?.favoriteId) {
-        await favorite.remove.mutateAsync(favorite.data.favoriteId);
+      if (saved) {
+        let favoriteId = previousFavoriteId;
+        if (!favoriteId) {
+          const refreshed = await favorite.refetch();
+          favoriteId = refreshed.data?.entityType === 'vendor' ? refreshed.data.favoriteId : null;
+        }
+        if (!favoriteId) throw new Error('Saved business record is unavailable.');
+        await favorite.remove.mutateAsync(favoriteId);
+        setFavoriteIdOverride(null);
         setStatusMessage(`${vendorName} was removed from Favorites.`);
       } else {
-        await favorite.add.mutateAsync();
+        const result = await favorite.add.mutateAsync();
+        setFavoriteIdOverride(result.favorite.favoriteId);
         setStatusMessage(`${vendorName} was saved to Favorites.`);
       }
       const refreshed = await favorite.refetch().catch(() => null);
       const refreshedSaved = refreshed?.data?.entityType === 'vendor';
       if (refreshed && !refreshed.isError && refreshedSaved === nextSaved) {
         setSavedOverride(null);
+        setFavoriteIdOverride(null);
       }
     } catch {
       setSavedOverride(previous);
+      setFavoriteIdOverride(previousFavoriteId);
       setStatusError(true);
       setStatusMessage('We could not update Favorites. Please try again.');
     }
@@ -97,7 +110,7 @@ export function VendorFavoriteButton({
           onClick={() => void handleToggle()}
           className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-55 ${base} ${className}`}
         >
-          <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
+          <Heart aria-hidden="true" className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
           {busy ? 'Updating...' : saved ? 'Saved to Favorites' : `Save ${vendorName}`}
         </button>
         {saved ? (
@@ -113,7 +126,13 @@ export function VendorFavoriteButton({
         <span
           role={statusError ? 'alert' : 'status'}
           aria-live="polite"
-          className={statusError ? 'text-xs font-medium text-red-300' : tone === 'dark' ? 'text-xs text-emerald-200' : 'text-xs text-emerald-700'}
+          className={statusError
+            ? tone === 'dark'
+              ? 'text-xs font-medium text-red-300'
+              : 'text-xs font-medium text-red-800'
+            : tone === 'dark'
+              ? 'text-xs text-emerald-200'
+              : 'text-xs text-emerald-700'}
         >
           {statusMessage}
         </span>

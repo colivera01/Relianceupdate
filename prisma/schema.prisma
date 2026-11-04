@@ -1857,6 +1857,7 @@ model BookingNotification {
   nextAttemptAt   DateTime?
   leaseExpiresAt  DateTime?
   deadLetteredAt  DateTime?
+  customerReadAt  DateTime?
   maxAttempts     Int       @default(4)
   idempotencyKey  String?
   createdAt       DateTime  @default(now())
@@ -1869,6 +1870,7 @@ model BookingNotification {
   @@index([status, lastAttemptAt])
   @@index([consentRecordId])
   @@index([status, nextAttemptAt])
+  @@index([customerReadAt, createdAt])
   @@index([idempotencyKey])
   @@map("booking_notifications")
 }

@@ -343,7 +343,7 @@ function LoginPageContent() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, nextPath: safeNextPath }),
       });
       const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 

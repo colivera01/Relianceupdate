@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { findDbCredentialByEmail } from "@/lib/auth-credentials";
-import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
+import { sendOrPreviewRateLimitedEmailVerification } from "@/lib/auth-email-verification";
+import { sanitizeAuthNextPath } from "@/lib/auth-next";
 
 function normalizeEmail(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const email = normalizeEmail(body?.email);
     const recipientName = String(body?.name || "").trim() || null;
+    const nextPath = sanitizeAuthNextPath(body?.nextPath);
 
     if (!email) {
       return NextResponse.json(
@@ -30,23 +32,22 @@ export async function POST(request: NextRequest) {
     if (credential.emailVerifiedAt) {
       return NextResponse.json({
         success: true,
-        message: "Email is already verified.",
-        alreadyVerified: true,
+        message: "If an account with that email exists, a verification link has been sent.",
       });
     }
 
-    const sendResult = await sendOrPreviewEmailVerification({
+    const sendResult = await sendOrPreviewRateLimitedEmailVerification({
       email,
       credentialId: credential.id,
       recipientName,
       baseUrl: request.nextUrl.origin,
+      nextPath,
     });
 
     return NextResponse.json({
       success: true,
       message: "If an account with that email exists, a verification link has been sent.",
-      emailDeliveryQueued: sendResult.sendResult.ok,
-      ...(process.env.NODE_ENV !== "production"
+      ...(process.env.NODE_ENV !== "production" && !sendResult.throttled
         ? {
             verificationLinkPreview: sendResult.verificationLink,
             verificationTokenPreview: sendResult.verificationTokenPreview,

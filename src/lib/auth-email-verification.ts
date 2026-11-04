@@ -7,6 +7,10 @@ import {
 } from "@/lib/email/reliance-template";
 import { sanitizeAuthNextPath } from "@/lib/auth-next";
 import { markCustomerRegistrationEvidenceVerified } from "@/lib/legal/customer-registration-policy-evidence";
+import {
+  maySendVerificationAgain,
+  VERIFICATION_RESEND_WINDOW_MS,
+} from "@/lib/auth-verification-resend-policy";
 
 const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
 
@@ -70,6 +74,64 @@ export async function issueEmailVerificationToken(params: {
   });
 
   return { rawToken, expiresAt };
+}
+
+export async function issueRateLimitedEmailVerificationToken(params: {
+  credentialId: string;
+  email: string;
+  ttlMs?: number;
+}): Promise<EmailVerificationIssueResult | null> {
+  const normalizedEmail = normalizeEmail(params.email);
+  if (!params.credentialId || !normalizedEmail) {
+    throw new Error("Missing required email verification token fields");
+  }
+
+  const rawToken = createVerificationTokenValue();
+  const expiresAt = new Date(Date.now() + (params.ttlMs ?? EMAIL_VERIFICATION_TTL_MS));
+
+  return (prisma as any).$transaction(async (tx: any) => {
+    const now = new Date();
+    const [latest, sentInWindow] = await Promise.all([
+      tx.emailVerificationToken.findFirst({
+        where: { credentialId: params.credentialId, email: normalizedEmail },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+      tx.emailVerificationToken.count({
+        where: {
+          credentialId: params.credentialId,
+          email: normalizedEmail,
+          createdAt: { gte: new Date(now.getTime() - VERIFICATION_RESEND_WINDOW_MS) },
+        },
+      }),
+    ]);
+    if (!maySendVerificationAgain({
+      now,
+      latestCreatedAt: latest?.createdAt || null,
+      sentInWindow,
+    })) {
+      return null;
+    }
+
+    await tx.emailVerificationToken.updateMany({
+      where: {
+        credentialId: params.credentialId,
+        email: normalizedEmail,
+        consumedAt: null,
+      },
+      data: { consumedAt: now },
+    });
+    await tx.emailVerificationToken.create({
+      data: {
+        id: createVerificationTokenId(),
+        credentialId: params.credentialId,
+        email: normalizedEmail,
+        tokenHash: hashVerificationToken(rawToken),
+        expiresAt,
+      },
+    });
+    return { rawToken, expiresAt };
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function consumeEmailVerificationToken(rawToken: string) {
@@ -148,24 +210,24 @@ export async function consumeEmailVerificationToken(rawToken: string) {
   }, { isolationLevel: "Serializable" });
 }
 
-export async function sendOrPreviewEmailVerification(params: {
+type SendEmailVerificationParams = {
   email: string;
   credentialId: string;
   recipientName?: string | null;
   baseUrl: string;
   audience?: "customer" | "vendor" | "account";
   nextPath?: string | null;
-}) {
+};
+
+async function deliverIssuedEmailVerification(
+  params: SendEmailVerificationParams,
+  issued: EmailVerificationIssueResult,
+) {
   const { sendEmail } = await import("@/lib/email/resend");
   const normalizedEmail = normalizeEmail(params.email);
   if (!normalizedEmail) {
     throw new Error("Email is required for verification");
   }
-
-  const issued = await issueEmailVerificationToken({
-    credentialId: params.credentialId,
-    email: normalizedEmail,
-  });
 
   const verificationParams = new URLSearchParams({ token: issued.rawToken });
   const safeNextPath = sanitizeAuthNextPath(params.nextPath);
@@ -224,6 +286,26 @@ export async function sendOrPreviewEmailVerification(params: {
     verificationTokenPreview:
       process.env.NODE_ENV !== "production" ? issued.rawToken : undefined,
   };
+}
+
+export async function sendOrPreviewEmailVerification(params: SendEmailVerificationParams) {
+  const issued = await issueEmailVerificationToken({
+    credentialId: params.credentialId,
+    email: params.email,
+  });
+  return deliverIssuedEmailVerification(params, issued);
+}
+
+export async function sendOrPreviewRateLimitedEmailVerification(
+  params: SendEmailVerificationParams,
+) {
+  const issued = await issueRateLimitedEmailVerificationToken({
+    credentialId: params.credentialId,
+    email: params.email,
+  });
+  if (!issued) return { throttled: true as const };
+  const delivery = await deliverIssuedEmailVerification(params, issued);
+  return { throttled: false as const, ...delivery };
 }
 
 function escapeHtml(s: string): string {

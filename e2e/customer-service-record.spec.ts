@@ -749,8 +749,20 @@ test('customer mobile navigation uses short visible labels with full accessible 
     const navigation = page.getByRole('navigation', { name: 'Customer mobile navigation' });
     await expect(navigation.getByText('Explore', { exact: true })).toBeVisible();
     await expect(navigation.getByText('Records', { exact: true })).toBeVisible();
+    await expect(navigation.getByText('Alerts', { exact: true })).toBeVisible();
     await expect(navigation.getByRole('link', { name: 'Explore Work' })).toBeVisible();
     await expect(navigation.getByRole('link', { name: 'My Service Records' })).toBeVisible();
+    await expect(navigation.getByRole('link', { name: 'Notifications' })).toBeVisible();
+
+    const moreButton = navigation.getByRole('button', { name: 'More customer pages' });
+    await moreButton.click();
+    const moreNavigation = page.getByRole('navigation', { name: 'More customer navigation' });
+    await expect(moreNavigation.getByRole('link', { name: 'Secure Account' })).toBeVisible();
+    await expect(moreNavigation.getByRole('link', { name: 'Profile & Settings' })).toBeVisible();
+    await expect(moreNavigation.getByRole('link', { name: 'Favorites' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(moreNavigation).toBeHidden();
+    await expect(moreButton).toBeFocused();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
 });

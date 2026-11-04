@@ -10,6 +10,9 @@ import {
   LayoutDashboard,
   Star,
   Calendar,
+  Bell,
+  Menu,
+  X,
   Shield,
   HelpCircle,
 } from 'lucide-react';
@@ -50,6 +53,8 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
           ? 'Back to My Service Records'
         : pathname.startsWith('/reviews')
           ? 'Back to My Reviews'
+        : pathname.startsWith('/notifications')
+          ? 'Back to Notifications'
         : pathname.startsWith('/favorites')
           ? 'Back to My Favorites'
         : pathname.startsWith('/discover')
@@ -61,8 +66,14 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
   return `/customer/support?returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent(returnLabel)}`;
 }
 
+function isNavigationPathActive(pathname: string, href: string): boolean {
+  const hrefPathname = href.split(/[?#]/, 1)[0] || '/';
+  return pathname === hrefPathname || (hrefPathname !== '/' && pathname.startsWith(`${hrefPathname}/`));
+}
+
 const navLinks = [
   { label: 'Home', mobileLabel: 'Home', icon: Home, href: '/user-dashboard', iconClassName: 'text-blue-200' },
+  { label: 'Notifications', mobileLabel: 'Alerts', icon: Bell, href: '/notifications', iconClassName: 'text-blue-200' },
   { label: 'Explore Work', mobileLabel: 'Explore', icon: LayoutDashboard, href: '/discover', iconClassName: 'text-cyan-200' },
   { label: 'My Service Records', mobileLabel: 'Records', icon: Calendar, href: '/my-bookings', iconClassName: 'text-sky-200' },
   { label: 'Favorites', mobileLabel: 'Favorites', icon: Heart, href: '/favorites', iconClassName: 'text-rose-200' },
@@ -88,6 +99,9 @@ function UserSidebarContent() {
   const search = searchParams?.toString() ? `?${searchParams.toString()}` : '';
   const customerHelpHref = React.useMemo(() => buildCustomerHelpHref(pathname, search), [pathname, search]);
   const [currentUser, setCurrentUser] = React.useState<SidebarUser>(defaultUser);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = React.useState(false);
+  const mobileMoreButtonRef = React.useRef<HTMLButtonElement>(null);
+  const mobileMoreFirstLinkRef = React.useRef<HTMLAnchorElement>(null);
   const isSignedIn = Boolean(user);
   const signedInUser: SidebarUser | null = React.useMemo(() => {
     if (!user) return null;
@@ -144,13 +158,46 @@ function UserSidebarContent() {
   const mobileNavLinks = React.useMemo(
     () => [
       navLinks[0],
-      navLinks[1],
       navLinks[2],
       navLinks[3],
-      navLinks[5],
+      navLinks[1],
     ],
     []
   );
+
+  const mobileMoreLinks = React.useMemo(
+    () => [
+      navLinks[4],
+      navLinks[5],
+      navLinks[6],
+      navLinks[7],
+      { label: 'Support & Help', icon: HelpCircle, href: customerHelpHref, iconClassName: 'text-cyan-200' },
+    ],
+    [customerHelpHref]
+  );
+  const isMobileMoreActive = mobileMoreLinks.some(
+    (link) => isNavigationPathActive(pathname, link.href)
+  );
+
+  React.useEffect(() => {
+    setIsMobileMoreOpen(false);
+  }, [pathname]);
+
+  React.useEffect(() => {
+    if (!isMobileMoreOpen) return;
+    const focusTimer = window.setTimeout(() => mobileMoreFirstLinkRef.current?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setIsMobileMoreOpen(false);
+      mobileMoreButtonRef.current?.focus();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileMoreOpen]);
 
   return (
     <>
@@ -208,10 +255,7 @@ function UserSidebarContent() {
             Navigation
           </div>
           {navigationLinks.map((link) => {
-            const isActive =
-              (link.label === 'Support & Help' && pathname === '/customer/support') ||
-              pathname === link.href ||
-              (link.href !== '/' && pathname.startsWith(`${link.href}/`));
+            const isActive = isNavigationPathActive(pathname, link.href);
             return (
               <Link
                 key={link.label}
@@ -258,18 +302,59 @@ function UserSidebarContent() {
         </div>
       </div>
     </aside>
+    {isMobileMoreOpen ? (
+      <div
+        id="customer-mobile-more-menu"
+        className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] z-[60] rounded-[24px] border border-white/15 bg-[#0a1424]/98 p-3 text-white shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl md:hidden"
+      >
+        <div className="flex items-center justify-between px-2 pb-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">More customer pages</p>
+          <button
+            type="button"
+            aria-label="Close more navigation"
+            onClick={() => {
+              setIsMobileMoreOpen(false);
+              mobileMoreButtonRef.current?.focus();
+            }}
+            className="rounded-full p-2 text-slate-200 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300"
+          >
+            <X aria-hidden="true" className="h-5 w-5" />
+          </button>
+        </div>
+        <nav aria-label="More customer navigation" className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+          {mobileMoreLinks.map((link, index) => {
+            const isActive = isNavigationPathActive(pathname, link.href);
+            return (
+              <Link
+                key={link.label}
+                ref={index === 0 ? mobileMoreFirstLinkRef : undefined}
+                href={link.href}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-semibold transition-colors ${
+                  isActive ? 'bg-blue-600 text-white' : 'text-slate-200 hover:bg-white/8 hover:text-white'
+                }`}
+              >
+                <link.icon aria-hidden="true" className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : link.iconClassName}`} />
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+    ) : null}
     <nav
       aria-label="Customer mobile navigation"
       className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[#050a13]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-18px_45px_rgba(2,6,14,0.42)] backdrop-blur-xl md:hidden"
     >
       <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
         {mobileNavLinks.map((link) => {
-          const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const isActive = isNavigationPathActive(pathname, link.href);
           return (
             <Link
               key={link.label}
               href={link.href}
               aria-label={link.label}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
@@ -281,6 +366,23 @@ function UserSidebarContent() {
             </Link>
           );
         })}
+        <button
+          ref={mobileMoreButtonRef}
+          type="button"
+          aria-label="More customer pages"
+          aria-haspopup="true"
+          aria-expanded={isMobileMoreOpen}
+          aria-controls="customer-mobile-more-menu"
+          onClick={() => setIsMobileMoreOpen((open) => !open)}
+          className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
+            isMobileMoreOpen || isMobileMoreActive
+              ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
+              : 'text-blue-100/72 hover:bg-white/8 hover:text-white'
+          }`}
+        >
+          <Menu aria-hidden="true" className={`h-[18px] w-[18px] ${isMobileMoreOpen || isMobileMoreActive ? 'text-white' : 'text-blue-200'}`} />
+          <span>More</span>
+        </button>
       </div>
     </nav>
     </>

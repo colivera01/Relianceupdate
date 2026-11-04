@@ -39,6 +39,9 @@ type SaveFeedback =
   | { type: 'success'; title: string; message: string }
   | { type: 'error'; title: string; message: string };
 
+type RequiredProfileField = 'firstName' | 'lastName' | 'email' | 'phone';
+type ProfileValidationErrors = Partial<Record<RequiredProfileField, string>>;
+
 const emptyProfile: CustomerProfile = {
   firstName: '',
   lastName: '',
@@ -66,15 +69,30 @@ function trimProfileForSave(profile: CustomerProfile): CustomerProfile {
   };
 }
 
-function validateCustomerProfile(profile: CustomerProfile): string | null {
-  if (!profile.firstName.trim()) return 'First name is required.';
-  if (!profile.lastName.trim()) return 'Last name is required.';
-  if (!profile.email.trim()) return 'Email address is required.';
-  if (!/\S+@\S+\.\S+/.test(profile.email.trim())) return 'Enter a valid email address.';
-  if (!profile.phone.trim()) return 'Phone number is required.';
-  const normalizedPhone = profile.phone.replace(/[\s\-\(\)]/g, '');
-  if (!/^[\+]?[1-9][\d]{0,15}$/.test(normalizedPhone)) return 'Enter a valid phone number.';
-  return null;
+function getCustomerProfileValidationErrors(profile: CustomerProfile): ProfileValidationErrors {
+  const errors: ProfileValidationErrors = {};
+  if (!profile.firstName.trim()) errors.firstName = 'First name is required.';
+  if (!profile.lastName.trim()) errors.lastName = 'Last name is required.';
+  if (!profile.email.trim()) {
+    errors.email = 'Email address is required.';
+  } else if (!/\S+@\S+\.\S+/.test(profile.email.trim())) {
+    errors.email = 'Enter a valid email address.';
+  }
+
+  if (!profile.phone.trim()) {
+    errors.phone = 'Phone number is required.';
+    return errors;
+  }
+  const phoneDigits = profile.phone.replace(/\D/g, '');
+  if (
+    profile.phone.length > 32 ||
+    !/^\+?[0-9\s().-]+$/.test(profile.phone) ||
+    phoneDigits.length < 10 ||
+    phoneDigits.length > 15
+  ) {
+    errors.phone = 'Enter a valid phone number.';
+  }
+  return errors;
 }
 
 function formatProfileDate(value: unknown) {
@@ -163,9 +181,10 @@ function readStoredProfile(): { profile: Partial<CustomerProfile>; locationPrefe
 
 export default function ProfileSettingsPage() {
   const router = useRouter();
-  const { user: authUser, isAuthenticated, isLoading: authLoading, updateUser } = useAuth();
+  const { user: authUser, isAuthenticated, isLoading: authLoading, updateUser, logout } = useAuth();
   const sessionHeaders = useMemo(() => getClientAuthHeaders(), []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const feedbackRef = useRef<HTMLDivElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -173,6 +192,7 @@ export default function ProfileSettingsPage() {
   const [savingLocation, setSavingLocation] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [removingPhoto, setRemovingPhoto] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [feedback, setFeedback] = useState<SaveFeedback | null>(null);
 
   const [userProfile, setUserProfile] = useState<CustomerProfile>(emptyProfile);
@@ -180,7 +200,15 @@ export default function ProfileSettingsPage() {
   const [tempProfile, setTempProfile] = useState(userProfile);
   const customerInitials = useMemo(() => profileInitials(tempProfile), [tempProfile]);
   const customerPhotoUrl = tempProfile.profilePhoto || userProfile.profilePhoto || '';
-  const profileValidationMessage = isEditing ? validateCustomerProfile(tempProfile) : null;
+  const profileValidationErrors = useMemo(
+    () => (isEditing ? getCustomerProfileValidationErrors(tempProfile) : {}),
+    [isEditing, tempProfile]
+  );
+  const profileValidationMessage = Object.values(profileValidationErrors)[0] || null;
+
+  useEffect(() => {
+    if (feedback?.type === 'success') feedbackRef.current?.focus();
+  }, [feedback]);
 
   // Fetch user profile data on component mount
   useEffect(() => {
@@ -326,17 +354,24 @@ export default function ProfileSettingsPage() {
       throw new Error(data?.message || data?.error || 'Profile changes could not be saved.');
     }
 
-    return data.profile ? normalizeProfile(data.profile) : profile;
+    return {
+      profile: data.profile ? normalizeProfile(data.profile) : profile,
+    };
   };
 
   const handleSaveProfile = async () => {
     const profileToSave = trimProfileForSave(tempProfile);
-    const validationMessage = validateCustomerProfile(profileToSave);
+    const validationErrors = getCustomerProfileValidationErrors(profileToSave);
+    const firstInvalidField = Object.keys(validationErrors)[0] as RequiredProfileField | undefined;
+    const validationMessage = firstInvalidField ? validationErrors[firstInvalidField] : null;
     if (validationMessage) {
       setFeedback({
         type: 'error',
         title: 'Required profile details missing',
         message: validationMessage,
+      });
+      window.requestAnimationFrame(() => {
+        document.getElementById(`customer-profile-${firstInvalidField}`)?.focus();
       });
       return;
     }
@@ -344,7 +379,9 @@ export default function ProfileSettingsPage() {
     setSaving(true);
     setFeedback(null);
     try {
-      const savedProfile = await saveProfileToApi(profileToSave, locationEnabled);
+      const saveResult = await saveProfileToApi(profileToSave, locationEnabled);
+      const savedProfile = saveResult.profile;
+
       setUserProfile(savedProfile);
       setTempProfile(savedProfile);
       updateLocalUserData(savedProfile, locationEnabled, savedProfile.profilePhoto);
@@ -375,10 +412,37 @@ export default function ProfileSettingsPage() {
   const handleCancelEdit = () => {
     setTempProfile(userProfile);
     setIsEditing(false);
+    setFeedback(null);
   };
 
   const toggleLocation = async () => {
     const nextLocationEnabled = !locationEnabled;
+    if (isEditing) {
+      setFeedback({
+        type: 'error',
+        title: 'Finish profile edits first',
+        message: 'Save or cancel your profile edits before changing the saved-address preference.',
+      });
+      return;
+    }
+    if (
+      nextLocationEnabled &&
+      (!userProfile.address.trim() ||
+        !userProfile.city.trim() ||
+        !userProfile.state.trim() ||
+        !userProfile.zipCode.trim())
+    ) {
+      setIsEditing(true);
+      setFeedback({
+        type: 'error',
+        title: 'Complete your saved address',
+        message: 'Add a street address, city, state, and ZIP code before enabling nearby-service suggestions.',
+      });
+      window.requestAnimationFrame(() => {
+        document.getElementById('customer-profile-address')?.focus();
+      });
+      return;
+    }
     if (locationEnabled) {
       if (!confirm('Turn off your saved address for nearby-service suggestions?')) {
         return;
@@ -388,7 +452,8 @@ export default function ProfileSettingsPage() {
     setSavingLocation(true);
     setFeedback(null);
     try {
-      const savedProfile = await saveProfileToApi(userProfile, nextLocationEnabled);
+      const saveResult = await saveProfileToApi(userProfile, nextLocationEnabled);
+      const savedProfile = saveResult.profile;
       setUserProfile(savedProfile);
       setTempProfile(savedProfile);
       setLocationEnabled(nextLocationEnabled);
@@ -522,12 +587,29 @@ export default function ProfileSettingsPage() {
     }
   };
 
+  const handleLogout = async () => {
+    if (!confirm('Are you sure you want to log out?')) return;
+    setLoggingOut(true);
+    setFeedback(null);
+    try {
+      await logout('/');
+    } catch (error) {
+      console.error('Customer logout error:', error);
+      setFeedback({
+        type: 'error',
+        title: 'Logout did not finish',
+        message: 'Your session could not be closed. Please try again.',
+      });
+      setLoggingOut(false);
+    }
+  };
+
   // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <div className="text-center" role="status" aria-live="polite">
+          <div aria-hidden="true" className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your profile...</p>
         </div>
       </div>
@@ -544,14 +626,16 @@ export default function ProfileSettingsPage() {
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <button
+              type="button"
               onClick={() => router.push('/auth/login?next=%2Fprofile-settings')}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
             >
               Sign In
             </button>
             <button
+              type="button"
               onClick={() => router.push('/discover')}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
             >
                 Explore Work
             </button>
@@ -567,32 +651,35 @@ export default function ProfileSettingsPage() {
       {/* Header */}
       <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-white">Profile & Settings</h1>
             </div>
             {isEditing && (
-              <div className="flex items-center gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center">
                 <button
+                  type="button"
                   onClick={handleCancelEdit}
-                  className="flex items-center gap-2 px-4 py-2 text-slate-300 transition-colors hover:text-white"
+                  className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-slate-300 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 >
-                  <X className="w-4 h-4" />
+                  <X aria-hidden="true" className="w-4 h-4" />
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleSaveProfile}
                   disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+                  aria-describedby={profileValidationMessage ? 'customer-profile-validation-summary' : undefined}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   {saving ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       Saving...
                     </>
                   ) : (
                     <>
-                      <Save className="w-4 h-4" />
+                      <Save aria-hidden="true" className="w-4 h-4" />
                       Save Changes
                     </>
                   )}
@@ -606,7 +693,13 @@ export default function ProfileSettingsPage() {
       {/* Save Feedback */}
       {feedback && (
         <div className="max-w-7xl mx-auto px-4 py-2">
-          <div className={`border rounded-lg p-4 mb-4 ${
+          <div
+            ref={feedbackRef}
+            tabIndex={-1}
+            role={feedback.type === 'error' ? 'alert' : 'status'}
+            aria-live={feedback.type === 'error' ? 'assertive' : 'polite'}
+            aria-atomic="true"
+            className={`border rounded-lg p-4 mb-4 focus:outline-none ${
             feedback.type === 'success'
               ? 'bg-green-50 border-green-200'
               : 'bg-red-50 border-red-200'
@@ -616,9 +709,9 @@ export default function ProfileSettingsPage() {
                 feedback.type === 'success' ? 'bg-green-100' : 'bg-red-100'
               }`}>
                 {feedback.type === 'success' ? (
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <CheckCircle aria-hidden="true" className="w-4 h-4 text-green-600" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-red-600" />
+                  <AlertCircle aria-hidden="true" className="w-4 h-4 text-red-600" />
                 )}
               </div>
               <div>
@@ -641,15 +734,16 @@ export default function ProfileSettingsPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Profile Information */}
-            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-              <div className="flex items-center justify-between mb-6">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+              <div className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">Profile Information</h2>
                 {!isEditing && (
                   <button
+                    type="button"
                     onClick={() => setIsEditing(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:text-blue-700 transition-colors"
+                    className="flex items-center gap-2 rounded-lg px-4 py-2 text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit aria-hidden="true" className="w-4 h-4" />
                     Edit Profile Details
                   </button>
                 )}
@@ -660,9 +754,10 @@ export default function ProfileSettingsPage() {
                 type="file"
                 accept="image/*"
                 className="hidden"
+                aria-label="Upload customer profile photo"
                 onChange={handlePhotoSelected}
               />
-              <div className="flex items-start gap-6 mb-6">
+              <div className="mb-6 flex flex-col items-start gap-6 sm:flex-row">
                 <div className="relative shrink-0">
                   <div className="relative">
                     {customerPhotoUrl ? (
@@ -684,10 +779,11 @@ export default function ProfileSettingsPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploadingPhoto || removingPhoto}
-                      className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={customerPhotoUrl ? 'Change customer profile photo' : 'Upload customer profile photo'}
+                      className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                       title="Change customer profile photo"
                     >
-                      <Camera className="h-4 w-4" />
+                      <Camera aria-hidden="true" className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -705,7 +801,7 @@ export default function ProfileSettingsPage() {
                       disabled={uploadingPhoto || removingPhoto}
                       className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
                     >
-                      <Camera className="h-4 w-4" />
+                      <Camera aria-hidden="true" className="h-4 w-4" />
                       {uploadingPhoto ? 'Uploading...' : customerPhotoUrl ? 'Change Photo' : 'Upload Photo'}
                     </button>
                     {customerPhotoUrl ? (
@@ -715,7 +811,7 @@ export default function ProfileSettingsPage() {
                         disabled={uploadingPhoto || removingPhoto}
                         className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
                         {removingPhoto ? 'Removing...' : 'Remove Photo'}
                       </button>
                     ) : null}
@@ -726,72 +822,114 @@ export default function ProfileSettingsPage() {
               {/* Profile Form */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                  <label htmlFor="customer-profile-firstName" className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
                   <input
+                    id="customer-profile-firstName"
                     type="text"
+                    autoComplete="given-name"
                     value={isEditing ? tempProfile.firstName : userProfile.firstName}
                     onChange={(e) => handleProfileChange('firstName', e.target.value)}
                     disabled={!isEditing}
                     required
+                    aria-invalid={Boolean(profileValidationErrors.firstName)}
+                    aria-describedby={profileValidationErrors.firstName ? 'customer-profile-firstName-error' : undefined}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
+                  {profileValidationErrors.firstName ? (
+                    <p id="customer-profile-firstName-error" className="mt-1 text-sm text-red-700">{profileValidationErrors.firstName}</p>
+                  ) : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                  <label htmlFor="customer-profile-lastName" className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
                   <input
+                    id="customer-profile-lastName"
                     type="text"
+                    autoComplete="family-name"
                     value={isEditing ? tempProfile.lastName : userProfile.lastName}
                     onChange={(e) => handleProfileChange('lastName', e.target.value)}
                     disabled={!isEditing}
                     required
+                    aria-invalid={Boolean(profileValidationErrors.lastName)}
+                    aria-describedby={profileValidationErrors.lastName ? 'customer-profile-lastName-error' : undefined}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
+                  {profileValidationErrors.lastName ? (
+                    <p id="customer-profile-lastName-error" className="mt-1 text-sm text-red-700">{profileValidationErrors.lastName}</p>
+                  ) : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                  <label htmlFor="customer-profile-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                   <div className="relative">
                     <input
+                      id="customer-profile-email"
                       type="email"
-                      value={isEditing ? tempProfile.email : userProfile.email}
-                      onChange={(e) => handleProfileChange('email', e.target.value)}
-                      disabled={!isEditing}
+                      autoComplete="email"
+                      value={userProfile.email}
+                      readOnly
+                      aria-readonly="true"
                       required
-                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      aria-invalid={Boolean(profileValidationErrors.email)}
+                      aria-describedby={profileValidationErrors.email ? 'customer-profile-email-help customer-profile-email-error' : 'customer-profile-email-help'}
+                      className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 pl-10 text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
-                    <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                    <Mail aria-hidden="true" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   </div>
+                  <p id="customer-profile-email-help" className="mt-1 text-sm text-gray-600">
+                    Your verified sign-in email is protected and cannot be changed directly here.{' '}
+                    <button
+                      type="button"
+                      onClick={() => router.push('/customer/support?returnTo=%2Fprofile-settings&returnLabel=Back%20to%20Profile%20%26%20Settings')}
+                      className="font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                    >
+                      Contact Support &amp; Help
+                    </button>{' '}
+                    if it needs to be updated.
+                  </p>
+                  {profileValidationErrors.email ? (
+                    <p id="customer-profile-email-error" className="mt-1 text-sm text-red-700">{profileValidationErrors.email}</p>
+                  ) : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                  <label htmlFor="customer-profile-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
                   <div className="relative">
                     <input
+                      id="customer-profile-phone"
                       type="tel"
+                      autoComplete="tel"
                       value={isEditing ? tempProfile.phone : userProfile.phone}
                       onChange={(e) => handleProfileChange('phone', e.target.value)}
                       disabled={!isEditing}
                       required
+                      aria-invalid={Boolean(profileValidationErrors.phone)}
+                      aria-describedby={profileValidationErrors.phone ? 'customer-profile-phone-error' : undefined}
                       className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
-                    <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                    <Phone aria-hidden="true" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   </div>
+                  {profileValidationErrors.phone ? (
+                    <p id="customer-profile-phone-error" className="mt-1 text-sm text-red-700">{profileValidationErrors.phone}</p>
+                  ) : null}
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+                  <label htmlFor="customer-profile-address" className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
                   <div className="relative">
                     <AddressAutocompleteInput
+                      id="customer-profile-address"
                       value={isEditing ? tempProfile.address : userProfile.address}
                       onChange={(value) => handleProfileChange('address', value)}
                       onSelectAddress={handleAddressSuggestion}
                       disabled={!isEditing}
                       inputClassName="w-full border border-gray-300 px-3 py-2 pl-10 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
-                    <LocationIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <LocationIcon aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <label htmlFor="customer-profile-city" className="block text-sm font-medium text-gray-700 mb-1">City</label>
                   <input
+                    id="customer-profile-city"
                     type="text"
+                    autoComplete="address-level2"
                     value={isEditing ? tempProfile.city : userProfile.city}
                     onChange={(e) => handleProfileChange('city', e.target.value)}
                     disabled={!isEditing}
@@ -800,9 +938,11 @@ export default function ProfileSettingsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <label htmlFor="customer-profile-state" className="block text-sm font-medium text-gray-700 mb-1">State</label>
                     <input
+                      id="customer-profile-state"
                       type="text"
+                      autoComplete="address-level1"
                       value={isEditing ? tempProfile.state : userProfile.state}
                       onChange={(e) => handleProfileChange('state', e.target.value)}
                       disabled={!isEditing}
@@ -810,9 +950,12 @@ export default function ProfileSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+                    <label htmlFor="customer-profile-zipCode" className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
                     <input
+                      id="customer-profile-zipCode"
                       type="text"
+                      autoComplete="postal-code"
+                      inputMode="numeric"
                       value={isEditing ? tempProfile.zipCode : userProfile.zipCode}
                       onChange={(e) => handleProfileChange('zipCode', e.target.value)}
                       disabled={!isEditing}
@@ -823,7 +966,7 @@ export default function ProfileSettingsPage() {
               </div>
 
               {profileValidationMessage ? (
-                <div className="mt-4 rounded-lg border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                <div id="customer-profile-validation-summary" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                   {profileValidationMessage}
                 </div>
               ) : null}
@@ -833,8 +976,9 @@ export default function ProfileSettingsPage() {
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Member Since</label>
+                    <label htmlFor="customer-profile-memberSince" className="block text-sm font-medium text-gray-700 mb-1">Member Since</label>
                     <input
+                      id="customer-profile-memberSince"
                       type="text"
                       value={userProfile.memberSince}
                       readOnly
@@ -842,8 +986,9 @@ export default function ProfileSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Sign-in Activity</label>
+                    <label htmlFor="customer-profile-signInActivity" className="block text-sm font-medium text-gray-700 mb-1">Sign-in Activity</label>
                     <input
+                      id="customer-profile-signInActivity"
                       type="text"
                       value="Recent sign-in history is not shown here yet"
                       readOnly
@@ -855,10 +1000,10 @@ export default function ProfileSettingsPage() {
             </div>
 
             {/* Location Settings */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 sm:p-6">
+              <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <MapPin className="w-6 h-6 text-green-600" />
+                  <MapPin aria-hidden="true" className="w-6 h-6 text-green-600" />
                   <h2 className="text-xl font-semibold text-gray-900">Address for Nearby Services</h2>
                 </div>
                 <div className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -877,7 +1022,7 @@ export default function ProfileSettingsPage() {
               {/* Info Box */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="flex items-start gap-3">
-                  <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <Info aria-hidden="true" className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                   <div>
                     <h3 className="font-medium text-blue-900 mb-1">How this works</h3>
                     <p className="text-blue-800 text-sm">
@@ -888,9 +1033,9 @@ export default function ProfileSettingsPage() {
               </div>
 
               {/* Location Services */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${locationEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+              <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  <div aria-hidden="true" className={`w-3 h-3 rounded-full ${locationEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                   <span className="text-gray-900">
                     Use saved address for nearby services - {locationEnabled ? 'Enabled' : 'Disabled'}
                   </span>
@@ -899,15 +1044,19 @@ export default function ProfileSettingsPage() {
                   )}
                 </div>
                 <button
+                  type="button"
                   onClick={toggleLocation}
-                  disabled={savingLocation || saving}
+                  disabled={savingLocation || saving || isEditing}
+                  role="switch"
+                  aria-checked={locationEnabled}
+                  aria-describedby="saved-address-preference-help"
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     locationEnabled
                       ? 'bg-red-50 text-red-700 hover:bg-red-100'
                       : 'bg-green-50 text-green-700 hover:bg-green-100'
                   } disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
-                  <MapPin className="w-4 h-4" />
+                  <MapPin aria-hidden="true" className="w-4 h-4" />
                   {savingLocation
                     ? 'Saving...'
                     : locationEnabled
@@ -915,12 +1064,17 @@ export default function ProfileSettingsPage() {
                     : 'Turn On'}
                 </button>
               </div>
+              <p id="saved-address-preference-help" className="mt-3 text-sm text-gray-600">
+                {isEditing
+                  ? 'Save or cancel profile edits before changing this preference.'
+                  : 'A complete saved street address, city, state, and ZIP code is required to turn this on.'}
+              </p>
             </div>
 
             {/* Privacy & Security */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
-                <Shield className="w-6 h-6 text-blue-600" />
+                <Shield aria-hidden="true" className="w-6 h-6 text-blue-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Privacy & Security</h2>
               </div>
               
@@ -930,7 +1084,7 @@ export default function ProfileSettingsPage() {
 
               {/* Change Password */}
               <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">Password Changes</h3>
                     <p className="text-sm text-gray-600">
@@ -943,8 +1097,9 @@ export default function ProfileSettingsPage() {
                 </div>
                 <div className="mt-4">
                   <button
+                    type="button"
                     onClick={() => router.push('/auth/forgot-password')}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                   >
                     Open Password Recovery
                   </button>
@@ -953,7 +1108,7 @@ export default function ProfileSettingsPage() {
 
               {/* Two-Factor Authentication */}
               <div className="border-t border-gray-200 pt-6">
-                <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:justify-between sm:gap-4">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">Passkeys & Sign-In Protection</h3>
                     <p className="text-sm text-gray-600">
@@ -965,6 +1120,14 @@ export default function ProfileSettingsPage() {
                     Optional
                   </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => router.push('/customer/secure-account')}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                >
+                  <Shield aria-hidden="true" className="h-4 w-4" />
+                  Open Secure Account
+                </button>
               </div>
             </div>
           </div>
@@ -972,7 +1135,7 @@ export default function ProfileSettingsPage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Account Status */}
-            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Status</h2>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1001,19 +1164,17 @@ export default function ProfileSettingsPage() {
             </div>
 
             {/* Account Actions */}
-            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Actions</h2>
               <div className="space-y-3">
                 <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to log out?')) {
-                      router.push('/');
-                    }
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2"
                 >
-                  <LogOut className="w-5 h-5" />
-                  <span>Log Out</span>
+                  <LogOut aria-hidden="true" className="w-5 h-5" />
+                  <span>{loggingOut ? 'Logging Out...' : 'Log Out'}</span>
                 </button>
               </div>
             </div>

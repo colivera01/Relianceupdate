@@ -44,14 +44,28 @@ export default async function CustomerSecureAccountPage() {
         <div className="w-full px-4 pb-28 pt-6 sm:px-6 sm:pt-10 md:pb-6">
           <div className="mx-auto w-full max-w-6xl">
             <LinkedAccountAccessBanner currentProfile="customer" />
+            <header className="mt-6 rounded-[28px] border border-white/10 bg-white/6 px-5 py-5 text-white shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl sm:px-7">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-200">
+                Customer account security
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold">Secure Account</h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base">
+                Review the passkeys registered to your account, add another trusted device, or remove a passkey you no longer control. Password recovery remains available from the sign-in page.
+              </p>
+            </header>
           </div>
           <PasskeySetupCard
-            title="Secure Your Account"
-            description="Add a passkey so you can sign in with your device security instead of typing a password."
-            redirectPath="/profile-settings"
+            title="Sign-in protection"
+            description="Passkeys use your device security for a faster sign-in while keeping your customer Service Records protected."
+            redirectPath="/customer/secure-account"
             skipLabel="Back to Profile Settings"
             embedded
+            headingLevel="h2"
             showSkipAction={false}
+            secondaryActions={[
+              { label: 'Password Recovery', href: '/auth/forgot-password' },
+              { label: 'Get Security Help', href: '/customer/support?returnTo=%2Fcustomer%2Fsecure-account&returnLabel=Back%20to%20Secure%20Account' },
+            ]}
           />
         </div>
       </main>

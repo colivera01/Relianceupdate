@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { startRegistration } from '@simplewebauthn/browser';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CheckCircle, Info, Key, Shield, XCircle } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import { AlertCircle, CheckCircle, Info, Key, Shield } from 'lucide-react';
 
 type PasskeySummary = {
   id: string;
@@ -29,6 +29,7 @@ export function PasskeySetupCard(props: {
   redirectPath: string;
   skipLabel: string;
   embedded?: boolean;
+  headingLevel?: 'h1' | 'h2';
   showSkipAction?: boolean;
   secondaryActions?: Array<{
     label: string;
@@ -40,10 +41,15 @@ export function PasskeySetupCard(props: {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
   const [isLoadingPasskeys, setIsLoadingPasskeys] = useState(true);
+  const [passkeyListError, setPasskeyListError] = useState<string | null>(null);
   const [revokingPasskeyId, setRevokingPasskeyId] = useState<string | null>(null);
   const [pendingRemovalPasskeyId, setPendingRemovalPasskeyId] = useState<string | null>(null);
+  const removeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const confirmRemovalRef = useRef<HTMLButtonElement>(null);
+  const statusMessageRef = useRef<HTMLDivElement>(null);
   const shellClassName = props.embedded
     ? 'flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-8 text-white'
     : 'reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white';
@@ -51,18 +57,26 @@ export function PasskeySetupCard(props: {
     ? 'flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-8 text-white'
     : 'reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 py-12 text-white';
   const showSkipAction = props.showSkipAction !== false;
+  const Heading = props.headingLevel || (props.embedded ? 'h2' : 'h1');
+  const RegisteredPasskeysHeading = Heading === 'h2' ? 'h3' : 'h2';
 
   const loadPasskeys = async () => {
     setIsLoadingPasskeys(true);
+    setPasskeyListError(null);
     try {
       const response = await fetch('/api/passkey', {
         method: 'GET',
         credentials: 'same-origin',
       });
       const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      if (response.ok && Array.isArray(data.passkeys)) {
-        setPasskeys(data.passkeys as PasskeySummary[]);
+      if (!response.ok) {
+        throw new Error(String(data.error || 'Unable to load registered passkeys.'));
       }
+      setPasskeys(Array.isArray(data.passkeys) ? data.passkeys as PasskeySummary[] : []);
+    } catch (loadError) {
+      setPasskeyListError(
+        loadError instanceof Error ? loadError.message : 'Unable to load registered passkeys.'
+      );
     } finally {
       setIsLoadingPasskeys(false);
     }
@@ -73,9 +87,16 @@ export function PasskeySetupCard(props: {
     void loadPasskeys();
   }, []);
 
+  useEffect(() => {
+    if (!pendingRemovalPasskeyId) return;
+    const focusTimer = window.setTimeout(() => confirmRemovalRef.current?.focus(), 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [pendingRemovalPasskeyId]);
+
   const setupPasskey = async () => {
     setIsSettingUp(true);
     setError(null);
+    setStatusMessage(null);
 
     try {
       const optionsResponse = await fetch('/api/passkey/register-options', {
@@ -135,6 +156,11 @@ export function PasskeySetupCard(props: {
     router.push(props.redirectPath);
   };
 
+  const cancelPasskeyRemoval = (passkeyId: string) => {
+    setPendingRemovalPasskeyId(null);
+    window.setTimeout(() => removeButtonRefs.current.get(passkeyId)?.focus(), 0);
+  };
+
   const revokePasskey = async (passkeyId: string) => {
     if (pendingRemovalPasskeyId !== passkeyId) {
       setPendingRemovalPasskeyId(passkeyId);
@@ -144,6 +170,7 @@ export function PasskeySetupCard(props: {
 
     setRevokingPasskeyId(passkeyId);
     setError(null);
+    setStatusMessage(null);
 
     try {
       const response = await fetch(`/api/passkey?passkeyId=${encodeURIComponent(passkeyId)}`, {
@@ -154,8 +181,11 @@ export function PasskeySetupCard(props: {
       if (!response.ok) {
         throw new Error(String(data.error || 'Failed to remove passkey.'));
       }
+      const removedLabel = passkeys.find((passkey) => passkey.id === passkeyId)?.label || 'Passkey';
       setPendingRemovalPasskeyId(null);
-      await loadPasskeys();
+      setPasskeys((current) => current.filter((passkey) => passkey.id !== passkeyId));
+      setStatusMessage(`${removedLabel} removed.`);
+      window.setTimeout(() => statusMessageRef.current?.focus(), 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove passkey.');
     } finally {
@@ -174,31 +204,6 @@ export function PasskeySetupCard(props: {
     );
   }
 
-  if (!isSupported) {
-    return (
-      <div className={shellClassName}>
-        <Card className="reliance-light-card max-w-xl w-full mx-4">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-red-500/15 rounded-full flex items-center justify-center mb-4">
-              <XCircle className="w-6 h-6 text-red-600" />
-            </div>
-            <CardTitle className="text-xl">Passkeys Not Supported</CardTitle>
-            <CardDescription>
-              This browser cannot create or use passkeys. You can keep using your password and email code sign-in.
-            </CardDescription>
-          </CardHeader>
-          {showSkipAction ? (
-            <CardContent className="text-center">
-              <Button onClick={skipPasskey} className="w-full">
-                {props.skipLabel}
-              </Button>
-            </CardContent>
-          ) : null}
-        </Card>
-      </div>
-    );
-  }
-
   if (setupComplete) {
     return (
       <div className={shellClassName}>
@@ -207,7 +212,7 @@ export function PasskeySetupCard(props: {
             <div className="mx-auto w-12 h-12 bg-green-500/15 rounded-full flex items-center justify-center mb-4">
               <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
-            <CardTitle className="text-xl">Passkey Added</CardTitle>
+            <Heading className="text-xl font-semibold leading-none tracking-tight">Passkey Added</Heading>
             <CardDescription>
               This account can now sign in with a passkey. Redirecting you back now.
             </CardDescription>
@@ -224,10 +229,34 @@ export function PasskeySetupCard(props: {
           <div className="mx-auto w-12 h-12 bg-blue-500/15 rounded-full flex items-center justify-center mb-4">
             <Shield className="w-6 h-6 text-blue-600" />
           </div>
-          <CardTitle className="text-2xl">{props.title}</CardTitle>
+          <Heading className="text-2xl font-semibold leading-none tracking-tight">{props.title}</Heading>
           <CardDescription>{props.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {statusMessage ? (
+            <div
+              ref={statusMessageRef}
+              role="status"
+              aria-live="polite"
+              tabIndex={-1}
+              className="rounded-lg border border-emerald-300/30 bg-emerald-500/10 p-4 text-sm text-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+            >
+              {statusMessage}
+            </div>
+          ) : null}
+          {isSupported === false ? (
+            <div role="status" className="rounded-lg border border-amber-300/30 bg-amber-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                <div>
+                  <h3 className="font-medium text-amber-100">Passkey creation is unavailable in this browser</h3>
+                  <p className="mt-1 text-sm text-amber-100/80">
+                    You can still review and remove existing passkeys below, or use password recovery and security help. Use a passkey-compatible browser to add another device.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className="rounded-lg border border-blue-300/25 bg-blue-500/10 p-4">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -241,29 +270,56 @@ export function PasskeySetupCard(props: {
           </div>
 
           {error ? (
-            <div className="rounded-lg border border-red-300/25 bg-red-500/10 p-4">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="rounded-lg border border-red-300/25 bg-red-500/10 p-4"
+            >
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-red-100 mb-1">Passkey setup failed</h4>
+                  <h4 className="font-medium text-red-100 mb-1">Passkey action failed</h4>
                   <p className="text-sm text-red-100/80">{error}</p>
                 </div>
               </div>
             </div>
           ) : null}
 
-          <div className="space-y-3">
+          <div className="space-y-3" aria-busy={isLoadingPasskeys}>
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Registered passkeys</h3>
-              <span className="text-sm text-slate-500">
+              <RegisteredPasskeysHeading className="font-semibold text-slate-900">Registered passkeys</RegisteredPasskeysHeading>
+              <span className="text-sm text-slate-500" aria-live="polite">
                 {isLoadingPasskeys ? 'Loading...' : `${passkeys.length} active`}
               </span>
             </div>
-            {passkeys.length ? (
+            {isLoadingPasskeys ? (
+              <div
+                role="status"
+                className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300"
+              >
+                Loading registered passkeys...
+              </div>
+            ) : passkeyListError ? (
+              <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-950">Passkeys could not be loaded.</p>
+                <p className="mt-1 text-sm text-amber-900">{passkeyListError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => void loadPasskeys()}
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : passkeys.length ? (
               <div className="space-y-3">
-                {passkeys.map((passkey) => (
+                {passkeys.map((passkey) => {
+                  const removalPromptId = `passkey-removal-${passkey.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+                  return (
                   <div key={passkey.id} className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="font-medium text-slate-900">{passkey.label}</p>
                         <p className="text-sm text-slate-600">
@@ -271,30 +327,35 @@ export function PasskeySetupCard(props: {
                           {passkey.backedUp ? ' · backed up' : ''}
                         </p>
                       </div>
-                      <div className="text-right text-xs text-slate-500">
+                      <div className="text-left text-xs text-slate-500 sm:text-right">
                         <p>Added {formatWhen(passkey.createdAt)}</p>
                         <p>Last used {formatWhen(passkey.lastUsedAt)}</p>
                       </div>
                     </div>
                     {pendingRemovalPasskeyId === passkey.id ? (
                       <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-sm text-amber-900">
+                        <p id={removalPromptId} className="text-sm text-amber-900">
                           Remove this passkey from the account? The device will stop working for passkey sign-in until you add it again.
                         </p>
-                        <div className="mt-3 flex justify-end gap-2">
+                        <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setPendingRemovalPasskeyId(null)}
+                            aria-label={`Cancel removal of ${passkey.label}`}
+                            aria-describedby={removalPromptId}
+                            onClick={() => cancelPasskeyRemoval(passkey.id)}
                             disabled={isSettingUp || revokingPasskeyId === passkey.id}
                           >
                             Cancel
                           </Button>
                           <Button
+                            ref={confirmRemovalRef}
                             type="button"
                             variant="destructive"
                             size="sm"
+                            aria-label={`Confirm removal of ${passkey.label}`}
+                            aria-describedby={removalPromptId}
                             onClick={() => revokePasskey(passkey.id)}
                             disabled={isSettingUp || revokingPasskeyId === passkey.id}
                           >
@@ -305,9 +366,14 @@ export function PasskeySetupCard(props: {
                     ) : (
                       <div className="mt-3 flex justify-end">
                         <Button
+                          ref={(node) => {
+                            if (node) removeButtonRefs.current.set(passkey.id, node);
+                            else removeButtonRefs.current.delete(passkey.id);
+                          }}
                           type="button"
                           variant="outline"
                           size="sm"
+                          aria-label={`Remove ${passkey.label}`}
                           onClick={() => revokePasskey(passkey.id)}
                           disabled={isSettingUp || Boolean(revokingPasskeyId)}
                         >
@@ -316,7 +382,8 @@ export function PasskeySetupCard(props: {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-4 text-sm text-slate-300">
@@ -326,10 +393,17 @@ export function PasskeySetupCard(props: {
           </div>
 
           <div className="space-y-3">
-            <Button onClick={setupPasskey} className="w-full" disabled={isSettingUp}>
-              {isSettingUp ? (
+            <Button
+              onClick={setupPasskey}
+              className="w-full"
+              disabled={isSupported !== true || isSettingUp || isLoadingPasskeys}
+              aria-busy={isSettingUp}
+            >
+              {isSupported === false ? (
+                'Add Passkey (unsupported browser)'
+              ) : isSettingUp ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                   Setting up passkey...
                 </>
               ) : (
