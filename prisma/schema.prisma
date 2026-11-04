@@ -2464,9 +2464,9 @@ model AdminAuditLog {
   entityType    String
   entityId      String
   actorUserId   String
-  previousValue String?
-  newValue      String?
-  metadata      String?
+  previousValue String?  @db.NVarChar(Max)
+  newValue      String?  @db.NVarChar(Max)
+  metadata      String?  @db.NVarChar(Max)
   createdAt     DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])

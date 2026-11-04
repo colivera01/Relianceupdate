@@ -82,6 +82,31 @@ describe("createAdminAuditLog", () => {
     ]);
   });
 
+  it("keeps every serialized audit payload on the unbounded SQL Server text contract", () => {
+    const model = Prisma.dmmf.datamodel.models.find((candidate) => candidate.name === "AdminAuditLog");
+    const payloadFields = ["previousValue", "newValue", "metadata"];
+
+    for (const fieldName of payloadFields) {
+      const field = model?.fields.find((candidate) => candidate.name === fieldName);
+      expect(field?.nativeType).toEqual(["NVarChar", ["Max"]]);
+    }
+  });
+
+  it("passes audit metadata larger than 1,000 characters through intact", async () => {
+    const largeMetadata = {
+      requestId: "request-large",
+      diagnostic: "x".repeat(1_500),
+    };
+
+    await createAdminAuditLog({ ...entry, metadata: largeMetadata });
+
+    const query = canonicalSql();
+    const serializedMetadata = query.values[7];
+    expect(serializedMetadata).toBe(JSON.stringify(largeMetadata));
+    expect(String(serializedMetadata).length).toBeGreaterThan(1_000);
+    expect(db.create).not.toHaveBeenCalled();
+  });
+
   it("uses the Prisma fallback once when the canonical write fails", async () => {
     db.executeRaw.mockRejectedValueOnce(new Error("simulated canonical write failure"));
 
