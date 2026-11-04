@@ -62,11 +62,12 @@ describe('customer notification and account-accessibility UI contract', () => {
 
   it('backfills only allowlisted historical customer activity before creating the read index', () => {
     const migration = read('prisma/migrations/20261104012000_add_customer_notification_read_state/migration.sql');
+    expect(migration.match(/EXEC sys\.sp_executesql N'/g)).toHaveLength(2);
     expect(migration).toContain('UPDATE notification');
-    expect(migration).toContain("N'CUSTOMER_CONSENT_REQUEST'");
-    expect(migration).toContain("N'CUSTOMER_PERMISSION_REQUEST'");
-    expect(migration).toContain("N'CUSTOMER_RECORDING_NOTICE'");
-    expect(migration).toContain("LIKE N'SERVICE[_]REQUEST[_]ACCEPTED[_]CUSTOMER[_]V1:%'");
+    expect(migration).toContain("N''CUSTOMER_CONSENT_REQUEST''");
+    expect(migration).toContain("N''CUSTOMER_PERMISSION_REQUEST''");
+    expect(migration).toContain("N''CUSTOMER_RECORDING_NOTICE''");
+    expect(migration).toContain("LIKE N''SERVICE[_]REQUEST[_]ACCEPTED[_]CUSTOMER[_]V1:%''");
     expect(migration).toContain('AND @customerReadAtAdded = 1');
     expect(migration.indexOf('UPDATE notification')).toBeLessThan(migration.indexOf('CREATE INDEX'));
   });
