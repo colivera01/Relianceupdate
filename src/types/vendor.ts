@@ -73,6 +73,10 @@ export interface VendorNotification {
 }
 
 export interface VendorDashboardResponse {
+  reviewMetricsStatus?: {
+    vendorRatings: 'available' | 'temporarily_unavailable';
+    employeeRatings: 'available' | 'temporarily_unavailable';
+  };
   profile: VendorDashboardProfile;
   stats: {
     totalBookings: number;

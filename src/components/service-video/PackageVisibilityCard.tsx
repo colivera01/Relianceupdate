@@ -222,8 +222,8 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
               <p className="font-semibold text-white">{canCancelPublicSharing ? "Cancel Public Sharing?" : "Make this Service Video private?"}</p>
               <p className="mt-2 text-sm text-slate-300">
                 {canCancelPublicSharing
-                  ? "Your Service Video will remain Private and this pending Public-sharing request will be withdrawn. Your Private Proof and Reliance Audit remain unchanged."
-                  : "It will no longer be publicly viewable on Reliance. You will still have access through your Private Proof."}
+                  ? "Your Service Video will remain private and this pending public-sharing request will be withdrawn. Your Private Service Record and Reliance Audit remain unchanged."
+                  : "It will no longer be publicly viewable on Reliance. You will still have access through your Private Service Record."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button disabled={working} onClick={() => void decide("KEEP_PRIVATE")}>

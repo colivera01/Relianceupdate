@@ -21,7 +21,10 @@ describe('public browse UI contract', () => {
   it('preserves public-browse return context for service and provider details', () => {
     const page = read('src/app/browse/page.tsx');
 
-    expect(page).toContain('returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse');
+    expect(page).toContain('const encodedBrowseReturnPath = encodeURIComponent(browseReturnPath);');
+    expect(page).toContain('returnTo=${encodedBrowseReturnPath}&returnLabel=Back%20to%20Public%20Browse');
+    expect(page).toContain("if (page > 1) params.set('page', String(page));");
+    expect(page).not.toMatch(/(?:proofHref|providerHref)=\{`[^`]*returnTo=%2Fbrowse/);
     expect(page).not.toContain('returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Work');
     expect(page).not.toContain('returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse%20Services');
   });
@@ -40,6 +43,9 @@ describe('public browse UI contract', () => {
     expect(page).toContain('aria-label={`Share ${item.serviceName}`}');
     expect(page).toContain('role="status"');
     expect(page).toContain('aria-label="Browse result pages"');
+    expect(page).toContain('All Public Work Categories');
+    expect(page).not.toContain('All Services Offered');
+    expect(page).toContain('No completed Public Service Videos are available yet. Check back soon.');
   });
 
   it('uses polished category labels and balances a single public result', () => {

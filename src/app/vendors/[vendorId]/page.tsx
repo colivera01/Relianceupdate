@@ -14,8 +14,10 @@ import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import {
+  buildVendorServiceDetailHref,
   buildVendorSubpageHref,
   isCustomerWorkspaceReturnPath,
+  isPublicBrowseReturnPath,
   sanitizeVendorReturnLabel,
   sanitizeVendorReturnPath,
 } from '@/lib/public-vendor-navigation';
@@ -129,7 +131,7 @@ export default function PublicVendorProfilePage() {
     isSignedIn &&
     !requestedVendorPreview &&
     hasCustomerProfile &&
-    isCustomerWorkspaceReturnPath(returnTo)
+    (isCustomerWorkspaceReturnPath(returnTo) || isPublicBrowseReturnPath(returnTo))
   );
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
   const signedInAccountHref =
@@ -367,7 +369,7 @@ export default function PublicVendorProfilePage() {
                   <p className="text-sm font-semibold text-white">Your customer account is still active</p>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-white/72">
                     Provider profiles use the public view, so the customer sidebar is temporarily hidden. Return to
-                    your previous customer page or Customer Dashboard to restore your full account navigation.
+                    the page you came from, or open Customer Dashboard for your full account navigation.
                   </p>
                 </div>
               </div>
@@ -799,7 +801,7 @@ export default function PublicVendorProfilePage() {
                             </div>
                             <Button asChild size="sm" className="w-full rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
                               <Link
-                                href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}
+                                href={buildVendorServiceDetailHref(service.serviceId, vendorId, returnTo, returnLabel)}
                               >
                                 View service &amp; public work
                               </Link>

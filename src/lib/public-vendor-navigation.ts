@@ -44,6 +44,21 @@ export function buildVendorSubpageHref(
   return profileHref.replace(`/vendors/${encodeURIComponent(vendorId)}`, `/vendors/${encodeURIComponent(vendorId)}/${subpage}`);
 }
 
+export function buildVendorServiceDetailHref(
+  serviceId: string,
+  vendorId: string,
+  returnTo: string,
+  returnLabel: string
+): string {
+  const profileHref = buildVendorProfileHref(vendorId, returnTo, returnLabel);
+  const params = new URLSearchParams({
+    returnTo: profileHref,
+    returnLabel: 'Back to Vendor Page',
+  });
+
+  return `/service/${encodeURIComponent(serviceId)}?${params.toString()}`;
+}
+
 export function sanitizePublicReturnPath(value: string | null | undefined): string | null {
   return sanitizeAuthNextPath(value);
 }
@@ -68,11 +83,19 @@ export function isCustomerWorkspaceReturnPath(value: string | null | undefined):
   );
 }
 
-export function hasCustomerWorkspaceReturnContext(value: string | null | undefined): boolean {
+export function isPublicBrowseReturnPath(value: string | null | undefined): boolean {
+  const safeValue = sanitizePublicReturnPath(value);
+  return safeValue?.split(/[?#]/, 1)[0] === '/browse';
+}
+
+function hasNestedReturnContext(
+  value: string | null | undefined,
+  matchesPath: (path: string) => boolean
+): boolean {
   let current = sanitizePublicReturnPath(value);
 
   for (let depth = 0; current && depth < 4; depth += 1) {
-    if (isCustomerWorkspaceReturnPath(current)) return true;
+    if (matchesPath(current)) return true;
 
     try {
       const nested = new URL(current, 'http://reliance.local').searchParams.get('returnTo');
@@ -83,4 +106,12 @@ export function hasCustomerWorkspaceReturnContext(value: string | null | undefin
   }
 
   return false;
+}
+
+export function hasCustomerWorkspaceReturnContext(value: string | null | undefined): boolean {
+  return hasNestedReturnContext(value, isCustomerWorkspaceReturnPath);
+}
+
+export function hasPublicBrowseReturnContext(value: string | null | undefined): boolean {
+  return hasNestedReturnContext(value, isPublicBrowseReturnPath);
 }

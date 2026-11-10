@@ -16,6 +16,7 @@ import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel
 import { tutorialGuides } from '@/lib/user-guidance';
 import {
   hasCustomerWorkspaceReturnContext,
+  hasPublicBrowseReturnContext,
   sanitizePublicReturnPath,
   sanitizeVendorReturnLabel,
 } from '@/lib/public-vendor-navigation';
@@ -392,7 +393,7 @@ function ServiceDetailPageContent() {
   const isCustomerReturnContext = Boolean(
     isSignedIn &&
     hasCustomerProfile &&
-    (!returnTo || hasCustomerWorkspaceReturnContext(returnTo))
+    (!returnTo || hasCustomerWorkspaceReturnContext(returnTo) || hasPublicBrowseReturnContext(returnTo))
   );
   const isVendorOnlyAccount = user?.userType === 'vendor' && !hasCustomerProfile;
   const serviceAccountHref =

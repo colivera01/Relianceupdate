@@ -148,6 +148,8 @@ export default function VendorReviewsPage() {
 
   const rating = Number(data.stats.rating || 0);
   const reviewCount = Number(data.stats.ratingCount || 0);
+  const vendorRatingsAvailable = data.reviewMetricsStatus?.vendorRatings !== 'temporarily_unavailable';
+  const employeeRatingsAvailable = data.reviewMetricsStatus?.employeeRatings !== 'temporarily_unavailable';
   const publicWrittenReviewCount = Number(data.stats.publicWrittenReviewCount || 0);
   const ratingDistribution = data.stats.ratingDistribution || [];
   const latestReview = data.recentReviews[0] || null;
@@ -182,6 +184,19 @@ export default function VendorReviewsPage() {
                 separate from both customer and employee star ratings.
               </p>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void refetch();
+                setTrustScoreRequestVersion((value) => value + 1);
+              }}
+              className="shrink-0 border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Refresh metrics
+            </Button>
           </CardContent>
         </Card>
 
@@ -191,7 +206,9 @@ export default function VendorReviewsPage() {
               <CardTitle className="text-base">Verified Customer Rating</CardTitle>
             </CardHeader>
             <CardContent>
-              {reviewCount > 0 ? (
+              {!vendorRatingsAvailable ? (
+                <p className="text-sm font-semibold text-rose-200" role="status">Temporarily unavailable</p>
+              ) : reviewCount > 0 ? (
                 <>
                   <p className="text-3xl font-bold text-white">{formatRating(rating)}</p>
                   <div className="mt-2 flex items-center gap-1" aria-label={`${formatRating(rating)} out of 5 stars`}>
@@ -202,7 +219,9 @@ export default function VendorReviewsPage() {
                 <p className="text-lg font-semibold text-blue-100">Not yet rated</p>
               )}
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                {reviewCount > 0
+                {!vendorRatingsAvailable
+                  ? 'The verified rating could not be refreshed. Try again shortly.'
+                  : reviewCount > 0
                   ? "Average from verified customer star ratings."
                   : "The first verified customer star rating will establish this average."}
               </p>
@@ -214,9 +233,13 @@ export default function VendorReviewsPage() {
               <CardTitle className="text-base">Verified Customer Ratings</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-white">{reviewCount}</p>
+              {vendorRatingsAvailable
+                ? <p className="text-3xl font-bold text-white">{reviewCount}</p>
+                : <p className="text-sm font-semibold text-rose-200" role="status">Temporarily unavailable</p>}
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Includes stars-only ratings and ratings with text awaiting moderation.
+                {vendorRatingsAvailable
+                  ? 'Includes stars-only ratings and ratings with text awaiting moderation.'
+                  : 'The verified rating count could not be refreshed.'}
               </p>
             </CardContent>
           </Card>
@@ -241,9 +264,13 @@ export default function VendorReviewsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-white">{attributedTeamReviewCount}</p>
+              {employeeRatingsAvailable
+                ? <p className="text-3xl font-bold text-white">{attributedTeamReviewCount}</p>
+                : <p className="text-sm font-semibold text-rose-200" role="status">Temporarily unavailable</p>}
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Optional employee ratings bound to assigned team members. Not shown publicly.
+                {employeeRatingsAvailable
+                  ? 'Optional employee ratings bound to assigned team members. Not shown publicly.'
+                  : 'Private employee ratings could not be refreshed.'}
               </p>
             </CardContent>
           </Card>
@@ -302,7 +329,11 @@ export default function VendorReviewsPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {ratingDistribution.map((entry) => (
+            {!vendorRatingsAvailable ? (
+              <p className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900" role="status">
+                Rating distribution is temporarily unavailable. Refresh this page to try again.
+              </p>
+            ) : ratingDistribution.map((entry) => (
               <div key={entry.rating} className="grid grid-cols-[4.5rem_1fr_6rem] items-center gap-3 text-sm">
                 <span className="font-medium text-gray-800">{entry.rating} stars</span>
                 <div
@@ -339,7 +370,11 @@ export default function VendorReviewsPage() {
             </p>
           </CardHeader>
           <CardContent>
-            {teamRows.length === 0 ? (
+            {!employeeRatingsAvailable ? (
+              <div className="rounded-2xl border border-rose-300/35 bg-rose-950/20 p-6 text-sm text-rose-100" role="status">
+                Private team ratings are temporarily unavailable. Refresh this page to try again.
+              </div>
+            ) : teamRows.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-blue-300/25 bg-slate-950/45 p-6 text-sm text-slate-300">
                 Team performance appears after completed service records receive an optional customer rating
                 bound to an assigned team member.

@@ -158,6 +158,30 @@ describe('customer Service Records server loader', () => {
     expect(result.records[0].customer_record.attention.actionHref).toBe('/consent/token');
   });
 
+  it('counts a proposed appointment requiring customer response in Needs Attention', async () => {
+    const row = {
+      ...booking(1, 'PENDING'),
+      customerMetadata: JSON.stringify({
+        service_request: {
+          state: 'COUNTEROFFERED',
+          proposed_scheduled_for: '2026-11-03T15:00:00.000Z',
+        },
+      }),
+    };
+    const result = await loadCustomerServiceRecords({
+      db: database({ bookings: [row] }),
+      customerUserId: 'customer-1',
+      requestedTab: 'needs_attention',
+    });
+
+    expect(result.counts).toMatchObject({ upcoming: 1, needs_attention: 1 });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].customer_record.attention).toMatchObject({
+      code: 'COUNTEROFFER_RESPONSE_REQUIRED',
+      actionHref: '/my-bookings/booking-01#request-status-heading',
+    });
+  });
+
   it('shows vendor-created pending work as a scheduled Service Record, not an unaccepted customer request', async () => {
     const row = {
       ...booking(1, 'PENDING'),

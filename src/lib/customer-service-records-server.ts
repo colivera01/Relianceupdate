@@ -1,5 +1,4 @@
 import { mapBookingToContract } from '@/lib/booking-shape';
-import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
 import {
   CUSTOMER_RECORD_LIFECYCLES,
   customerRecordMatchesTab,
@@ -188,20 +187,6 @@ export async function loadCustomerServiceRecords(input: {
           state: true,
         },
       },
-      mediaSessions: {
-        where: { sessionType: 'JOB_SERVICE_VIDEO' },
-        select: {
-          vendorJobVideoStage: true,
-          mediaAssets: {
-            select: {
-              mimeType: true,
-              moderationStatus: true,
-              visibilityStatus: true,
-              archiveStatus: true,
-            },
-          },
-        },
-      },
     },
   });
 
@@ -352,11 +337,6 @@ export async function loadCustomerServiceRecords(input: {
     const adminDecision = adminByBooking.get(id);
     const visibilityDecision = visibilityByBooking.get(id);
     const proposal = proposalByBooking.get(id);
-    const legacyLifecycle = deriveCustomerBookingLifecycle({
-      bookingStatus: booking.status,
-      mediaSessions: booking.mediaSessions || [],
-      hasSubmittedReview: Boolean(reviewByBooking.get(id)),
-    });
     const cancellation = cancellationFromBooking({
       booking,
       outcome: cancellationByBooking.get(id),
@@ -364,6 +344,7 @@ export async function loadCustomerServiceRecords(input: {
     const customerMetadata = parseJsonRecord(booking.customerMetadata);
     const requestLifecycle = parseJsonRecord(customerMetadata.service_request);
     const state = deriveCustomerServiceRecordState({
+      bookingId: id,
       bookingStatus: booking.status,
       bookingSource: bookingSourceFromCustomerMetadata(customerMetadata),
       scheduledFor: booking.scheduledFor || booking.date,
@@ -375,7 +356,6 @@ export async function loadCustomerServiceRecords(input: {
       activePrivateProofGrant: Boolean(
         grant && (!pkg || String(grant.packageId) === String(pkg.id))
       ),
-      legacyCustomerVisibleVideo: legacyLifecycle.videoAvailableToCustomer,
       reviewSubmitted: Boolean(reviewByBooking.get(id)),
       currentVisibilityDecision: visibilityDecision?.decision || null,
       publicationStatus: proposal?.status || null,

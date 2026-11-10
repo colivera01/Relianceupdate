@@ -387,6 +387,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
 
   it("exposes the current permission-link expiry for vendor recovery guidance", async () => {
     mockHappyPathData();
+    const requestedAt = new Date();
+    const expiresAt = new Date(requestedAt.getTime() + 48 * 60 * 60 * 1000);
     hoisted.consentRecordFindMany.mockResolvedValue([{
       id: "permission-1",
       bookingId: "job-1",
@@ -400,8 +402,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
       recipientPhoneMasked: null,
       acceptedAt: null,
       declinedAt: null,
-      requestedAt: new Date("2026-10-31T21:25:00.000Z"),
-      expiresAt: new Date("2026-11-02T21:25:00.000Z"),
+      requestedAt,
+      expiresAt,
       decisionEvidence: null,
     }]);
 
@@ -415,7 +417,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(res.status).toBe(200);
     expect(body.recentJobs[0]).toMatchObject({
       consentStatus: "pending",
-      consentExpiresAt: "2026-11-02T21:25:00.000Z",
+      consentExpiresAt: expiresAt.toISOString(),
     });
   });
 
@@ -466,6 +468,25 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
         moderationStatus: "approved",
         visibilityStatus: "public",
       }),
+    });
+  });
+
+  it("marks unavailable aggregates instead of presenting fallback zeroes as fresh metrics", async () => {
+    mockHappyPathData();
+    vi.mocked(getVendorRatingStats).mockRejectedValue(new Error("rating query unavailable"));
+    vi.mocked(getEmployeeRatingsForVendor).mockRejectedValue(new Error("employee rating query unavailable"));
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard?refresh=1", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res) as any;
+
+    expect(res.status).toBe(200);
+    expect(body.reviewMetricsStatus).toEqual({
+      vendorRatings: "temporarily_unavailable",
+      employeeRatings: "temporarily_unavailable",
     });
   });
 

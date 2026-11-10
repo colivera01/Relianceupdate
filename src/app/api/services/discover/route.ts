@@ -88,10 +88,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
     const skip = (page - 1) * limit;
     const proofFirstRankingRequested = sortBy === "newest" && !distanceProcessingRequested;
-    const sourceTake = proofFirstRankingRequested || requireCompletedPublicProof
-      ? Math.min(Math.max(skip + limit, limit * 4, 36), 100)
-      : limit;
-    const sourceSkip = proofFirstRankingRequested || requireCompletedPublicProof ? 0 : skip;
+    const requiresPostQueryProcessing =
+      distanceProcessingRequested || proofFirstRankingRequested || requireCompletedPublicProof;
     const proofDemoMode =
       process.env.NODE_ENV !== "production" && String(searchParams.get("proofDemo") || "") === "1";
 
@@ -170,11 +168,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const [total, services] = await withTransientDbRetry(() =>
       Promise.all([
-        distanceProcessingRequested ? Promise.resolve(0) : prisma.service.count({ where }),
+        requiresPostQueryProcessing ? Promise.resolve(0) : prisma.service.count({ where }),
         prisma.service.findMany({
           where,
           orderBy,
-          ...(distanceProcessingRequested ? {} : { skip: sourceSkip, take: sourceTake }),
+          ...(requiresPostQueryProcessing ? {} : { skip, take: limit }),
           select: {
             id: true,
             name: true,
@@ -548,13 +546,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       (result) => typeof result.distanceMiles === "number"
     ).length;
     const sortedResults = distanceSortedResults;
-    const results = distanceProcessingRequested || proofFirstRankingRequested || requireCompletedPublicProof
+    const results = requiresPostQueryProcessing
       ? distanceSortedResults.slice(skip, skip + limit)
       : sortedResults;
     const responseTotal =
-      distanceProcessingRequested || proofFirstRankingRequested || requireCompletedPublicProof
-        ? distanceSortedResults.length
-        : total;
+      requiresPostQueryProcessing ? distanceSortedResults.length : total;
     const distanceFilteringApplied = Boolean(origin && radiusFilterRequested);
     const distanceSortingApplied = Boolean(origin && distanceSortRequested && distanceResultCount > 0);
     const proofEligiblePromotedCandidates = requireCompletedPublicProof

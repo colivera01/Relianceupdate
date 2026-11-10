@@ -11,6 +11,8 @@ async function installVendorReviewMetricsFixture(
     ratingCount?: number;
     employeeRating?: number;
     employeeReviewCount?: number;
+    vendorRatingsAvailable?: boolean;
+    employeeRatingsAvailable?: boolean;
     populatedAnalytics?: boolean;
   } = {}
 ) {
@@ -130,6 +132,10 @@ async function installVendorReviewMetricsFixture(
         contentType: "application/json",
         body: JSON.stringify({
           profile: { id: VENDOR_ID, name: "Electro LLC", businessName: "Electro LLC" },
+          reviewMetricsStatus: {
+            vendorRatings: options.vendorRatingsAvailable === false ? "temporarily_unavailable" : "available",
+            employeeRatings: options.employeeRatingsAvailable === false ? "temporarily_unavailable" : "available",
+          },
           stats: {
             totalBookings: populatedAnalytics ? 8 : 1,
             totalEarnings: 0,
@@ -269,6 +275,24 @@ async function installVendorReviewMetricsFixture(
 }
 
 test.describe("Vendor review metrics", () => {
+  test("labels unavailable rating aggregates instead of implying no customer or team feedback", async ({ page }) => {
+    await installVendorReviewMetricsFixture(page, {
+      rating: 0,
+      ratingCount: 0,
+      employeeRating: 0,
+      employeeReviewCount: 0,
+      vendorRatingsAvailable: false,
+      employeeRatingsAvailable: false,
+    });
+    await page.goto("/test-fixtures/vendor-reviews");
+
+    await expect(page.getByRole("heading", { name: "Verified Customer Rating", exact: true })).toBeVisible();
+    await expect(page.getByText("Rating distribution is temporarily unavailable.")).toBeVisible();
+    await expect(page.getByText("Private team ratings are temporarily unavailable.")).toBeVisible();
+    await expect(page.getByText("Not yet rated", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Refresh metrics" })).toBeVisible();
+  });
+
   test("projects a newly verified rating without publishing its unmoderated written comment or changing Trust Score", async ({ page }) => {
     await installVendorReviewMetricsFixture(page);
     await page.goto("/test-fixtures/vendor-reviews");

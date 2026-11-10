@@ -106,6 +106,7 @@ export default function PublicBrowsePage() {
     const nextRadiusMiles = parseOptionalNumber(params.get('radiusMiles'));
     const nextSortBy = normalizeSortBy(params.get('sortBy'));
     const nextProofDemoEnabled = params.get('proofDemo') === '1';
+    const nextPage = Math.max(parseInt(params.get('page') || '1', 10) || 1, 1);
 
     setProofDemoEnabled(nextProofDemoEnabled);
     if (category) {
@@ -127,6 +128,9 @@ export default function PublicBrowsePage() {
     }
     if (nextRadiusMiles != null && nextRadiusMiles > 0) {
       setRadiusMiles(nextRadiusMiles);
+    }
+    if (nextPage > 1) {
+      setPage(nextPage);
     }
     setHasHydratedFromUrl(true);
   }, []);
@@ -161,6 +165,34 @@ export default function PublicBrowsePage() {
   const hasEffectiveCoordinateOrigin = effectiveOriginLat != null && effectiveOriginLng != null;
   const canRequestBrowserLocation =
     savedLocationChecked && !hasCoordinateOrigin && !browserLocationActive && !savedLocationAssistActive;
+  const browseReturnPath = useMemo(() => {
+    const params = new URLSearchParams();
+    const trimmedSearch = searchQuery.trim();
+    if (trimmedSearch) params.set('q', trimmedSearch);
+    if (selectedCategory !== 'all') params.set('category', selectedCategory);
+    if (sortBy !== 'newest') params.set('sortBy', sortBy);
+    if (hasCoordinateOrigin) {
+      params.set('lat', String(originLat));
+      params.set('lng', String(originLng));
+    }
+    if (hasCoordinateOrigin && radiusMiles != null && radiusMiles > 0) {
+      params.set('radiusMiles', String(radiusMiles));
+    }
+    if (proofDemoEnabled) params.set('proofDemo', '1');
+    if (page > 1) params.set('page', String(page));
+    return params.size > 0 ? `/browse?${params.toString()}` : '/browse';
+  }, [
+    hasCoordinateOrigin,
+    originLat,
+    originLng,
+    page,
+    proofDemoEnabled,
+    radiusMiles,
+    searchQuery,
+    selectedCategory,
+    sortBy,
+  ]);
+  const encodedBrowseReturnPath = encodeURIComponent(browseReturnPath);
 
   useEffect(() => {
     if (!hasHydratedFromUrl) return;
@@ -219,27 +251,11 @@ export default function PublicBrowsePage() {
 
   useEffect(() => {
     if (!hasHydratedFromUrl || typeof window === 'undefined') return;
-
-    const params = new URLSearchParams();
-    const trimmedSearch = searchQuery.trim();
-    if (trimmedSearch) params.set('q', trimmedSearch);
-    if (selectedCategory !== 'all') params.set('category', selectedCategory);
-    if (sortBy !== 'newest') params.set('sortBy', sortBy);
-    if (hasCoordinateOrigin) {
-      params.set('lat', String(originLat));
-      params.set('lng', String(originLng));
-    }
-    if (hasCoordinateOrigin && radiusMiles != null && radiusMiles > 0) {
-      params.set('radiusMiles', String(radiusMiles));
-    }
-    if (proofDemoEnabled) params.set('proofDemo', '1');
-
-    const nextUrl = params.toString() ? `/browse?${params.toString()}` : '/browse';
     const currentUrl = `${window.location.pathname}${window.location.search}`;
-    if (currentUrl !== nextUrl) {
-      window.history.replaceState(null, '', nextUrl);
+    if (currentUrl !== browseReturnPath) {
+      window.history.replaceState(null, '', browseReturnPath);
     }
-  }, [hasCoordinateOrigin, hasHydratedFromUrl, originLat, originLng, proofDemoEnabled, radiusMiles, searchQuery, selectedCategory, sortBy]);
+  }, [browseReturnPath, hasHydratedFromUrl]);
 
   const discoveryFilters = useMemo(
     () => ({
@@ -558,7 +574,7 @@ export default function PublicBrowsePage() {
                 className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3.5 text-slate-900 focus:border-[var(--reliance-blue)] focus:ring-2 focus:ring-[var(--reliance-blue)]/15"
               >
                 <option value="all" className="bg-white text-slate-950" style={{ backgroundColor: '#ffffff', color: '#020617' }}>
-                  All Services Offered
+                  All Public Work Categories
                 </option>
                 {!hasSelectedCategoryOption && selectedCategory !== 'all' ? (
                   <option value={selectedCategory} className="bg-white text-slate-950" style={{ backgroundColor: '#ffffff', color: '#020617' }}>
@@ -774,8 +790,8 @@ export default function PublicBrowsePage() {
                 <ProofFirstCard
                   key={item.promotion?.campaignId || item.serviceId}
                   item={item}
-                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
-                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
+                  proofHref={`/service/${item.serviceId}?returnTo=${encodedBrowseReturnPath}&returnLabel=Back%20to%20Public%20Browse`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=${encodedBrowseReturnPath}&returnLabel=Back%20to%20Public%20Browse`}
                 />
               ))}
             </div>
@@ -919,7 +935,7 @@ export default function PublicBrowsePage() {
               <p className="text-gray-600 mb-4">
                 {hasActiveFilters
                   ? 'Try changing your search or category filter to broaden results.'
-                  : 'No Public Service Videos or Services Offered are available yet. Check back soon.'}
+                  : 'No completed Public Service Videos are available yet. Check back soon.'}
               </p>
               <button
                 onClick={clearFilters}
@@ -940,8 +956,8 @@ export default function PublicBrowsePage() {
                 <ProofFirstCard
                   key={item.serviceId}
                   item={item}
-                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
-                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Public%20Browse`}
+                  proofHref={`/service/${item.serviceId}?returnTo=${encodedBrowseReturnPath}&returnLabel=Back%20to%20Public%20Browse`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=${encodedBrowseReturnPath}&returnLabel=Back%20to%20Public%20Browse`}
                   secondaryAction={
                     <Button
                       size="sm"

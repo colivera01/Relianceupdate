@@ -61,6 +61,7 @@ describe("review attribution aggregates", () => {
         by: ["vendorId", "rating"],
         where: expect.objectContaining({
           vendorId: { in: ["v1"] },
+          user: { is: expect.objectContaining({ demo: false }) },
           source: "customer",
           OR: expect.arrayContaining([
             expect.objectContaining({ contractVersion: { gte: 2 }, ratingValidityStatus: "verified" }),
@@ -69,6 +70,11 @@ describe("review attribution aggregates", () => {
         }),
       })
     );
+  });
+
+  it("surfaces a vendor rating query failure instead of reporting zero reviews", async () => {
+    hoisted.reviewGroupBy.mockRejectedValue(new Error("rating query unavailable"));
+    await expect(getVendorRatingStats("v1")).rejects.toThrow("rating query unavailable");
   });
 
   it("getEmployeeRatingStats includes only attributed reviews for that membership", async () => {
@@ -101,6 +107,7 @@ describe("review attribution aggregates", () => {
         where: expect.objectContaining({
           vendorId: "v1",
           employeeMembershipId: "m1",
+          review: { is: expect.objectContaining({ user: { is: expect.objectContaining({ demo: false }) } }) },
         }),
       })
     );
@@ -139,6 +146,18 @@ describe("review attribution aggregates", () => {
         { membershipId: "m2", averageRating: 4, reviewCount: 1, ratingSum: 4 },
       ])
     );
+    expect(hoisted.employeeRatingFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          review: { is: expect.objectContaining({ user: { is: expect.objectContaining({ demo: false }) } }) },
+        }),
+      })
+    );
+  });
+
+  it("surfaces an employee rating query failure instead of an empty team", async () => {
+    hoisted.employeeRatingFindMany.mockRejectedValue(new Error("employee rating query unavailable"));
+    await expect(getEmployeeRatingsForVendor("v1")).rejects.toThrow("employee rating query unavailable");
   });
 });
 

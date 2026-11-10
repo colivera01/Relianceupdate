@@ -13,6 +13,7 @@ import {
   buildVendorProfileHref,
   buildVendorSubpageHref,
   isCustomerWorkspaceReturnPath,
+  isPublicBrowseReturnPath,
   sanitizeVendorReturnLabel,
   sanitizeVendorReturnPath,
 } from '@/lib/public-vendor-navigation';
@@ -53,7 +54,8 @@ export default function VendorPublicReviewsPage() {
   const returnTo = requestedReturnTo || (hasCustomerProfile ? '/discover' : '/browse');
   const returnLabel = sanitizeVendorReturnLabel(searchParams?.get('returnLabel')) || 'Back to Explore Work';
   const isCustomerReturnContext = Boolean(
-    isSignedIn && hasCustomerProfile && isCustomerWorkspaceReturnPath(returnTo)
+    isSignedIn && hasCustomerProfile &&
+    (isCustomerWorkspaceReturnPath(returnTo) || isPublicBrowseReturnPath(returnTo))
   );
   const isVendorAccount = user?.userType === 'vendor' || user?.userType === 'both';
   const accountHref = isCustomerReturnContext

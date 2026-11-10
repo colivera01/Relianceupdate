@@ -110,12 +110,8 @@ export async function getVendorRatingStatsForVendors(
 }
 
 export async function getVendorRatingStats(vendorId: string): Promise<VendorRatingStats> {
-  try {
-    const stats = await getVendorRatingStatsForVendors([vendorId]);
-    return stats.get(vendorId) || emptyVendorRatingStats();
-  } catch {
-    return emptyVendorRatingStats();
-  }
+  const stats = await getVendorRatingStatsForVendors([vendorId]);
+  return stats.get(vendorId) || emptyVendorRatingStats();
 }
 
 export async function getEmployeeRatingStats(
@@ -177,10 +173,10 @@ export async function getEmployeeRatingsForVendor(
     legacyWhere.assignedMembershipId = { in: normalizedIds };
   }
 
-  let legacyRows: Array<{ assignedMembershipId: string | null; rating: number }> = [];
-  let employeeRows: Array<{ employeeMembershipId: string; rating: number }> = [];
-  try {
-    [legacyRows, employeeRows] = await Promise.all([
+  const [legacyRows, employeeRows]: [
+    Array<{ assignedMembershipId: string | null; rating: number }>,
+    Array<{ employeeMembershipId: string; rating: number }>,
+  ] = await Promise.all([
       (prisma as any).review.findMany({
         where: legacyWhere,
         select: {
@@ -202,9 +198,6 @@ export async function getEmployeeRatingsForVendor(
         },
       }),
     ]);
-  } catch {
-    return [];
-  }
 
   const byMembershipId = new Map<string, Array<{ rating: number }>>();
   for (const row of legacyRows) {

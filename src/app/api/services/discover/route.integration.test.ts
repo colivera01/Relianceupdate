@@ -79,6 +79,22 @@ function legacyStageAsset(stage: "INTRO" | "IN_PROGRESS" | "COMPLETED") {
   };
 }
 
+function directStageAsset(serviceId: string, stage: "INTRO" | "IN_PROGRESS" | "COMPLETED") {
+  return {
+    id: `asset-${serviceId}-${stage.toLowerCase()}`,
+    mimeType: "video/mp4",
+    blobUrl: `https://private.example/${serviceId}/${stage.toLowerCase()}.mp4`,
+    createdAt: new Date("2026-10-20T14:00:00.000Z"),
+    mediaSession: {
+      serviceId,
+      bookingId: `booking-${serviceId}`,
+      booking: null,
+      vendorJobVideoStage: stage,
+      sessionType: "JOB_SERVICE_VIDEO",
+    },
+  };
+}
+
 describe("GET /api/services/discover public media linkage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -131,6 +147,66 @@ describe("GET /api/services/discover public media linkage", () => {
         serviceEligible: true,
         hasPublicMedia: true,
       },
+    });
+    expect(JSON.stringify(json)).not.toContain("https://private.example/");
+  });
+
+  it("counts and returns eligible public work beyond the first 100 published-service candidates", async () => {
+    const candidates = Array.from({ length: 101 }, (_, index) => {
+      const position = index + 1;
+      return {
+        ...service,
+        id: `service-${position}`,
+        name: `Service ${String(position).padStart(3, "0")}`,
+        vendorId: `vendor-${position}`,
+        vendor: {
+          ...service.vendor,
+          id: `vendor-${position}`,
+          name: `Vendor ${position}`,
+          businessName: `Vendor ${position}`,
+        },
+      };
+    });
+    const eligibleAssets = [
+      directStageAsset("service-101", "INTRO"),
+      directStageAsset("service-101", "IN_PROGRESS"),
+      directStageAsset("service-101", "COMPLETED"),
+    ];
+
+    h.serviceFindMany.mockImplementation(async (args: any = {}) => {
+      const start = typeof args.skip === "number" ? args.skip : 0;
+      const end = typeof args.take === "number" ? start + args.take : undefined;
+      return candidates.slice(start, end);
+    });
+    h.mediaAssetFindMany.mockImplementation(async (args: any = {}) => {
+      const requestedServiceIds =
+        args?.where?.mediaSession?.OR?.[0]?.serviceId?.in || [];
+      return requestedServiceIds.includes("service-101") ? eligibleAssets : [];
+    });
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(
+      eligibleAssets.map((asset) => asset.id)
+    );
+
+    const response = await GET(
+      new Request("http://localhost/api/services/discover?sortBy=name&page=1&limit=12") as any
+    );
+    const json = await response.json() as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(h.serviceFindMany).toHaveBeenCalledWith(
+      expect.not.objectContaining({ take: expect.any(Number) })
+    );
+    expect(json.pagination).toMatchObject({
+      page: 1,
+      limit: 12,
+      total: 1,
+      totalPages: 1,
+    });
+    expect(json.results).toHaveLength(1);
+    expect(json.results[0]).toMatchObject({
+      serviceId: "service-101",
+      previewMediaType: "video",
+      publicListing: { hasPublicMedia: true },
     });
     expect(JSON.stringify(json)).not.toContain("https://private.example/");
   });

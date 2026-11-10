@@ -55,6 +55,7 @@ describe('customer Service Record canonical state', () => {
     });
     expect(resolve({
       bookingStatus: 'PENDING',
+      bookingId: 'booking-counteroffer',
       requestLifecycle: {
         state: 'COUNTEROFFERED',
         proposed_scheduled_for: '2026-11-03T15:00:00.000Z',
@@ -67,6 +68,19 @@ describe('customer Service Record canonical state', () => {
       proposedScheduledFor: '2026-11-03T15:00:00.000Z',
       responseReason: 'The morning is already booked',
     });
+    const counteroffer = resolve({
+      bookingId: 'booking-counteroffer',
+      bookingStatus: 'PENDING',
+      requestLifecycle: { state: 'COUNTEROFFERED', proposed_scheduled_for: '2026-11-03T15:00:00.000Z' },
+    });
+    expect(counteroffer.attention).toEqual({
+      required: true,
+      code: 'COUNTEROFFER_RESPONSE_REQUIRED',
+      reason: 'Your response to the proposed time is needed',
+      actionLabel: 'Review proposed time',
+      actionHref: '/my-bookings/booking-counteroffer#request-status-heading',
+    });
+    expect(customerRecordMatchesTab(counteroffer, 'needs_attention')).toBe(true);
     expect(resolve({ bookingStatus: 'CANCELLED', requestLifecycle: { state: 'VENDOR_DECLINED' } }).request).toMatchObject({
       state: 'DECLINED',
       label: 'Declined by business',
@@ -113,7 +127,7 @@ describe('customer Service Record canonical state', () => {
     }).request.state).toBe('REQUESTED');
   });
 
-  it('marks only an actionable current recording request as Needs Attention', () => {
+  it('marks an actionable current recording request as Needs Attention', () => {
     const state = resolve({
       bookingStatus: 'CONFIRMED',
       currentConsent: {
@@ -132,6 +146,62 @@ describe('customer Service Record canonical state', () => {
       actionHref: '/consent/real-token',
     });
     expect(customerRecordMatchesTab(state, 'upcoming')).toBe(true);
+    expect(customerRecordMatchesTab(state, 'needs_attention')).toBe(true);
+    expect(state.recordingPermission).toMatchObject({
+      state: 'ACTION_REQUIRED',
+      label: 'Recording decision needed',
+      actionHref: '/consent/real-token',
+    });
+  });
+
+  it('shows a verified recording decision on Service Record detail without offering the secure action again', () => {
+    const allowed = resolve({
+      bookingStatus: 'CONFIRMED',
+      currentConsent: { id: 'consent-allowed', lifecycleStatus: 'ALLOWED', verifiedDecision: true, token: 'used-token' },
+    });
+    expect(allowed.recordingPermission).toMatchObject({ state: 'ALLOWED', label: 'Recording allowed', actionHref: null });
+    expect(allowed.attention.required).toBe(false);
+
+    const declined = resolve({
+      bookingStatus: 'CANCELED',
+      currentConsent: { id: 'consent-declined', lifecycleStatus: 'DECLINED', verifiedDecision: true, token: 'used-token' },
+    });
+    expect(declined.recordingPermission).toMatchObject({ state: 'DECLINED', label: 'Recording declined', actionHref: null });
+    expect(declined.attention.required).toBe(false);
+  });
+
+  it('keeps expired or cancelled permission requests out of Needs Attention', () => {
+    const expired = resolve({
+      bookingStatus: 'CONFIRMED',
+      currentConsent: { id: 'consent-expired', lifecycleStatus: 'DELIVERED', token: 'old-token', expiresAt: '2020-01-01T00:00:00.000Z' },
+    });
+    expect(expired.recordingPermission).toMatchObject({ state: 'EXPIRED', actionHref: null });
+    expect(expired.attention.required).toBe(false);
+
+    const cancelled = resolve({
+      bookingStatus: 'CANCELED',
+      currentConsent: { id: 'consent-pending', lifecycleStatus: 'DELIVERED', token: 'token', expiresAt: '2099-01-01T00:00:00.000Z' },
+    });
+    expect(cancelled.attention.required).toBe(false);
+    expect(cancelled.recordingPermission?.actionHref).toBeNull();
+  });
+
+  it('keeps both customer actions visible when a counteroffer and recording request coexist', () => {
+    const state = resolve({
+      bookingId: 'booking-both',
+      bookingStatus: 'PENDING',
+      requestLifecycle: { state: 'COUNTEROFFERED', proposed_scheduled_for: '2026-11-03T15:00:00.000Z' },
+      currentConsent: {
+        id: 'consent-both',
+        lifecycleStatus: 'DELIVERED',
+        token: 'secure-link',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    });
+
+    expect(state.attention.code).toBe('RECORDING_PERMISSION_REQUIRED');
+    expect(state.request.needsResponse).toBe(true);
+    expect(state.recordingPermission?.actionHref).toBe('/consent/secure-link');
     expect(customerRecordMatchesTab(state, 'needs_attention')).toBe(true);
   });
 
@@ -172,6 +242,19 @@ describe('customer Service Record canonical state', () => {
     expect(resolve({ bookingStatus: 'COMPLETED', packageStatus: 'PRIVATE_APPROVED', activePrivateProofGrant: true }).video.state).toBe('PREPARING');
     expect(resolve({ bookingStatus: 'COMPLETED', packageStatus: 'PRIVATE_APPROVED', adminAuditDecision: 'PASS' }).video.state).toBe('PREPARING');
     expect(resolve({ bookingStatus: 'COMPLETED', packageStatus: 'PRIVATE_APPROVED', adminAuditDecision: 'PASS', activePrivateProofGrant: true }).video.state).toBe('READY');
+  });
+
+  it('does not advertise legacy visible media without a current private access grant', () => {
+    const legacyInput = {
+      bookingStatus: 'COMPLETED',
+      legacyCustomerVisibleVideo: true,
+      packageStatus: 'PRIVATE_APPROVED',
+      adminAuditDecision: 'PASS',
+      activePrivateProofGrant: false,
+    };
+    const state = resolve(legacyInput);
+    expect(state.video.state).toBe('PREPARING');
+    expect(state.review.state).toBe('UNAVAILABLE');
   });
 
   it('keeps organization independent from completed lifecycle and proof dimensions', () => {

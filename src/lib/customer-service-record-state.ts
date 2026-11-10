@@ -88,11 +88,17 @@ export type CustomerServiceRecordState = {
   legacyRestoreBlocked: boolean;
   attention: {
     required: boolean;
-    code: 'RECORDING_PERMISSION_REQUIRED' | null;
+    code: 'RECORDING_PERMISSION_REQUIRED' | 'COUNTEROFFER_RESPONSE_REQUIRED' | null;
     reason: string | null;
     actionLabel: string | null;
     actionHref: string | null;
   };
+  recordingPermission: {
+    state: 'ACTION_REQUIRED' | 'PENDING' | 'ALLOWED' | 'DECLINED' | 'EXPIRED' | 'DELIVERY_FAILED' | 'WRONG_RECIPIENT' | 'SUPERSEDED' | 'UNAVAILABLE';
+    label: string;
+    detail: string;
+    actionHref: string | null;
+  } | null;
   video: {
     state: 'PREPARING' | 'READY';
     label: 'Preparing' | 'Ready';
@@ -141,7 +147,90 @@ function permissionNeedsCustomerAction(consent: CustomerRecordConsentLike | null
   return !expiresAt || new Date(expiresAt).getTime() > Date.now();
 }
 
+function recordingPermissionPresentation(
+  consent: CustomerRecordConsentLike | null | undefined,
+  actionRequired: boolean
+): CustomerServiceRecordState['recordingPermission'] {
+  if (!consent) return null;
+  const status = normalize(consent.lifecycleStatus || consent.status);
+  const expiresAt = asIso(consent.expiresAt);
+  const expired = status === 'EXPIRED' ||
+    (['PENDING', 'REQUESTED', 'DELIVERED'].includes(status) &&
+      Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now()));
+
+  if (status === 'ALLOWED' && consent.verifiedDecision === true) {
+    return {
+      state: 'ALLOWED',
+      label: 'Recording allowed',
+      detail: 'The verified customer contact allowed the approved recording scope. This does not authorize Public sharing.',
+      actionHref: null,
+    };
+  }
+  if (status === 'DECLINED') {
+    return {
+      state: 'DECLINED',
+      label: 'Recording declined',
+      detail: 'The customer declined recording for this Reliance work record. Recording remains locked.',
+      actionHref: null,
+    };
+  }
+  if (expired) {
+    return {
+      state: 'EXPIRED',
+      label: 'Recording request expired',
+      detail: 'The secure decision link expired. Contact the business to request a new link if recording is still needed.',
+      actionHref: null,
+    };
+  }
+  if (status === 'WRONG_RECIPIENT') {
+    return {
+      state: 'WRONG_RECIPIENT',
+      label: 'Recipient correction needed',
+      detail: 'This request was reported as misdirected. The business must correct the customer contact before sending another request.',
+      actionHref: null,
+    };
+  }
+  if (status === 'DELIVERY_FAILED') {
+    return {
+      state: 'DELIVERY_FAILED',
+      label: 'Recording request not delivered',
+      detail: 'The secure request could not be delivered. Contact the business to correct the customer contact.',
+      actionHref: null,
+    };
+  }
+  if (status === 'SUPERSEDED') {
+    return {
+      state: 'SUPERSEDED',
+      label: 'Recording request replaced',
+      detail: 'A newer recording request replaced this one. Use the latest secure link from the business.',
+      actionHref: null,
+    };
+  }
+  if (['PENDING', 'REQUESTED', 'DELIVERED'].includes(status)) {
+    return actionRequired
+      ? {
+          state: 'ACTION_REQUIRED',
+          label: 'Recording decision needed',
+          detail: 'Review the approved recording scope and decide whether Reliance may record. Recording stays locked until the required decision is verified.',
+          actionHref: `/consent/${encodeURIComponent(String(consent.token))}`,
+        }
+      : {
+          state: 'PENDING',
+          label: 'Recording request pending',
+          detail: 'A secure recording decision is pending. Ask the business to confirm the current request if you need help.',
+          actionHref: null,
+        };
+  }
+  return {
+    state: 'UNAVAILABLE',
+    label: 'Recording status unavailable',
+    detail: 'Ask the business to confirm the current recording-permission status.',
+    actionHref: null,
+  };
+}
+
 export function deriveCustomerServiceRecordState(input: {
+  bookingId?: string | null;
   bookingStatus: string | null | undefined;
   bookingSource?: string | null;
   scheduledFor?: Date | string | null;
@@ -151,7 +240,6 @@ export function deriveCustomerServiceRecordState(input: {
   adminAuditDecision?: string | null;
   packageStatus?: string | null;
   activePrivateProofGrant?: boolean;
-  legacyCustomerVisibleVideo?: boolean;
   reviewSubmitted?: boolean;
   currentVisibilityDecision?: string | null;
   publicationStatus?: string | null;
@@ -200,12 +288,14 @@ export function deriveCustomerServiceRecordState(input: {
       : CUSTOMER_RECORD_ORGANIZATION.ACTIVE;
   const archived = organization !== CUSTOMER_RECORD_ORGANIZATION.ACTIVE;
 
-  const attentionRequired = !archived && permissionNeedsCustomerAction(input.currentConsent);
+  const recordingPermissionNeedsAction =
+    !archived && lifecycle === CUSTOMER_RECORD_LIFECYCLES.UPCOMING &&
+    permissionNeedsCustomerAction(input.currentConsent);
+  const recordingPermission = recordingPermissionPresentation(input.currentConsent, recordingPermissionNeedsAction);
   const auditPassed = normalize(input.adminAuditDecision) === 'PASS';
   const packageApproved = normalize(input.packageStatus) === 'PRIVATE_APPROVED';
   const videoReady =
-    (auditPassed && packageApproved && input.activePrivateProofGrant === true) ||
-    input.legacyCustomerVisibleVideo === true;
+    auditPassed && packageApproved && input.activePrivateProofGrant === true;
   const publicNow =
     normalize(input.currentVisibilityDecision) === 'SHARE_PUBLICLY' &&
     normalize(input.publicationStatus) === 'PUBLIC' &&
@@ -361,6 +451,26 @@ export function deriveCustomerServiceRecordState(input: {
           ? 'Archived historical record'
           : 'Status unavailable';
 
+  const attention: CustomerServiceRecordState['attention'] = recordingPermissionNeedsAction
+    ? {
+        required: true,
+        code: 'RECORDING_PERMISSION_REQUIRED',
+        reason: 'Recording permission needed',
+        actionLabel: 'Review recording request',
+        actionHref: recordingPermission?.actionHref || null,
+      }
+    : !archived && lifecycle === CUSTOMER_RECORD_LIFECYCLES.UPCOMING && request.needsResponse
+      ? {
+          required: true,
+          code: 'COUNTEROFFER_RESPONSE_REQUIRED',
+          reason: 'Your response to the proposed time is needed',
+          actionLabel: 'Review proposed time',
+          actionHref: input.bookingId
+            ? `/my-bookings/${encodeURIComponent(input.bookingId)}#request-status-heading`
+            : null,
+        }
+      : { required: false, code: null, reason: null, actionLabel: null, actionHref: null };
+
   return {
     lifecycle,
     lifecycleLabel,
@@ -371,15 +481,8 @@ export function deriveCustomerServiceRecordState(input: {
       organization === CUSTOMER_RECORD_ORGANIZATION.ARCHIVED &&
       archiveLifecycleEligible,
     legacyRestoreBlocked: organization === CUSTOMER_RECORD_ORGANIZATION.LEGACY_ARCHIVED,
-    attention: attentionRequired
-      ? {
-          required: true,
-          code: 'RECORDING_PERMISSION_REQUIRED',
-          reason: 'Recording permission needed',
-          actionLabel: 'Review recording request',
-          actionHref: `/consent/${encodeURIComponent(String(input.currentConsent?.token || ''))}`,
-        }
-      : { required: false, code: null, reason: null, actionLabel: null, actionHref: null },
+    attention,
+    recordingPermission,
     video: videoReady
       ? { state: 'READY', label: 'Ready' }
       : { state: 'PREPARING', label: 'Preparing' },

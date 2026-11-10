@@ -613,9 +613,11 @@ export async function GET(
         percentage: 0,
       })),
     };
+    let vendorRatingMetricsAvailable = true;
     try {
       vendorRatingStats = await getVendorRatingStats(vendorId);
     } catch (ratingError: any) {
+      vendorRatingMetricsAvailable = false;
       if (process.env.NODE_ENV !== "production") {
         console.warn("[vendors/dashboard] rating aggregation fallback", {
           vendorId,
@@ -1086,9 +1088,11 @@ export async function GET(
       reviewCount: number;
       ratingSum: number;
     }> = [];
+    let employeeRatingMetricsAvailable = true;
     try {
       employeeRatingRows = await getEmployeeRatingsForVendor(vendorId);
     } catch (employeeRatingError: any) {
+      employeeRatingMetricsAvailable = false;
       if (process.env.NODE_ENV !== "production") {
         console.warn("[vendors/dashboard] employee rating aggregation fallback", {
           vendorId,
@@ -1342,6 +1346,10 @@ export async function GET(
       lifecycleCounts,
       recentReviews: recentReviewsMapped,
       employeePerformance,
+      reviewMetricsStatus: {
+        vendorRatings: vendorRatingMetricsAvailable ? 'available' : 'temporarily_unavailable',
+        employeeRatings: employeeRatingMetricsAvailable ? 'available' : 'temporarily_unavailable',
+      },
       insights: [],
       notifications: auditNotifications,
       pendingModerationProofs,

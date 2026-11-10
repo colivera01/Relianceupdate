@@ -1643,82 +1643,22 @@ describe('GET /api/bookings/[id]', () => {
 });
 
 describe('PUT /api/bookings/[id]', () => {
-  beforeEach(() => {
-    vi.mocked(getUserIdFromRequest).mockReset();
-    hoisted.bookingFindUnique.mockReset();
+  it('requires a dedicated Service Request action without mutating the booking', async () => {
     hoisted.bookingUpdate.mockReset();
-    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
-    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
-  });
-
-  it('returns 401 when unauthenticated', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
-    const res = await bookingPutPUT(jsonRequest('http://localhost/api/bookings/b1', { status: 'confirmed' }, 'PUT'), {
-      params: Promise.resolve({ id: 'b1' }),
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it('returns 403 when not owner', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', userId: 'other' });
-    const res = await bookingPutPUT(jsonRequest('http://localhost/api/bookings/b1', { title: 'X' }, 'PUT'), {
-      params: Promise.resolve({ id: 'b1' }),
-    });
-    expect(res.status).toBe(403);
-    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
-  });
-
-  it('rejects arbitrary customer lifecycle mutation through the generic update route', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
     const res = await bookingPutPUT(
-      jsonRequest(
-        'http://localhost/api/bookings/book-1',
-        { status: 'confirmed', title: 'Updated title', client_name: 'Sam' },
-        'PUT'
-      ),
+      jsonRequest('http://localhost/api/bookings/book-1', {
+        title: 'Changed title',
+        client_name: 'Changed name',
+        booking_date: '2026-11-15',
+        booking_time: '10:00',
+      }, 'PUT'),
       { params: Promise.resolve({ id: 'book-1' }) }
     );
-    expect(res.status).toBe(422);
-    const j = await readJson(res);
-    expect(j.code).toBe('BOOKING_STATUS_MUTATION_NOT_ALLOWED');
-    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
-  });
-
-  it('still permits owned non-lifecycle detail updates', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
-    hoisted.bookingUpdate.mockResolvedValue(baseHydratedBooking({ title: 'Updated title', clientName: 'Sam' }));
-    const res = await bookingPutPUT(
-      jsonRequest('http://localhost/api/bookings/book-1', { title: 'Updated title', client_name: 'Sam' }, 'PUT'),
-      { params: Promise.resolve({ id: 'book-1' }) }
-    );
-    expect(res.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'book-1' },
-      data: expect.objectContaining({ title: 'Updated title', clientName: 'Sam' }),
-    }));
-  });
-
-  it('rejects customer updates after a terminal Admin PASS before mutation', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
-    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue({
-      id: 'package-1',
-      status: 'PRIVATE_APPROVED',
-      adminAuditDecisionId: 'audit-1',
-    });
-
-    const res = await bookingPutPUT(
-      jsonRequest('http://localhost/api/bookings/book-1', { title: 'Changed after audit' }, 'PUT'),
-      { params: Promise.resolve({ id: 'book-1' }) }
-    );
-
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(405);
+    expect((await readJson(res)).code).toBe('BOOKING_UPDATE_ACTION_REQUIRED');
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 });
-
 describe('DELETE /api/bookings/[id]', () => {
   it('requires the dedicated cancellation action instead of mutating status', async () => {
     const res = await bookingDeleteDELETE(jsonRequest('http://localhost/api/bookings/b1', undefined, 'DELETE'), {

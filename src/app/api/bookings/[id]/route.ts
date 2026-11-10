@@ -11,7 +11,6 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   isTransientDbConnectivityError,
 } from '@/lib/transient-db-errors';
-import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
 import { parseAssignmentMetadata } from '@/lib/job-assignment';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
 
@@ -244,113 +243,16 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: bookingId } = await params;
-    const body = await request.json();
-    const { status, booking_date, booking_time, title, client_name } = body || {};
-
-    if (!bookingId) {
-      return NextResponse.json(
-        { error: 'Invalid booking ID' },
-        { status: 400 }
-      );
-    }
-
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized: customer context is required' },
-        { status: 401 }
-      );
-    }
-    await ensureUserAccountCanAct(userId);
-
-    if (status !== undefined) {
-      return NextResponse.json(
-        {
-          error: 'Service Record status cannot be changed through the generic update route.',
-          code: 'BOOKING_STATUS_MUTATION_NOT_ALLOWED',
-        },
-        { status: 422 }
-      );
-    }
-
-    const existing = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: { id: true, userId: true },
-    });
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
-    }
-    if (existing.userId !== userId) {
-      return NextResponse.json(
-        { error: 'Forbidden: booking does not belong to this user' },
-        { status: 403 }
-      );
-    }
-    await assertCoreAdminAuditMutationAllowed(prisma as any, { bookingId });
-
-    let scheduledForUpdate: Date | undefined;
-    if (booking_date || booking_time) {
-      const date = booking_date || new Date().toISOString().split('T')[0];
-      const time = booking_time || '00:00:00';
-      const combined = new Date(`${date}T${time}`);
-      if (!Number.isNaN(combined.getTime())) {
-        scheduledForUpdate = combined;
-      }
-    }
-
-    const updated = await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        ...(title !== undefined ? { title: title ? String(title) : null } : {}),
-        ...(client_name !== undefined ? { clientName: client_name ? String(client_name) : null } : {}),
-        ...(scheduledForUpdate ? { scheduledFor: scheduledForUpdate, date: scheduledForUpdate } : {}),
-      },
-      select: {
-        id: true,
-        userId: true,
-        vendorId: true,
-        serviceId: true,
-        title: true,
-        clientName: true,
-        amount: true,
-        status: true,
-        scheduledFor: true,
-        date: true,
-        createdAt: true,
-        updatedAt: true,
-        customerMetadata: true,
-        vendor: {
-          select: { id: true, name: true, businessName: true, phone: true, email: true, city: true, state: true },
-        },
-        service: {
-          select: { id: true, name: true, description: true, price: true },
-        },
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      booking: mapBookingToContract(updated as any),
-      message: 'Booking updated successfully',
-    });
-  } catch (error) {
-    console.error('Error updating booking:', error);
-    if (error instanceof AccountStatusError) {
-      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
-    }
-    if (error instanceof CoreAdminAuditError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
-    }
-    return NextResponse.json(
-      { error: 'Failed to update booking' },
-      { status: 500 }
-    );
-  }
+  await params;
+  void request;
+  return NextResponse.json(
+    {
+      error: 'Use the dedicated Service Request actions to change a Service Record.',
+      code: 'BOOKING_UPDATE_ACTION_REQUIRED',
+    },
+    { status: 405, headers: { Allow: 'GET' } }
+  );
 }
-
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -362,6 +264,6 @@ export async function DELETE(
       error: 'Use the dedicated cancellation action and provide a cancellation reason.',
       code: 'BOOKING_CANCELLATION_ACTION_REQUIRED',
     },
-    { status: 405, headers: { Allow: 'GET, PUT' } }
+    { status: 405, headers: { Allow: 'GET' } }
   );
 }

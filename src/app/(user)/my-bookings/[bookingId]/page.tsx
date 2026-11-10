@@ -666,6 +666,34 @@ function BookingMediaDetailPageContent() {
           ) : null}
         </section>
 
+        {customerRecord?.recordingPermission ? (
+          <section
+            aria-labelledby="recording-permission-heading"
+            className={`rounded-xl border p-5 shadow-sm sm:p-6 ${customerRecord.recordingPermission.state === 'ACTION_REQUIRED'
+              ? 'border-amber-200 bg-amber-50'
+              : 'border-slate-200 bg-white'}`}
+          >
+            <div className="flex items-start gap-3">
+              <ShieldCheck aria-hidden="true" className={`mt-0.5 h-5 w-5 shrink-0 ${customerRecord.recordingPermission.state === 'ACTION_REQUIRED' ? 'text-amber-800' : 'text-blue-700'}`} />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Recording permission</p>
+                <h2 id="recording-permission-heading" className="mt-1 text-xl font-semibold text-slate-950">
+                  {customerRecord.recordingPermission.label}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{customerRecord.recordingPermission.detail}</p>
+                {customerRecord.recordingPermission.actionHref ? (
+                  <Link
+                    href={customerRecord.recordingPermission.actionHref}
+                    className="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                  >
+                    Review recording request
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {customerRecord && !completedRecord ? (
           <section aria-labelledby="request-status-heading" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

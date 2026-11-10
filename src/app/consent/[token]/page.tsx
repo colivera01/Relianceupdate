@@ -154,6 +154,7 @@ export default function PermissionPage() {
         body: JSON.stringify({ channel: nextChannel }),
       });
       const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || "Verification could not be started. Try again.");
       if (body?.verified) {
         setVerified(true);
         setChannel(null);
@@ -162,8 +163,8 @@ export default function PermissionPage() {
       } else {
         setError("This signed-in account does not match the intended recipient. Use email or SMS verification instead.");
       }
-    } catch {
-      setError("Verification could not be started. Try again.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Verification could not be started. Try again.");
     } finally {
       setBusy("");
     }
@@ -173,20 +174,25 @@ export default function PermissionPage() {
     if (!channel || code.length !== 6) return;
     setBusy("code");
     setError("");
-    const response = await fetch(`/api/consent/${encodeURIComponent(token)}/verification/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel, code }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (response.ok && body?.verified) {
-      setVerified(true);
-      setChannel(null);
-      setCode("");
-    } else {
-      setError(body?.error || "That code could not be verified. Request a new code if needed.");
+    try {
+      const response = await fetch(`/api/consent/${encodeURIComponent(token)}/verification/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, code }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok && body?.verified) {
+        setVerified(true);
+        setChannel(null);
+        setCode("");
+      } else {
+        setError(body?.error || "That code could not be verified. Request a new code if needed.");
+      }
+    } catch {
+      setError("Verification could not be confirmed. Check your connection and try the code again.");
+    } finally {
+      setBusy("");
     }
-    setBusy("");
   }
 
   async function decide(decision: "allow" | "decline") {
@@ -196,28 +202,39 @@ export default function PermissionPage() {
     }
     setBusy(decision);
     setError("");
-    const response = await fetch(`/api/consent/${decision === "allow" ? "accept" : "decline"}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token,
-        claimedRole: SUPPORTED_CUSTOMER_AUTHORITY.value,
-        authorityScope: SUPPORTED_CUSTOMER_AUTHORITY.scope,
-        customerBusinessAddress: permission?.recordingLocation === "customer-business" ? address : undefined,
-      }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (response.ok && body?.success) setFinished(decision === "allow" ? "allowed" : "declined");
-    else setError(body?.error || "Your decision could not be saved. Try again.");
-    setBusy("");
+    try {
+      const response = await fetch(`/api/consent/${decision === "allow" ? "accept" : "decline"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          claimedRole: SUPPORTED_CUSTOMER_AUTHORITY.value,
+          authorityScope: SUPPORTED_CUSTOMER_AUTHORITY.scope,
+          customerBusinessAddress: permission?.recordingLocation === "customer-business" ? address : undefined,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok && body?.success) setFinished(decision === "allow" ? "allowed" : "declined");
+      else setError(body?.error || "Your decision could not be saved. Try again.");
+    } catch {
+      setError("We could not confirm whether your decision was saved. Refresh this page to check its status before trying again.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function wrongRecipient() {
     setBusy("wrong");
-    const response = await fetch(`/api/consent/${encodeURIComponent(token)}/wrong-recipient`, { method: "POST" });
-    if (response.ok) setFinished("wrong_recipient");
-    else setError("The service provider could not be notified. Try again.");
-    setBusy("");
+    setError("");
+    try {
+      const response = await fetch(`/api/consent/${encodeURIComponent(token)}/wrong-recipient`, { method: "POST" });
+      if (response.ok) setFinished("wrong_recipient");
+      else setError("The service provider could not be notified. Try again.");
+    } catch {
+      setError("We could not confirm whether the service provider was notified. Refresh this page to check the request status before trying again.");
+    } finally {
+      setBusy("");
+    }
   }
 
   if (loading) {
