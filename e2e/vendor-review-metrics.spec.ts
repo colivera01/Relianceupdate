@@ -14,6 +14,8 @@ async function installVendorReviewMetricsFixture(
     vendorRatingsAvailable?: boolean;
     employeeRatingsAvailable?: boolean;
     populatedAnalytics?: boolean;
+    trustScoreValues?: number[];
+    trustScoreFailOnRequest?: number;
   } = {}
 ) {
   const populatedAnalytics = options.populatedAnalytics ?? false;
@@ -21,6 +23,7 @@ async function installVendorReviewMetricsFixture(
   const ratingCount = options.ratingCount ?? 1;
   const employeeRating = options.employeeRating ?? 3;
   const employeeReviewCount = options.employeeReviewCount ?? 1;
+  let trustScoreRequests = 0;
   const session = createAuthSessionCookie({
     userId: "review-metrics-manager",
     email: "manager@example.test",
@@ -231,6 +234,17 @@ async function installVendorReviewMetricsFixture(
       return;
     }
     if (pathname === "/api/vendor/trust-score") {
+      trustScoreRequests += 1;
+      if (trustScoreRequests === options.trustScoreFailOnRequest) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Trust Score temporarily unavailable" }),
+        });
+        return;
+      }
+      const scoreValues = options.trustScoreValues ?? [88];
+      const score = scoreValues[Math.min(trustScoreRequests - 1, scoreValues.length - 1)];
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -241,7 +255,7 @@ async function installVendorReviewMetricsFixture(
           trustScore: {
             scored: true,
             scoreVersion: 3,
-            totalScorePct: 88,
+            totalScorePct: score,
             computedAt: "2026-09-07T12:00:00.000Z",
             presentation: {
               maturityState: "emerging",
@@ -297,6 +311,31 @@ test.describe("Vendor review metrics", () => {
     await page.clock.fastForward(60_100);
     await expect.poll(() => dashboardRequests).toBeGreaterThan(requestsBeforeInterval);
     await expect(page.getByText("Not yet rated", { exact: true })).toHaveCount(2);
+  });
+
+  test("refreshes Trust Score on focus and the visible timer, then warns if the refresh fails", async ({ page }) => {
+    await page.clock.install();
+    await installVendorReviewMetricsFixture(page, {
+      trustScoreValues: [88, 92],
+      trustScoreFailOnRequest: 3,
+    });
+    let trustScoreRequests = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/vendor/trust-score") trustScoreRequests += 1;
+    });
+
+    await page.goto("/test-fixtures/vendor-reviews");
+    await expect(page.getByText("88%", { exact: true })).toBeVisible();
+    await page.clock.fastForward(15_100);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => trustScoreRequests).toBe(2);
+    await expect(page.getByText("92%", { exact: true })).toBeVisible();
+
+    await page.clock.fastForward(45_100);
+    await expect.poll(() => trustScoreRequests).toBe(3);
+    await expect(page.getByText("92%", { exact: true })).toBeVisible();
+    await expect(page.getByText("Last available Trust Score may be out of date.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   });
 
   test("labels unavailable rating aggregates instead of implying no customer or team feedback", async ({ page }) => {

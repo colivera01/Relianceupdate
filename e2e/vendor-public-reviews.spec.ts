@@ -47,3 +47,77 @@ test('public vendor reviews support service and rating filters', async ({ page }
   await expect(page.getByText('Clear communication throughout.')).toHaveCount(0);
   await expect(page.getByText('1 published written review')).toBeVisible();
 });
+
+test('returning to public reviews refreshes the current filters once', async ({ page }) => {
+  let published = false;
+  let failRefresh = false;
+  let reviewRequests = 0;
+  let lastReviewUrl = '';
+  await page.route('**/api/auth/session', (route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: '{"authenticated":false}' }),
+  );
+  await page.route('**/api/vendors/vendor-electro/public', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        vendor: { vendorId: 'vendor-electro', vendorName: 'Electro LLC' },
+        publicServices: [{ serviceId: 'service-outlet', serviceName: 'Outlet Installation' }],
+      }),
+    }),
+  );
+  await page.route('**/api/vendors/vendor-electro/reviews/public**', (route) => {
+    reviewRequests += 1;
+    lastReviewUrl = route.request().url();
+    if (failRefresh) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: '{"success":false,"error":"Temporarily unavailable"}' });
+    }
+    const reviews = published
+      ? [{
+          reviewId: 'review-new',
+          vendorId: 'vendor-electro',
+          serviceId: 'service-outlet',
+          serviceName: 'Outlet Installation',
+          rating: 5,
+          comment: 'Newly approved customer feedback.',
+          createdAt: '2026-11-09T14:00:00.000Z',
+          reviewerDisplayName: 'Verified Customer',
+        }]
+      : [];
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        reviews,
+        pagination: { page: 1, limit: 12, total: reviews.length, totalPages: 1 },
+      }),
+    });
+  });
+
+  await page.goto('/vendors/vendor-electro/reviews');
+  await page.getByLabel('Service').selectOption('service-outlet');
+  await page.getByLabel('Rating').selectOption('5');
+  await expect(page.getByText('No published reviews match these filters')).toBeVisible();
+  const beforeReturn = reviewRequests;
+
+  published = true;
+  await page.waitForTimeout(2_100);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  await expect(page.getByText('Newly approved customer feedback.')).toBeVisible();
+  expect(reviewRequests).toBe(beforeReturn + 1);
+  expect(new URL(lastReviewUrl).searchParams.get('serviceId')).toBe('service-outlet');
+  expect(new URL(lastReviewUrl).searchParams.get('rating')).toBe('5');
+  await expect(page.getByLabel('Service')).toHaveValue('service-outlet');
+  await expect(page.getByLabel('Rating')).toHaveValue('5');
+
+  failRefresh = true;
+  await page.waitForTimeout(2_100);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByText(/Customer feedback could not refresh/)).toBeVisible();
+  await expect(page.getByText('Newly approved customer feedback.')).toBeVisible();
+  await expect(page.getByText('1 published written review')).toBeVisible();
+});

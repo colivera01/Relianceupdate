@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
@@ -109,6 +109,7 @@ interface PublicVendorReview {
 
 const PUBLIC_VENDOR_RETRY_ATTEMPTS = 3;
 const PUBLIC_VENDOR_RETRY_DELAY_MS = 1_200;
+const PUBLIC_RETURN_REFRESH_DEBOUNCE_MS = 2_000;
 
 export default function PublicVendorProfilePage() {
   const params = useParams();
@@ -180,10 +181,19 @@ export default function PublicVendorProfilePage() {
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profileRefreshError, setProfileRefreshError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<PublicVendorReview[]>([]);
   const [reviewTotal, setReviewTotal] = useState(0);
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [reviewsRefreshError, setReviewsRefreshError] = useState<string | null>(null);
+  const profileRequestRef = useRef<{ vendorId: string; id: number } | null>(null);
+  const reviewsRequestRef = useRef<{ vendorId: string; id: number } | null>(null);
+  const profileRequestIdRef = useRef(0);
+  const reviewsRequestIdRef = useRef(0);
+  const lastPublicRefreshAtRef = useRef(0);
+  const lastGoodProfileVendorRef = useRef<string | null>(null);
+  const lastGoodReviewsVendorRef = useRef<string | null>(null);
 
   const fetchRetryablePublicJson = async (url: string) => {
     let lastResponse: Response | null = null;
@@ -217,10 +227,13 @@ export default function PublicVendorProfilePage() {
     return { response: lastResponse, json: lastJson };
   };
 
-  const loadVendorProfile = async () => {
+  const loadVendorProfile = async (background = false) => {
     if (!vendorId) return;
-    setLoading(true);
-    setError(null);
+    if (profileRequestRef.current?.vendorId === vendorId) return;
+    const requestId = ++profileRequestIdRef.current;
+    profileRequestRef.current = { vendorId, id: requestId };
+    if (!background) setLoading(true);
+    if (!background) setError(null);
     try {
       const { response: res, json } = await fetchRetryablePublicJson(`/api/vendors/${vendorId}/public`);
       if (!res.ok || json?.success === false) {
@@ -229,18 +242,34 @@ export default function PublicVendorProfilePage() {
         }
         throw new Error(json?.error || `Failed to load vendor (${res.status})`);
       }
-      setPayload(json);
+      if (requestId === profileRequestIdRef.current) {
+        lastGoodProfileVendorRef.current = vendorId;
+        setPayload(json);
+        setError(null);
+        setProfileRefreshError(null);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load vendor profile');
+      if (requestId === profileRequestIdRef.current) {
+        const message = err instanceof Error ? err.message : 'Failed to load vendor profile';
+        if (background && lastGoodProfileVendorRef.current === vendorId) {
+          setProfileRefreshError(`Profile details could not refresh. Showing the last loaded details. ${message}`);
+        } else {
+          setError(message);
+        }
+      }
     } finally {
-      setLoading(false);
+      if (profileRequestRef.current?.id === requestId) profileRequestRef.current = null;
+      if (requestId === profileRequestIdRef.current) setLoading(false);
     }
   };
 
-  const loadPublicReviews = async () => {
+  const loadPublicReviews = async (background = false) => {
     if (!vendorId) return;
-    setReviewsLoading(true);
-    setReviewsError(null);
+    if (reviewsRequestRef.current?.vendorId === vendorId) return;
+    const requestId = ++reviewsRequestIdRef.current;
+    reviewsRequestRef.current = { vendorId, id: requestId };
+    if (!background) setReviewsLoading(true);
+    if (!background) setReviewsError(null);
     try {
       const { response: res, json } = await fetchRetryablePublicJson(`/api/vendors/${vendorId}/reviews/public?limit=3`);
       if (!res.ok || json?.success === false) {
@@ -250,23 +279,51 @@ export default function PublicVendorProfilePage() {
         throw new Error(json?.error || `Failed to load reviews (${res.status})`);
       }
       const nextReviews = Array.isArray(json?.reviews) ? json.reviews : [];
-      setReviews(nextReviews.slice(0, 3));
-      setReviewTotal(Number(json?.pagination?.total ?? nextReviews.length));
+      if (requestId === reviewsRequestIdRef.current) {
+        lastGoodReviewsVendorRef.current = vendorId;
+        setReviews(nextReviews.slice(0, 3));
+        setReviewTotal(Number(json?.pagination?.total ?? nextReviews.length));
+        setReviewsError(null);
+        setReviewsRefreshError(null);
+      }
     } catch (err) {
-      setReviewsError(err instanceof Error ? err.message : 'Failed to load public reviews');
-      setReviews([]);
-      setReviewTotal(0);
+      if (requestId === reviewsRequestIdRef.current) {
+        const message = err instanceof Error ? err.message : 'Failed to load public reviews';
+        if (background && lastGoodReviewsVendorRef.current === vendorId) {
+          setReviewsRefreshError(`Customer feedback could not refresh. Showing the last loaded result. ${message}`);
+        } else {
+          setReviewsError(message);
+          setReviews([]);
+          setReviewTotal(0);
+        }
+      }
     } finally {
-      setReviewsLoading(false);
+      if (reviewsRequestRef.current?.id === requestId) reviewsRequestRef.current = null;
+      if (requestId === reviewsRequestIdRef.current) setReviewsLoading(false);
     }
   };
 
   useEffect(() => {
+    lastPublicRefreshAtRef.current = Date.now();
     void loadVendorProfile();
+    void loadPublicReviews();
   }, [vendorId]);
 
   useEffect(() => {
-    void loadPublicReviews();
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastPublicRefreshAtRef.current < PUBLIC_RETURN_REFRESH_DEBOUNCE_MS) return;
+      lastPublicRefreshAtRef.current = now;
+      void loadVendorProfile(true);
+      void loadPublicReviews(true);
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
   }, [vendorId]);
 
   useEffect(() => {
@@ -430,6 +487,12 @@ export default function PublicVendorProfilePage() {
             </div>
           ) : (
             <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
+              {profileRefreshError ? (
+                <div role="status" className="rounded-2xl border border-amber-300/35 bg-amber-300/10 px-4 py-3 text-sm text-amber-100 lg:col-span-2">
+                  {profileRefreshError}{' '}
+                  <button type="button" className="font-semibold underline" onClick={() => void loadVendorProfile(true)}>Try again</button>
+                </div>
+              ) : null}
               <div>
                 <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
                   {isVendorPreview ? 'Customer-facing provider profile' : 'About this provider'}
@@ -918,6 +981,13 @@ export default function PublicVendorProfilePage() {
                         : `${reviewTotal} published`}
                   </Badge>
                 </div>
+
+                {reviewsRefreshError ? (
+                  <div role="status" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {reviewsRefreshError}{' '}
+                    <button type="button" className="font-semibold underline" onClick={() => void loadPublicReviews(true)}>Try again</button>
+                  </div>
+                ) : null}
 
                 {reviewsLoading ? (
                   <div className="mt-6 space-y-3">

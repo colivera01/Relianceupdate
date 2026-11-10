@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LockKeyhole, MessageSquare, RefreshCcw, ShieldCheck, Star, Users } from "lucide-react";
 import { useVendorDashboard } from "@/hooks/useVendorDashboard";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+const TRUST_SCORE_FOCUS_REFRESH_INTERVAL_MS = 15_000;
+
 export default function VendorReviewsPage() {
   const { data, loading, error, backgroundRefreshError, refetch, refreshInBackground, approvalPending } = useVendorDashboard();
   const [trustScore, setTrustScore] = useState<{
@@ -45,7 +47,10 @@ export default function VendorReviewsPage() {
   } | null>(null);
   const [trustScoreError, setTrustScoreError] = useState("");
   const [trustScoreLoading, setTrustScoreLoading] = useState(true);
+  const [trustScoreStale, setTrustScoreStale] = useState(false);
   const [trustScoreRequestVersion, setTrustScoreRequestVersion] = useState(0);
+  const trustScoreLastSuccessfulFetchAtRef = useRef(0);
+  const trustScoreInFlightRef = useRef(false);
 
   useEffect(() => {
     if (approvalPending) return;
@@ -63,8 +68,9 @@ export default function VendorReviewsPage() {
     let cancelled = false;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    trustScoreInFlightRef.current = true;
     async function loadTrustScore() {
-      setTrustScoreLoading(true);
+      if (!trustScoreLastSuccessfulFetchAtRef.current) setTrustScoreLoading(true);
       try {
         const res = await fetch("/api/vendor/trust-score", {
           cache: "no-store",
@@ -77,10 +83,13 @@ export default function VendorReviewsPage() {
         if (!cancelled) {
           setTrustScore(payload?.trustScore || null);
           setTrustScoreError("");
+          setTrustScoreStale(false);
+          trustScoreLastSuccessfulFetchAtRef.current = Date.now();
         }
       } catch (fetchError) {
         if (!cancelled) {
-          setTrustScore(null);
+          if (!trustScoreLastSuccessfulFetchAtRef.current) setTrustScore(null);
+          setTrustScoreStale(Boolean(trustScoreLastSuccessfulFetchAtRef.current));
           setTrustScoreError(
             fetchError instanceof DOMException && fetchError.name === "AbortError"
               ? "The Trust Score request timed out."
@@ -93,6 +102,7 @@ export default function VendorReviewsPage() {
         window.clearTimeout(timeout);
         if (!cancelled) {
           setTrustScoreLoading(false);
+          trustScoreInFlightRef.current = false;
         }
       }
     }
@@ -101,8 +111,32 @@ export default function VendorReviewsPage() {
       cancelled = true;
       window.clearTimeout(timeout);
       controller.abort();
+      trustScoreInFlightRef.current = false;
     };
   }, [approvalPending, trustScoreRequestVersion]);
+
+  useEffect(() => {
+    if (approvalPending) return;
+    const requestTrustScoreRefresh = (force = false) => {
+      if (document.visibilityState !== "visible" || trustScoreInFlightRef.current) return;
+      if (
+        !force &&
+        Date.now() - trustScoreLastSuccessfulFetchAtRef.current <
+          TRUST_SCORE_FOCUS_REFRESH_INTERVAL_MS
+      ) return;
+      trustScoreInFlightRef.current = true;
+      setTrustScoreRequestVersion((value) => value + 1);
+    };
+    const refreshOnReturn = () => requestTrustScoreRefresh();
+    const timer = window.setInterval(() => requestTrustScoreRefresh(true), 60_000);
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
+  }, [approvalPending]);
 
   if (approvalPending) {
     return (
@@ -198,7 +232,10 @@ export default function VendorReviewsPage() {
               size="sm"
               onClick={() => {
                 void refetch();
-                setTrustScoreRequestVersion((value) => value + 1);
+                if (!trustScoreInFlightRef.current) {
+                  trustScoreInFlightRef.current = true;
+                  setTrustScoreRequestVersion((value) => value + 1);
+                }
               }}
               className="shrink-0 border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
             >
@@ -313,13 +350,22 @@ export default function VendorReviewsPage() {
                 </p>
               )}
               {trustScoreError && !trustScoreLoading ? (
-                <div className="mt-3 space-y-3" role="alert">
+                <div className="mt-3 space-y-3" role={trustScoreStale ? "status" : "alert"}>
+                  {trustScoreStale ? (
+                    <p className="text-sm leading-6 text-amber-100">
+                      Last available Trust Score may be out of date.
+                    </p>
+                  ) : null}
                   <p className="text-sm leading-6 text-rose-100">{trustScoreError}</p>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setTrustScoreRequestVersion((value) => value + 1)}
+                    onClick={() => {
+                      if (trustScoreInFlightRef.current) return;
+                      trustScoreInFlightRef.current = true;
+                      setTrustScoreRequestVersion((value) => value + 1);
+                    }}
                     className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
                   >
                     <RefreshCcw className="mr-2 h-4 w-4" />

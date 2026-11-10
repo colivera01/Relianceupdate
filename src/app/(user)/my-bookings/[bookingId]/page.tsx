@@ -33,6 +33,7 @@ import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import type { CustomerServiceRecordState } from '@/lib/customer-service-record-state';
 import { getCustomerProofStageLabel } from '@/lib/vendor-job-video-stages';
 import { customerLoadMessage } from '@/lib/customer-load-contract';
+import { ratingForRadioKey } from '@/lib/customer-rating-keyboard';
 import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
 
 type AssignedServiceProfessional = {
@@ -138,13 +139,15 @@ function RatingButtons({
   value,
   onChange,
   label,
+  required = false,
 }: {
   value: number;
   onChange: (rating: number) => void;
   label: string;
+  required?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1" role="radiogroup" aria-label={label}>
+    <div className="flex items-center gap-1" role="radiogroup" aria-label={label} aria-required={required}>
       {[1, 2, 3, 4, 5].map((rating) => (
         <button
           key={rating}
@@ -152,7 +155,15 @@ function RatingButtons({
           role="radio"
           aria-checked={rating === value}
           aria-label={`${rating} star${rating === 1 ? '' : 's'}`}
+          tabIndex={rating === (value || 1) ? 0 : -1}
           onClick={() => onChange(rating)}
+          onKeyDown={(event) => {
+            const nextRating = ratingForRadioKey(rating, event.key);
+            if (nextRating === null) return;
+            event.preventDefault();
+            onChange(nextRating);
+            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[nextRating - 1]?.focus();
+          }}
           className="rounded-md p-1.5 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <Star
@@ -208,6 +219,7 @@ function BookingMediaDetailPageContent() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
+  const [reviewerIsTestOrInternal, setReviewerIsTestOrInternal] = useState(false);
   const [organizationBusy, setOrganizationBusy] = useState(false);
   const [organizationMessage, setOrganizationMessage] = useState<string | null>(null);
   const [requestResponseBusy, setRequestResponseBusy] = useState(false);
@@ -269,6 +281,7 @@ function BookingMediaDetailPageContent() {
       }
       const nextAssets = mediaResponse.ok && Array.isArray(mediaJson?.assets) ? mediaJson.assets as BookingMediaAsset[] : [];
       setBooking(nextBooking);
+      setReviewerIsTestOrInternal(bookingJson?.reviewerIsTestOrInternal === true);
       setAssets(nextAssets);
       setPrivateProofAvailable(mediaResponse.ok && mediaJson?.privateProofStatus === 'AVAILABLE');
       setAssignedProfessional(bookingJson?.assignedServiceProfessional || null);
@@ -282,6 +295,7 @@ function BookingMediaDetailPageContent() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load this service record.');
       setBooking(null);
+      setReviewerIsTestOrInternal(false);
       setAssets([]);
       setPrivateProofAvailable(false);
     } finally {
@@ -862,6 +876,11 @@ function BookingMediaDetailPageContent() {
 
         {completedRecord ? <section id="your-review" aria-labelledby="review-heading" className="border-t border-slate-200 pt-6">
           <h2 id="review-heading" tabIndex={-1} className="text-2xl font-semibold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Your Review</h2>
+          {reviewerIsTestOrInternal ? (
+            <p role="note" className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+              This account is for testing or internal use. Your review is saved to your Service Record, but it does not change public Vendor ratings or reviews, or private service professional rating metrics.
+            </p>
+          ) : null}
           {existingReview ? (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-white p-5">
               <div className="flex items-center gap-2 text-emerald-800"><CheckCircle2 className="h-5 w-5" /><span className="font-semibold">Reviewed</span></div>
@@ -886,8 +905,9 @@ function BookingMediaDetailPageContent() {
               ) : (
                 <div className="space-y-5">
                   <div>
-                    <p className="font-semibold text-slate-950">How was your experience with {vendorName}?</p>
-                    <RatingButtons value={vendorRating} onChange={setVendorRating} label={`Rate ${vendorName}`} />
+                    <p className="font-semibold text-slate-950">How was your experience with {vendorName}? <span className="text-sm font-medium text-slate-600">(required)</span></p>
+                    {!reviewerIsTestOrInternal ? <p className="mt-1 text-sm text-slate-600">An eligible verified star rating counts toward the Vendor Rating when you submit. Written comments appear publicly only after Reliance approval.</p> : null}
+                    <RatingButtons value={vendorRating} onChange={setVendorRating} label={`Rate ${vendorName}`} required />
                   </div>
                   <label className="block">
                     <span className="text-sm font-medium text-slate-800">Share more about your experience (optional)</span>

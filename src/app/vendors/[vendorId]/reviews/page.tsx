@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowLeft, CalendarDays, Filter, Star } from 'lucide-react';
@@ -38,6 +38,7 @@ type ReviewsResponse = {
 };
 
 const PAGE_SIZE = 12;
+const PUBLIC_RETURN_REFRESH_DEBOUNCE_MS = 2_000;
 
 export default function VendorPublicReviewsPage() {
   const params = useParams();
@@ -86,37 +87,57 @@ export default function VendorPublicReviewsPage() {
   const [vendorName, setVendorName] = useState('Provider');
   const [services, setServices] = useState<PublicService[]>([]);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [profileRefreshError, setProfileRefreshError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reviewsRefreshError, setReviewsRefreshError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [rating, setRating] = useState('');
   const [serviceId, setServiceId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest'>('newest');
+  const profileRequestRef = useRef<{ vendorId: string; id: number } | null>(null);
+  const reviewsRequestRef = useRef<{ key: string; id: number } | null>(null);
+  const profileRequestIdRef = useRef(0);
+  const reviewsRequestIdRef = useRef(0);
+  const lastPublicRefreshAtRef = useRef(0);
+  const lastGoodProfileVendorRef = useRef<string | null>(null);
+  const lastGoodReviewKeyRef = useRef<string | null>(null);
+
+  const loadProfile = async (background = false) => {
+    if (!vendorId || profileRequestRef.current?.vendorId === vendorId) return;
+    const requestId = ++profileRequestIdRef.current;
+    profileRequestRef.current = { vendorId, id: requestId };
+    if (!background) setProfileLoading(true);
+    try {
+      const response = await fetch(`/api/vendors/${vendorId}/public`, { cache: 'no-store' });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || json?.success === false) throw new Error(json?.error || 'Unable to load provider.');
+      if (requestId === profileRequestIdRef.current) {
+        lastGoodProfileVendorRef.current = vendorId;
+        setVendorName(String(json?.vendor?.vendorName || 'Provider'));
+        setServices(Array.isArray(json?.publicServices) ? json.publicServices : []);
+        setProfileRefreshError(null);
+      }
+    } catch {
+      if (requestId === profileRequestIdRef.current) {
+        if (background && lastGoodProfileVendorRef.current === vendorId) {
+          setProfileRefreshError('Provider details could not refresh. Showing the last loaded details.');
+        } else if (!background) {
+          setVendorName('Provider');
+        }
+      }
+    } finally {
+      if (profileRequestRef.current?.id === requestId) profileRequestRef.current = null;
+      if (requestId === profileRequestIdRef.current) setProfileLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    const loadProfile = async () => {
-      setProfileLoading(true);
-      try {
-        const response = await fetch(`/api/vendors/${vendorId}/public`, { cache: 'no-store' });
-        const json = await response.json().catch(() => ({}));
-        if (!response.ok || json?.success === false) throw new Error(json?.error || 'Unable to load provider.');
-        if (!cancelled) {
-          setVendorName(String(json?.vendor?.vendorName || 'Provider'));
-          setServices(Array.isArray(json?.publicServices) ? json.publicServices : []);
-        }
-      } catch {
-        if (!cancelled) setVendorName('Provider');
-      } finally {
-        if (!cancelled) setProfileLoading(false);
-      }
-    };
     if (vendorId) void loadProfile();
-    return () => { cancelled = true; };
   }, [vendorId]);
 
   const reviewQuery = useMemo(() => {
@@ -128,25 +149,60 @@ export default function VendorPublicReviewsPage() {
     return query.toString();
   }, [from, page, rating, serviceId, sort, to]);
 
-  const loadReviews = async () => {
-    setLoading(true);
-    setError(null);
+  const loadReviews = async (background = false) => {
+    if (!vendorId) return;
+    const key = `${vendorId}?${reviewQuery}`;
+    if (reviewsRequestRef.current?.key === key) return;
+    const requestId = ++reviewsRequestIdRef.current;
+    reviewsRequestRef.current = { key, id: requestId };
+    if (!background) setLoading(true);
+    if (!background) setError(null);
     try {
       const response = await fetch(`/api/vendors/${vendorId}/reviews/public?${reviewQuery}`, { cache: 'no-store' });
       const json = (await response.json().catch(() => ({}))) as ReviewsResponse;
       if (!response.ok || json.success === false) throw new Error(json.error || 'Unable to load customer feedback.');
-      setReviews(Array.isArray(json.reviews) ? json.reviews : []);
-      setPagination(json.pagination || { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
+      if (requestId === reviewsRequestIdRef.current) {
+        lastGoodReviewKeyRef.current = key;
+        setReviews(Array.isArray(json.reviews) ? json.reviews : []);
+        setPagination(json.pagination || { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 });
+        setError(null);
+        setReviewsRefreshError(null);
+      }
     } catch (loadError) {
-      setReviews([]);
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load customer feedback.');
+      if (requestId === reviewsRequestIdRef.current) {
+        if (background && lastGoodReviewKeyRef.current === key) {
+          setReviewsRefreshError('Customer feedback could not refresh. Showing the last loaded result.');
+        } else {
+          setReviews([]);
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load customer feedback.');
+        }
+      }
     } finally {
-      setLoading(false);
+      if (reviewsRequestRef.current?.id === requestId) reviewsRequestRef.current = null;
+      if (requestId === reviewsRequestIdRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    lastPublicRefreshAtRef.current = Date.now();
     if (vendorId) void loadReviews();
+  }, [reviewQuery, vendorId]);
+
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastPublicRefreshAtRef.current < PUBLIC_RETURN_REFRESH_DEBOUNCE_MS) return;
+      lastPublicRefreshAtRef.current = now;
+      void loadProfile(true);
+      void loadReviews(true);
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
   }, [reviewQuery, vendorId]);
 
   const updateFilter = (update: () => void) => {
@@ -203,6 +259,13 @@ export default function VendorPublicReviewsPage() {
           Back to {profileLoading ? 'provider' : vendorName}
         </Link>
 
+        {profileRefreshError ? (
+          <div role="status" className="mt-5 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+            {profileRefreshError}{' '}
+            <button type="button" className="font-semibold underline" onClick={() => void loadProfile(true)}>Try again</button>
+          </div>
+        ) : null}
+
         <section className="mt-7 overflow-hidden rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(36,107,255,0.28),transparent_42%),linear-gradient(135deg,#07111f,#0c1e39_62%,#102f62)] px-6 py-8 shadow-[0_30px_90px_rgba(0,0,0,0.34)] sm:px-9 sm:py-10">
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-200">Published customer feedback</div>
           <h1 className="mt-4 font-display text-4xl font-semibold sm:text-5xl">Reviews for {vendorName}</h1>
@@ -256,6 +319,12 @@ export default function VendorPublicReviewsPage() {
         </section>
 
         <section className="mt-8" aria-live="polite">
+          {reviewsRefreshError ? (
+            <div role="status" className="mb-5 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+              {reviewsRefreshError}{' '}
+              <button type="button" className="font-semibold underline" onClick={() => void loadReviews(true)}>Try again</button>
+            </div>
+          ) : null}
           {loading ? (
             <div className="grid gap-5 md:grid-cols-2">
               {[0, 1, 2, 3].map((item) => <div key={item} className="h-52 animate-pulse rounded-[28px] border border-white/8 bg-white/6" />)}

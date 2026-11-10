@@ -13,6 +13,7 @@ import {
 } from '@/lib/transient-db-errors';
 import { parseAssignmentMetadata } from '@/lib/job-assignment';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
+import { countableUserWhere } from '@/lib/metrics-exclusion';
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
@@ -107,6 +108,11 @@ export async function GET(
         { status: 403 }
       );
     }
+
+    const countableReviewer = await prisma.user.findFirst({
+      where: countableUserWhere({ id: String(userId) }),
+      select: { id: true },
+    });
 
     const customerReview = await prisma.review.findFirst({
       where: {
@@ -218,6 +224,7 @@ export async function GET(
         : null,
       assignedServiceProfessional,
       assignedServiceProfessionalAvailability,
+      reviewerIsTestOrInternal: !countableReviewer,
       customerRecord,
       customerLifecycle: {
         ...lifecycle,

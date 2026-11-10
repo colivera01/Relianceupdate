@@ -42,8 +42,10 @@ export function QuickReviewPanel({ open, submitting = false, onClose, onSubmit }
       <div className="w-full max-w-lg rounded-lg bg-white p-4 shadow-lg">
         <h3 className="text-base font-semibold text-gray-900">Quick Review</h3>
         <p className="mt-1 text-sm text-gray-600">
-          Your review is only posted after you tap submit. Your star rating affects the vendor's public
-          business rating after Reliance review approval.
+          Your review is only saved after you tap submit. An eligible verified star rating counts toward
+          the vendor&apos;s public business rating when submitted. Written comments appear publicly only
+          after Reliance approval. Reviews from test or internal accounts are saved but excluded from
+          public ratings and reviews.
         </p>
         <div className="mt-3">
           <label className="text-sm font-medium text-gray-700">Rating</label>

@@ -309,3 +309,80 @@ test('preview query parameters cannot expose vendor management controls without 
   await expect(page.getByRole('link', { name: 'Back to Profile & Settings' })).toHaveCount(0);
   await expect(page.locator('header').getByRole('link', { name: 'Sign In' })).toBeVisible();
 });
+
+test('public provider profile refreshes ratings and approved comments on return', async ({ page }) => {
+  let currentRating: number | null = null;
+  let failRefresh = false;
+  let profileRequests = 0;
+  let reviewRequests = 0;
+  await page.route('**/api/auth/session', (route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: '{"authenticated":false}' }),
+  );
+  await page.route('**/api/vendors/vendor-electro/public', (route) => {
+    profileRequests += 1;
+    if (failRefresh) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: '{"success":false,"error":"Temporarily unavailable"}' });
+    }
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        vendor: {
+          vendorId: 'vendor-electro', vendorName: 'Electro LLC', businessType: 'Electrical Services',
+          category: 'Electrical', bio: 'Public provider profile.', website: null,
+          foundedYear: null, specialties: [], location: 'Orlando, FL', serviceAreas: [],
+          businessHours: { configured: false, openNow: false, label: 'Hours not listed', todayLabel: null, timezone: null, schedule: [] },
+          profilePhoto: null, rating: currentRating, reviewCount: currentRating === null ? 0 : 2,
+        },
+        publicServices: [], publicMedia: [],
+        publicProofSummary: { completedWorkCount: 0, publicMediaCount: 0, servicesWithPublicProof: 0 },
+      }),
+    });
+  });
+  await page.route('**/api/vendors/vendor-electro/reviews/public**', (route) => {
+    reviewRequests += 1;
+    if (failRefresh) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: '{"success":false,"error":"Temporarily unavailable"}' });
+    }
+    const reviews = currentRating === null ? [] : [{
+      reviewId: 'review-new', vendorId: 'vendor-electro', rating: 5,
+      comment: 'Newly approved public comment.', createdAt: '2026-11-09T14:00:00.000Z',
+      reviewerDisplayName: 'Verified Customer',
+    }];
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, reviews, pagination: { page: 1, limit: 3, total: reviews.length, totalPages: 1 } }),
+    });
+  });
+  await page.route('**/api/vendors/vendor-electro/trust-score', (route) =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{"success":false}' }),
+  );
+
+  await page.goto('/vendors/vendor-electro');
+  await expect(page.getByText('0 verified customer ratings')).toBeVisible();
+  await expect(page.getByText('No public reviews are available yet.')).toBeVisible();
+  const initialProfileRequests = profileRequests;
+  const initialReviewRequests = reviewRequests;
+
+  currentRating = 4.5;
+  await page.waitForTimeout(2_100);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  await expect(page.getByText('4.5', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('2 verified customer ratings')).toBeVisible();
+  await expect(page.getByText('Newly approved public comment.')).toBeVisible();
+  expect(profileRequests).toBe(initialProfileRequests + 1);
+  expect(reviewRequests).toBe(initialReviewRequests + 1);
+
+  failRefresh = true;
+  await page.waitForTimeout(2_100);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByText(/Profile details could not refresh/)).toBeVisible();
+  await expect(page.getByText(/Customer feedback could not refresh/)).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Electro LLC' })).toBeVisible();
+  await expect(page.getByText('2 verified customer ratings')).toBeVisible();
+  await expect(page.getByText('Newly approved public comment.')).toBeVisible();
+});

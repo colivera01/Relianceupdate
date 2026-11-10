@@ -1546,6 +1546,8 @@ describe('GET /api/bookings/[id]', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
+    hoisted.userFindFirst.mockReset();
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-1' });
     hoisted.reviewFindFirst.mockReset();
     hoisted.reviewFindFirst.mockResolvedValue(null);
     hoisted.vendorMembershipFindFirst.mockReset();
@@ -1600,6 +1602,24 @@ describe('GET /api/bookings/[id]', () => {
     const booking = j.booking as Record<string, unknown>;
     expect(booking.id).toBe('book-1');
     expect(booking.user_id).toBe('customer-1');
+    expect(j.reviewerIsTestOrInternal).toBe(false);
+  });
+
+  it('marks an excluded test or internal reviewer before their review is submitted', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.bookingFindUnique.mockResolvedValue(baseHydratedBooking({ status: 'COMPLETED' }));
+    hoisted.userFindFirst.mockResolvedValue(null);
+
+    const res = await bookingDetailGET(jsonRequest('http://localhost/api/bookings/book-1'), {
+      params: Promise.resolve({ id: 'book-1' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.reviewerIsTestOrInternal).toBe(true);
+    expect(hoisted.userFindFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'customer-1', demo: false }),
+      select: { id: true },
+    });
   });
 
   it('keeps the Service Record and Vendor review available when optional professional attribution fails', async () => {
