@@ -23,6 +23,7 @@ const CUSTOMER_NOTIFICATION_EXACT_KINDS = [
 
 export type CustomerNotificationHistoryItem = {
   id: string;
+  serviceOrderId: string;
   title: string;
   message: string;
   createdAt: string;
@@ -126,6 +127,7 @@ export function shapeCustomerNotification(row: any): CustomerNotificationHistory
 
   return {
     id: String(row.id),
+    serviceOrderId: String(row.bookingId),
     title: copy.title,
     message: copy.message,
     createdAt,

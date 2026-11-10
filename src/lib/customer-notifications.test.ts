@@ -60,6 +60,7 @@ describe('customer notification history', () => {
 
     expect(item).toMatchObject({
       id: 'notice-1',
+      serviceOrderId: 'booking-1',
       title: 'Electro LLC accepted your service request',
       message: 'Your appointment is scheduled.',
       read: false,

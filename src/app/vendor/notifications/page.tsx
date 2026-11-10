@@ -188,13 +188,18 @@ export default function VendorNotificationsPage() {
                       {formatRelianceDateTime(notification.time)}
                       {notification.historical ? " · Historical notice" : ""}
                     </p>
+                    {notification.serviceOrderId ? (
+                      <p className="mt-1 break-all text-xs text-blue-100/70">Service Order ID: {notification.serviceOrderId}</p>
+                    ) : null}
                   </div>
                 </div>
                 {notification.href ? (
                   <Button
                     type="button"
                     variant="outline"
-                    aria-label={`View details for ${notification.title}`}
+                    aria-label={`View details for ${notification.title}${notification.serviceOrderId
+                      ? `, Service Order ${notification.serviceOrderId}`
+                      : ""}`}
                     onClick={() => void viewDetails(notification)}
                     disabled={pendingNotificationId === notification.id}
                   >

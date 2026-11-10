@@ -212,6 +212,7 @@ export default function CustomerNotificationsPage() {
                     </div>
                     <p className="mt-1 text-sm leading-6 text-slate-300">{notification.message}</p>
                     <p className="mt-2 text-xs text-slate-400">{formatNotificationDate(notification.createdAt)} · {notification.vendorName}</p>
+                    <p className="mt-1 break-all text-xs text-blue-100/70">Service record ID: {notification.serviceOrderId}</p>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
@@ -230,7 +231,7 @@ export default function CustomerNotificationsPage() {
                   <Button
                     type="button"
                     size="sm"
-                    aria-label={`Open Service Record for ${notification.serviceName}`}
+                    aria-label={`Open Service Record for ${notification.serviceName}, reference ${notification.serviceOrderId}`}
                     onClick={() => void markRead(notification, true)}
                     disabled={pendingId === notification.id}
                   >

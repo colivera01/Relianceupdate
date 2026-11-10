@@ -60,6 +60,7 @@ export interface VendorInsight {
 
 export interface VendorNotification {
   id: string;
+  serviceOrderId?: string;
   type: 'job' | 'review' | 'payment' | 'reminder' | 'audit';
   title: string;
   message: string;

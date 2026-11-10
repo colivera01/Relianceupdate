@@ -5,6 +5,7 @@ const CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND = "VENDOR_CORE_AUDIT_REJECTED
 
 export type VendorManagerNotificationView = {
   id: string;
+  serviceOrderId: string;
   type: "audit" | "job" | "reminder";
   title: string;
   message: string;
@@ -70,6 +71,7 @@ function toDurableView(row: any): VendorManagerNotificationView {
       : "audit";
   return {
     id: String(row.id),
+    serviceOrderId: String(row.bookingId),
     type,
     title: String(row.title),
     message: String(row.message),
@@ -148,6 +150,7 @@ export async function listVendorManagerNotificationHistory(
       const serviceName = row.booking?.service?.name || row.booking?.title || "Service Order";
       return [{
         id: `legacy:${row.id}`,
+        serviceOrderId: String(row.bookingId),
         type: "audit" as const,
         title: passed ? "Reliance Audit Passed" : "Reliance Audit Failed",
         message: passed

@@ -39,12 +39,26 @@ describe("Vendor Manager audit notifications", () => {
 
   it("lists only unread notices for the exact manager membership", async () => {
     const db: any = {
-      vendorManagerNotification: { findMany: vi.fn().mockResolvedValue([]) },
+      vendorManagerNotification: { findMany: vi.fn().mockResolvedValue([{
+        id: "notice-1",
+        bookingId: "booking-1",
+        notificationType: "VENDOR_CORE_AUDIT_PASSED_V1",
+        title: "Reliance Audit Passed",
+        message: "Private Service Record is ready.",
+        createdAt: new Date("2026-11-03T12:00:00Z"),
+        readAt: null,
+        viewedAt: null,
+        targetUrl: "/vendor/jobs/booking-1",
+      }]) },
     };
-    await listUnreadVendorManagerNotifications(db, {
+    const notices = await listUnreadVendorManagerNotifications(db, {
       vendorId: "vendor-1",
       membershipId: "manager-1",
     });
+    expect(notices).toEqual([expect.objectContaining({
+      serviceOrderId: "booking-1",
+      href: "/vendor/jobs/booking-1",
+    })]);
     expect(db.vendorManagerNotification.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {
         vendorId: "vendor-1",
@@ -172,6 +186,8 @@ describe("Vendor Manager audit notifications", () => {
 
     expect(history).toEqual([expect.objectContaining({
       id: "legacy:legacy-delivery-1",
+      serviceOrderId: "booking-1",
+      href: "/vendor/jobs/booking-1",
       historical: true,
       read: true,
       readAt: null,
