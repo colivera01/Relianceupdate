@@ -431,6 +431,7 @@ export default function PublicBrowsePage() {
           <PublicSiteHeader
             tone="dark"
             className="mb-6"
+            showAccountActions={!authLoading}
             links={[
               { href: '/', label: 'Home' },
               { href: '/help', label: 'Help' },
@@ -754,7 +755,9 @@ export default function PublicBrowsePage() {
                 )}
               </div>
             ) : (
-              browseNavigation.hasCustomerAccount ? (
+              authLoading ? (
+                <span role="status" className="text-sm text-slate-600">Checking account access...</span>
+              ) : browseNavigation.hasCustomerAccount ? (
                 <Link href="/profile-settings" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
                   Manage saved address
                 </Link>
@@ -1002,7 +1005,7 @@ export default function PublicBrowsePage() {
           )}
         </div>
 
-        <div className="mb-8">
+        {!authLoading ? <div className="mb-8">
           <div className="reliance-light-card rounded-[28px] p-6 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -1035,10 +1038,10 @@ export default function PublicBrowsePage() {
               </div>
             </div>
           </div>
-        </div>
+        </div> : null}
       </div>
 
-      <PublicSiteFooter
+      {!authLoading ? <PublicSiteFooter
         accountHeading={
           browseNavigation.mode === 'customer'
             ? 'Customer account'
@@ -1070,7 +1073,7 @@ export default function PublicBrowsePage() {
               ]
             : undefined
         }
-      />
+      /> : null}
     </div>
   );
 }

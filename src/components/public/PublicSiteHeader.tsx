@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { RelianceLogo } from "@/components/public/RelianceLogo";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ type PublicSiteHeaderProps = {
   ctaLabel?: string;
   secondaryHref?: string;
   secondaryLabel?: string;
+  showAccountActions?: boolean;
 };
 
 const defaultLinks: HeaderLink[] = [
@@ -33,6 +35,7 @@ export function PublicSiteHeader({
   ctaLabel = "Get Started",
   secondaryHref = "/auth/login",
   secondaryLabel = "Sign In",
+  showAccountActions = true,
 }: PublicSiteHeaderProps) {
   const dark = tone === "dark";
   const secondaryClassName = cn(
@@ -88,14 +91,16 @@ export function PublicSiteHeader({
             />
           )}
 
-          <div className="ml-auto flex w-full min-w-0 shrink-0 items-center justify-end gap-1.5 sm:w-auto sm:gap-3 md:hidden">
-            <Link href={secondaryHref} className={mobileSecondaryClassName}>
-              {secondaryLabel}
-            </Link>
-            <Link href={ctaHref} className={mobileCtaClassName}>
-              {ctaLabel}
-            </Link>
-          </div>
+          {showAccountActions ? (
+            <div className="ml-auto flex w-full min-w-0 shrink-0 items-center justify-end gap-1.5 sm:w-auto sm:gap-3 md:hidden">
+              <Link href={secondaryHref} className={mobileSecondaryClassName}>
+                {secondaryLabel}
+              </Link>
+              <Link href={ctaHref} className={mobileCtaClassName}>
+                {ctaLabel}
+              </Link>
+            </div>
+          ) : null}
         </div>
 
         {links.length > 0 ? (
@@ -138,14 +143,16 @@ export function PublicSiteHeader({
           </nav>
         ) : null}
 
-        <div className="hidden items-center gap-2 sm:gap-3 md:flex">
-          <Link href={secondaryHref} className={secondaryClassName}>
-            {secondaryLabel}
-          </Link>
-          <Link href={ctaHref} className={ctaClassName}>
-            {ctaLabel}
-          </Link>
-        </div>
+        {showAccountActions ? (
+          <div className="hidden items-center gap-2 sm:gap-3 md:flex">
+            <Link href={secondaryHref} className={secondaryClassName}>
+              {secondaryLabel}
+            </Link>
+            <Link href={ctaHref} className={ctaClassName}>
+              {ctaLabel}
+            </Link>
+          </div>
+        ) : null}
       </div>
     </header>
   );
