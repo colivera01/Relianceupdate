@@ -275,6 +275,30 @@ async function installVendorReviewMetricsFixture(
 }
 
 test.describe("Vendor review metrics", () => {
+  test("refreshes open review metrics after a minute without leaving the page", async ({ page }) => {
+    await page.clock.install();
+    await installVendorReviewMetricsFixture(page, {
+      rating: 0,
+      ratingCount: 0,
+      employeeRating: 0,
+      employeeReviewCount: 0,
+    });
+
+    let dashboardRequests = 0;
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === `/api/vendors/${VENDOR_ID}/dashboard`) dashboardRequests += 1;
+    });
+
+    await page.goto("/test-fixtures/vendor-reviews");
+    await expect(page.getByText("Not yet rated", { exact: true })).toHaveCount(2);
+    const requestsBeforeInterval = dashboardRequests;
+
+    await page.clock.fastForward(60_100);
+    await expect.poll(() => dashboardRequests).toBeGreaterThan(requestsBeforeInterval);
+    await expect(page.getByText("Not yet rated", { exact: true })).toHaveCount(2);
+  });
+
   test("labels unavailable rating aggregates instead of implying no customer or team feedback", async ({ page }) => {
     await installVendorReviewMetricsFixture(page, {
       rating: 0,

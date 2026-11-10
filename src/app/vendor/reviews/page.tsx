@@ -37,7 +37,7 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
 }
 
 export default function VendorReviewsPage() {
-  const { data, loading, error, refetch, approvalPending } = useVendorDashboard();
+  const { data, loading, error, backgroundRefreshError, refetch, refreshInBackground, approvalPending } = useVendorDashboard();
   const [trustScore, setTrustScore] = useState<{
     scored: boolean;
     totalScorePct: number | null;
@@ -46,6 +46,14 @@ export default function VendorReviewsPage() {
   const [trustScoreError, setTrustScoreError] = useState("");
   const [trustScoreLoading, setTrustScoreLoading] = useState(true);
   const [trustScoreRequestVersion, setTrustScoreRequestVersion] = useState(0);
+
+  useEffect(() => {
+    if (approvalPending) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshInBackground();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [approvalPending, refreshInBackground]);
 
   useEffect(() => {
     if (approvalPending) {
@@ -199,6 +207,12 @@ export default function VendorReviewsPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {backgroundRefreshError ? (
+          <p role="status" className="rounded-xl border border-amber-300/35 bg-amber-950/30 px-5 py-3 text-sm text-amber-100">
+            {backgroundRefreshError}
+          </p>
+        ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card className="border-slate-700 bg-slate-950/75 text-white">

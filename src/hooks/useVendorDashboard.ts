@@ -25,7 +25,9 @@ export function useVendorDashboard() {
   const [data, setData] = useState<VendorDashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [backgroundRefreshError, setBackgroundRefreshError] = useState<string | null>(null);
   const lastSuccessfulFetchAtRef = useRef(0);
+  const backgroundRefreshInFlightRef = useRef(false);
 
   const fetchDashboard = useCallback(async (forceRefresh = false, preserveCurrentView = false) => {
     if (profileLoading && !vendorId && !hasResolvedVendorContext) {
@@ -52,6 +54,7 @@ export function useVendorDashboard() {
     if (!preserveCurrentView) {
       setLoading(true);
       setError(null);
+      setBackgroundRefreshError(null);
     }
 
     try {
@@ -75,9 +78,11 @@ export function useVendorDashboard() {
       const json = (await res.json()) as VendorDashboardResponse;
       setData(json);
       setError(null);
+      setBackgroundRefreshError(null);
       lastSuccessfulFetchAtRef.current = Date.now();
     } catch (err) {
       if (preserveCurrentView) {
+        setBackgroundRefreshError("Review metrics may be out of date. Refresh to try again.");
         console.warn("[vendor/dashboard] background refresh unavailable", {
           error: err instanceof Error ? err.message : "Unknown error",
         });
@@ -91,6 +96,16 @@ export function useVendorDashboard() {
     }
   }, [approvalPending, hasResolvedVendorContext, profileError, profileLoading, userId, vendorId]);
 
+  const refreshInBackground = useCallback(async () => {
+    if (backgroundRefreshInFlightRef.current) return;
+    backgroundRefreshInFlightRef.current = true;
+    try {
+      await fetchDashboard(true, true);
+    } finally {
+      backgroundRefreshInFlightRef.current = false;
+    }
+  }, [fetchDashboard]);
+
   useEffect(() => {
     // Vendor pages are operational views. Load a fresh snapshot on entry so a newly
     // completed job, review, audit decision, or storage change is never hidden by the API TTL.
@@ -101,7 +116,7 @@ export function useVendorDashboard() {
     const refreshIfStale = () => {
       if (document.visibilityState !== "visible") return;
       if (Date.now() - lastSuccessfulFetchAtRef.current < VENDOR_DASHBOARD_FOCUS_REFRESH_INTERVAL_MS) return;
-      void fetchDashboard(true, true);
+      void refreshInBackground();
     };
 
     window.addEventListener("focus", refreshIfStale);
@@ -110,9 +125,12 @@ export function useVendorDashboard() {
       window.removeEventListener("focus", refreshIfStale);
       document.removeEventListener("visibilitychange", refreshIfStale);
     };
+  }, [refreshInBackground]);
+
+  const refetch = useCallback(() => {
+    if (backgroundRefreshInFlightRef.current) return Promise.resolve();
+    return fetchDashboard(true);
   }, [fetchDashboard]);
 
-  const refetch = useCallback(() => fetchDashboard(true), [fetchDashboard]);
-
-  return { data, loading, error, refetch, approvalPending };
+  return { data, loading, error, backgroundRefreshError, refetch, refreshInBackground, approvalPending };
 }
