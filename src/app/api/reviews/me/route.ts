@@ -5,7 +5,8 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
 import { isTransientDbConnectivityError } from '@/lib/transient-db-errors';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
-import { customerCommentModerationState } from '@/lib/review-rating-validity';
+import { canonicalVerifiedCustomerRatingWhere, customerCommentModerationState } from '@/lib/review-rating-validity';
+import { countableReviewWhere, countableUserWhere } from '@/lib/metrics-exclusion';
 
 function positiveInt(value: string | null, fallback: number, maximum = 50): number {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -49,7 +50,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const readyPage = positiveInt(searchParams.get('readyPage'), 1, 100000);
     const submittedPage = positiveInt(searchParams.get('submittedPage'), 1, 100000);
 
-    const [serviceRecords, submittedReviews] = await Promise.all([
+    const [serviceRecords, submittedReviews, countableReviewer] = await Promise.all([
       loadCustomerServiceRecords({
         db: prisma,
         customerUserId: String(userId),
@@ -78,7 +79,23 @@ export async function GET(request: Request): Promise<NextResponse> {
           },
         },
       }),
+      summaryOnly
+        ? Promise.resolve({ id: String(userId) })
+        : prisma.user.findFirst({
+            where: countableUserWhere({ id: String(userId) }),
+            select: { id: true },
+          }),
     ]);
+    const countableRatingRows = !summaryOnly && submittedReviews.length
+      ? await prisma.review.findMany({
+          where: countableReviewWhere({
+            id: { in: submittedReviews.map((review) => review.id) },
+            ...canonicalVerifiedCustomerRatingWhere(),
+          }),
+          select: { id: true },
+        })
+      : [];
+    const countableRatingIds = new Set(countableRatingRows.map((review) => review.id));
 
     const completedUnreviewed = serviceRecords.records.filter((record: any) =>
       record.customer_record?.lifecycle === 'COMPLETED' && record.customer_record?.review?.state !== 'REVIEWED'
@@ -124,7 +141,13 @@ export async function GET(request: Request): Promise<NextResponse> {
             }
           : null,
         commentStatus: customerCommentModerationState(review),
-        ratingStatus: review.ratingValidityStatus === 'invalid' ? 'INVALID' : 'COUNTED',
+        ratingStatus: review.ratingValidityStatus === 'invalid'
+          ? 'INVALID'
+          : countableRatingIds.has(review.id)
+            ? 'COUNTED'
+            : countableReviewer
+              ? 'EXCLUDED'
+              : 'EXCLUDED_TEST_ACCOUNT',
       }))
       .filter((row) => matchesSearch(row, search));
 

@@ -27,6 +27,7 @@ function database(options: {
   bookings?: any[];
   organizationEvents?: any[];
   consents?: any[];
+  recordingAssessments?: any[];
   packages?: any[];
   grants?: any[];
   reviews?: any[];
@@ -40,6 +41,7 @@ function database(options: {
     booking: { findMany: vi.fn().mockResolvedValue(options.bookings || []) },
     customerServiceRecordOrganizationEvent: { findMany: vi.fn().mockResolvedValue(options.organizationEvents || []) },
     consentRecord: { findMany: vi.fn().mockResolvedValue(options.consents || []) },
+    recordingScopeAssessment: { findMany: vi.fn().mockResolvedValue(options.recordingAssessments || []) },
     serviceVideoPackageEvidence: { findMany: vi.fn().mockResolvedValue(options.packages || []) },
     privateProofAccessGrant: { findMany: vi.fn().mockResolvedValue(options.grants || []) },
     review: { findMany: vi.fn().mockResolvedValue(options.reviews || []) },
@@ -206,6 +208,34 @@ describe('customer Service Records server loader', () => {
         needsResponse: false,
         requestedScheduledFor: row.scheduledFor.toISOString(),
       },
+    });
+  });
+
+  it('maps an explicit no-permission assessment only to its owned Service Record', async () => {
+    const row = booking(1, 'COMPLETED');
+    const db = database({
+      bookings: [row],
+      recordingAssessments: [
+        { id: 'assessment-foreign', bookingId: 'booking-foreign', generation: 9, permissionRequired: false },
+        { id: 'assessment-owned', bookingId: row.id, generation: 2, permissionRequired: false },
+      ],
+    });
+
+    const result = await loadCustomerServiceRecords({
+      db,
+      customerUserId: 'customer-1',
+      requestedTab: 'completed',
+    });
+
+    expect(db.recordingScopeAssessment.findMany).toHaveBeenCalledWith({
+      where: { bookingId: { in: [row.id] }, isCurrent: true, status: 'COMPLETE' },
+      orderBy: [{ generation: 'desc' }, { completedAt: 'desc' }],
+      select: { id: true, bookingId: true, generation: true, permissionRequired: true },
+    });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].customer_record.recordingPermission).toMatchObject({
+      state: 'NOT_REQUIRED',
+      actionHref: null,
     });
   });
 

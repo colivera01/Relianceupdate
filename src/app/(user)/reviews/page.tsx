@@ -27,7 +27,7 @@ type SubmittedReview = {
   submittedAt: string;
   employeeRating: { rating: number; employeeName: string } | null;
   commentStatus: 'NONE' | 'CHECKING' | 'PUBLISHED' | 'NOT_PUBLISHED' | 'LEGACY';
-  ratingStatus: 'COUNTED' | 'INVALID';
+  ratingStatus: 'COUNTED' | 'INVALID' | 'EXCLUDED' | 'EXCLUDED_TEST_ACCOUNT';
 };
 
 type Pagination = { page: number; limit: number; total: number; totalPages: number };
@@ -159,7 +159,9 @@ export default function ReviewsPage() {
             {data.submitted.length === 0 ? <p role={search ? 'status' : undefined} className="rounded-md border border-slate-200 bg-white p-5 text-sm text-slate-600">{search ? <>No submitted reviews match &ldquo;{search}&rdquo;.</> : 'No submitted reviews yet.'}</p> : (
               <div className="space-y-3">
                 {data.submitted.map((item) => {
-                  const moderationLabel = commentStatusLabel(item.commentStatus);
+                  const moderationLabel = item.ratingStatus === 'EXCLUDED_TEST_ACCOUNT'
+                    ? 'This test or internal account comment is saved here but excluded from public display'
+                    : commentStatusLabel(item.commentStatus);
                   return <article key={item.reviewId} className="rounded-md border border-slate-200 bg-white p-5">
                     <div className="flex flex-col justify-between gap-3 sm:flex-row"><div><h3 className="font-semibold text-slate-950">{item.serviceName}</h3><p className="text-sm text-slate-600">{item.vendorName} · {formatDate(item.submittedAt)}</p></div>{item.bookingId ? <Link aria-label={`View the Service Record for ${item.serviceName}`} href={`/my-bookings/${item.bookingId}?returnTo=${encodeURIComponent('/reviews')}`} className="text-sm font-semibold text-blue-700">View Service Record</Link> : null}</div>
                     <div className="mt-3"><p className="mb-1 text-xs font-medium text-slate-500">Vendor Rating</p><Stars rating={item.rating} /></div>
@@ -167,6 +169,8 @@ export default function ReviewsPage() {
                     {moderationLabel ? <p className="mt-2 text-xs text-slate-500">{moderationLabel}.</p> : null}
                     {item.employeeRating ? <div className="mt-3 border-t border-slate-100 pt-3"><p className="text-xs font-medium text-slate-500">Service Professional Rating · {item.employeeRating.employeeName}</p><Stars rating={item.employeeRating.rating} /></div> : null}
                     {item.ratingStatus === 'INVALID' ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">This rating is not included in Vendor metrics.</p> : null}
+                    {item.ratingStatus === 'EXCLUDED' ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">This review is saved, but its rating is excluded from current Vendor and team metrics.</p> : null}
+                    {item.ratingStatus === 'EXCLUDED_TEST_ACCOUNT' ? <p className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">This review is saved for testing or internal use. It does not affect public Vendor ratings or reviews, or private team rating metrics.</p> : null}
                   </article>;
                 })}
               </div>

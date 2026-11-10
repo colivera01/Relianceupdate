@@ -222,6 +222,7 @@ export async function loadCustomerServiceRecords(input: {
   const [
     organizationEvents,
     consentRecords,
+    recordingAssessments,
     packages,
     grants,
     reviews,
@@ -246,6 +247,11 @@ export async function loadCustomerServiceRecords(input: {
         verifiedDecision: true,
         expiresAt: true,
       },
+    }),
+    db.recordingScopeAssessment.findMany({
+      where: { bookingId: { in: bookingIds }, isCurrent: true, status: 'COMPLETE' },
+      orderBy: [{ generation: 'desc' }, { completedAt: 'desc' }],
+      select: { id: true, bookingId: true, generation: true, permissionRequired: true },
     }),
     db.serviceVideoPackageEvidence.findMany({
       where: { bookingId: { in: bookingIds }, isCurrent: true },
@@ -322,6 +328,7 @@ export async function loadCustomerServiceRecords(input: {
     eventsByBooking.set(String(event.bookingId), list);
   }
   const consentByBooking = mapLatestByBooking<any>(consentRecords);
+  const recordingAssessmentByBooking = mapLatestByBooking<any>(recordingAssessments);
   const grantByBooking = mapLatestByBooking<any>(grants);
   const reviewByBooking = mapLatestByBooking<any>(reviews);
   const visibilityByBooking = mapLatestByBooking<any>(visibilityDecisions);
@@ -333,6 +340,7 @@ export async function loadCustomerServiceRecords(input: {
   const resolved: ResolvedCustomerServiceRecord[] = bookings.map((booking: any) => {
     const id = String(booking.id);
     const pkg = packageByBooking.get(id);
+    const recordingAssessment = recordingAssessmentByBooking.get(id);
     const grant = grantByBooking.get(id);
     const adminDecision = adminByBooking.get(id);
     const visibilityDecision = visibilityByBooking.get(id);
@@ -351,6 +359,10 @@ export async function loadCustomerServiceRecords(input: {
       hasExplicitCompletedEvidence: Boolean(pkg),
       organizationEvents: eventsByBooking.get(id) || [],
       currentConsent: consentByBooking.get(id) || null,
+      recordingPermissionRequired:
+        typeof recordingAssessment?.permissionRequired === 'boolean'
+          ? recordingAssessment.permissionRequired
+          : null,
       adminAuditDecision: adminDecision?.decision || null,
       packageStatus: pkg?.status || null,
       activePrivateProofGrant: Boolean(

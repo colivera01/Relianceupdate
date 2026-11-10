@@ -94,7 +94,7 @@ export type CustomerServiceRecordState = {
     actionHref: string | null;
   };
   recordingPermission: {
-    state: 'ACTION_REQUIRED' | 'PENDING' | 'ALLOWED' | 'DECLINED' | 'EXPIRED' | 'DELIVERY_FAILED' | 'WRONG_RECIPIENT' | 'SUPERSEDED' | 'UNAVAILABLE';
+    state: 'NOT_REQUIRED' | 'ACTION_REQUIRED' | 'PENDING' | 'ALLOWED' | 'DECLINED' | 'EXPIRED' | 'DELIVERY_FAILED' | 'WRONG_RECIPIENT' | 'SUPERSEDED' | 'UNAVAILABLE';
     label: string;
     detail: string;
     actionHref: string | null;
@@ -149,8 +149,17 @@ function permissionNeedsCustomerAction(consent: CustomerRecordConsentLike | null
 
 function recordingPermissionPresentation(
   consent: CustomerRecordConsentLike | null | undefined,
-  actionRequired: boolean
+  actionRequired: boolean,
+  permissionRequired: boolean | null | undefined
 ): CustomerServiceRecordState['recordingPermission'] {
+  if (permissionRequired === false) {
+    return {
+      state: 'NOT_REQUIRED',
+      label: 'Customer recording permission was not required',
+      detail: 'The approved recording scope for this Service Order did not require a customer recording decision. Public sharing is controlled by a separate customer choice.',
+      actionHref: null,
+    };
+  }
   if (!consent) return null;
   const status = normalize(consent.lifecycleStatus || consent.status);
   const expiresAt = asIso(consent.expiresAt);
@@ -237,6 +246,7 @@ export function deriveCustomerServiceRecordState(input: {
   hasExplicitCompletedEvidence?: boolean;
   organizationEvents?: CustomerRecordOrganizationEventLike[] | null;
   currentConsent?: CustomerRecordConsentLike | null;
+  recordingPermissionRequired?: boolean | null;
   adminAuditDecision?: string | null;
   packageStatus?: string | null;
   activePrivateProofGrant?: boolean;
@@ -291,7 +301,11 @@ export function deriveCustomerServiceRecordState(input: {
   const recordingPermissionNeedsAction =
     !archived && lifecycle === CUSTOMER_RECORD_LIFECYCLES.UPCOMING &&
     permissionNeedsCustomerAction(input.currentConsent);
-  const recordingPermission = recordingPermissionPresentation(input.currentConsent, recordingPermissionNeedsAction);
+  const recordingPermission = recordingPermissionPresentation(
+    input.currentConsent,
+    recordingPermissionNeedsAction,
+    input.recordingPermissionRequired
+  );
   const auditPassed = normalize(input.adminAuditDecision) === 'PASS';
   const packageApproved = normalize(input.packageStatus) === 'PRIVATE_APPROVED';
   const videoReady =

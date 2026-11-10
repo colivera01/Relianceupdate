@@ -4,9 +4,10 @@ import { GET } from './me/route';
 const h = vi.hoisted(() => ({
   reviews: vi.fn(),
   records: vi.fn(),
+  countableUser: vi.fn(),
 }));
 
-vi.mock('@/server/db', () => ({ prisma: { review: { findMany: h.reviews } } }));
+vi.mock('@/server/db', () => ({ prisma: { review: { findMany: h.reviews }, user: { findFirst: h.countableUser } } }));
 vi.mock('@/lib/auth', () => ({ getUserIdFromRequest: vi.fn(async () => 'customer-1') }));
 vi.mock('@/lib/account-status', () => ({
   AccountStatusError: class AccountStatusError extends Error { statusCode = 403; },
@@ -53,7 +54,13 @@ describe('GET /api/reviews/me', () => {
         },
       ],
     });
-    h.reviews.mockReset().mockResolvedValue(Array.from({ length: 15 }, (_, index) => review(index + 1)));
+    const rows = Array.from({ length: 15 }, (_, index) => review(index + 1));
+    h.reviews.mockReset().mockImplementation(async (query: { select?: { id?: boolean } }) =>
+      query.select && Object.keys(query.select).length === 1 && query.select.id === true
+        ? rows.map((row) => ({ id: row.id }))
+        : rows
+    );
+    h.countableUser.mockReset().mockResolvedValue({ id: 'customer-1' });
   });
 
   it('returns full submitted counts while paginating owner history', async () => {
@@ -75,6 +82,35 @@ describe('GET /api/reviews/me', () => {
       ratingStatus: 'COUNTED',
       employeeRating: { rating: 3, employeeName: 'Bradley Coopers' },
     });
+  });
+
+  it('labels a saved review from a demo or internal customer as excluded from launch metrics', async () => {
+    h.countableUser.mockResolvedValueOnce(null);
+    h.reviews.mockReset().mockResolvedValueOnce([review(1)]).mockResolvedValueOnce([]);
+
+    const response = await GET(new Request('http://localhost/api/reviews/me'));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.submitted[0]).toMatchObject({
+      reviewId: 'review-1',
+      ratingStatus: 'EXCLUDED_TEST_ACCOUNT',
+      employeeRating: { rating: 3, employeeName: 'Bradley Coopers' },
+    });
+    expect(h.countableUser).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'customer-1', demo: false }),
+    }));
+    expect(h.reviews.mock.calls[1][0].where).toMatchObject({
+      user: { is: { demo: false } },
+    });
+  });
+
+  it('labels an otherwise ineligible review without calling the customer a demo account', async () => {
+    h.reviews.mockReset().mockResolvedValueOnce([review(1)]).mockResolvedValueOnce([]);
+
+    const response = await GET(new Request('http://localhost/api/reviews/me'));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.submitted[0].ratingStatus).toBe('EXCLUDED');
   });
 
   it('searches the complete review history before pagination', async () => {

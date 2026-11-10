@@ -157,6 +157,7 @@ describe('customer Service Record canonical state', () => {
   it('shows a verified recording decision on Service Record detail without offering the secure action again', () => {
     const allowed = resolve({
       bookingStatus: 'CONFIRMED',
+      recordingPermissionRequired: true,
       currentConsent: { id: 'consent-allowed', lifecycleStatus: 'ALLOWED', verifiedDecision: true, token: 'used-token' },
     });
     expect(allowed.recordingPermission).toMatchObject({ state: 'ALLOWED', label: 'Recording allowed', actionHref: null });
@@ -168,6 +169,29 @@ describe('customer Service Record canonical state', () => {
     });
     expect(declined.recordingPermission).toMatchObject({ state: 'DECLINED', label: 'Recording declined', actionHref: null });
     expect(declined.attention.required).toBe(false);
+  });
+
+  it('shows that customer recording permission was not required only from explicit canonical evidence', () => {
+    const notRequired = resolve({
+      bookingStatus: 'COMPLETED',
+      recordingPermissionRequired: false,
+      currentConsent: null,
+    });
+
+    expect(notRequired.recordingPermission).toEqual({
+      state: 'NOT_REQUIRED',
+      label: 'Customer recording permission was not required',
+      detail: 'The approved recording scope for this Service Order did not require a customer recording decision. Public sharing is controlled by a separate customer choice.',
+      actionHref: null,
+    });
+    expect(notRequired.attention.required).toBe(false);
+  });
+
+  it('does not infer that recording permission was unnecessary when the assessment is absent', () => {
+    expect(resolve({
+      bookingStatus: 'COMPLETED',
+      currentConsent: null,
+    }).recordingPermission).toBeNull();
   });
 
   it('keeps expired or cancelled permission requests out of Needs Attention', () => {
